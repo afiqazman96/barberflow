@@ -1,0 +1,62 @@
+"use client";
+
+import {
+  LayoutDashboard,
+  ListOrdered,
+  CalendarDays,
+  ShoppingCart,
+  UserCircle,
+  Users,
+  Percent,
+  Package,
+  BarChart3,
+  CreditCard,
+  Settings,
+} from "lucide-react";
+import { AppShell, Sidebar } from "@/components/layout/app-shell";
+import { BottomNav } from "@/components/layout/bottom-nav";
+
+const navItems = [
+  { href: "/owner/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/owner/queue", label: "Queue", icon: ListOrdered },
+  { href: "/owner/appointment", label: "Appointment", icon: CalendarDays },
+  { href: "/owner/pos", label: "POS", icon: ShoppingCart },
+  { href: "/owner/customer", label: "Customer", icon: UserCircle },
+  { href: "/owner/staff", label: "Staff", icon: Users },
+  { href: "/owner/commission", label: "Commission", icon: Percent },
+  { href: "/owner/inventory", label: "Inventory", icon: Package },
+  { href: "/owner/reports", label: "Reports", icon: BarChart3 },
+  { href: "/owner/billing", label: "Billing", icon: CreditCard },
+  { href: "/owner/settings", label: "Settings", icon: Settings },
+];
+
+const bottomNavItems = [
+  { href: "/owner/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/owner/queue", label: "Queue", icon: ListOrdered },
+  { href: "/owner/appointment", label: "Appt", icon: CalendarDays },
+  { href: "/owner/pos", label: "POS", icon: ShoppingCart },
+  { href: "/owner/reports", label: "Reports", icon: BarChart3 },
+  { href: "/owner/settings", label: "More", icon: Settings },
+];
+
+export default function OwnerLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <AppShell
+      sidebar={
+        <Sidebar
+          title="Fade House"
+          subtitle="Owner"
+          items={navItems}
+          footerHref="/"
+        />
+      }
+      bottomNav={<BottomNav items={bottomNavItems} />}
+    >
+      {children}
+    </AppShell>
+  );
+}

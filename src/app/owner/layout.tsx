@@ -12,6 +12,7 @@ import {
   BarChart3,
   CreditCard,
   Settings,
+  Menu,
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -35,8 +36,7 @@ const bottomNavItems = [
   { href: "/owner/queue", label: "Queue", icon: ListOrdered },
   { href: "/owner/appointment", label: "Appt", icon: CalendarDays },
   { href: "/owner/pos", label: "POS", icon: ShoppingCart },
-  { href: "/owner/reports", label: "Reports", icon: BarChart3 },
-  { href: "/owner/settings", label: "More", icon: Settings },
+  { label: "Menu", icon: Menu, action: "menu" as const },
 ];
 
 export default function OwnerLayout({

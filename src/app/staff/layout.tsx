@@ -28,7 +28,7 @@ export default function StaffLayout({
       <main className="safe-top mx-auto max-w-lg px-4 pb-24 pt-6">
         <PageTransition>{children}</PageTransition>
       </main>
-      <BottomNav items={navItems} />
+      <BottomNav items={navItems} hideFrom={false} />
     </div>
   );
 }

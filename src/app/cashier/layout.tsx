@@ -2,12 +2,12 @@
 
 import {
   LayoutDashboard,
-  Users,
   CalendarDays,
   UserCircle,
   ShoppingCart,
   CreditCard,
   ListOrdered,
+  Menu,
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -24,10 +24,9 @@ const navItems = [
 const bottomNavItems = [
   { href: "/cashier/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/cashier/queue", label: "Queue", icon: ListOrdered },
-  { href: "/cashier/appointment", label: "Appt", icon: CalendarDays },
-  { href: "/cashier/customer", label: "Clients", icon: Users },
   { href: "/cashier/pos", label: "POS", icon: ShoppingCart },
   { href: "/cashier/payment", label: "Pay", icon: CreditCard },
+  { label: "Menu", icon: Menu, action: "menu" as const },
 ];
 
 export default function CashierLayout({

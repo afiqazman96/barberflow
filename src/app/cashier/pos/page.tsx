@@ -200,28 +200,51 @@ export default function CashierPosPage() {
             />
 
             <div className="grid gap-2 sm:grid-cols-2">
-              {catalog.map((item, i) => (
+              {catalog.map((item, i) => {
+                const imageUrl =
+                  "imageUrl" in item && typeof item.imageUrl === "string"
+                    ? item.imageUrl
+                    : undefined;
+                return (
                 <motion.button
                   key={item.id}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.02 }}
                   onClick={() => handleAdd(item)}
-                  className="card-surface flex items-center justify-between p-4 text-left transition hover:border-[var(--gold)]/40 active:scale-[0.98]"
+                  className="card-surface flex items-center justify-between gap-3 p-4 text-left transition hover:border-[var(--gold)]/40 active:scale-[0.98]"
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{item.name}</p>
-                      {"popular" in item && item.popular && (
-                        <Badge variant="gold">Popular</Badge>
-                      )}
+                  <div className="flex min-w-0 items-center gap-3">
+                    {imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={imageUrl}
+                        alt=""
+                        className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-[var(--border)]"
+                      />
+                    ) : (
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--gold)]/12 text-[var(--gold-soft)]">
+                        {tab === "services" ? (
+                          <Sparkles className="h-4 w-4" />
+                        ) : (
+                          <ShoppingBag className="h-4 w-4" />
+                        )}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate font-medium">{item.name}</p>
+                        {"popular" in item && item.popular && (
+                          <Badge variant="gold">Popular</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-[var(--text-faint)]">
+                        {item.category}
+                        {"stock" in item && ` · ${item.stock} in stock`}
+                      </p>
                     </div>
-                    <p className="text-xs text-[var(--text-faint)]">
-                      {item.category}
-                      {"stock" in item && ` · ${item.stock} in stock`}
-                    </p>
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <p className="font-semibold text-[var(--gold-soft)]">
                       {formatCurrency(getPrice(item))}
                     </p>
@@ -234,7 +257,8 @@ export default function CashierPosPage() {
                       )}
                   </div>
                 </motion.button>
-              ))}
+                );
+              })}
             </div>
           </div>
 

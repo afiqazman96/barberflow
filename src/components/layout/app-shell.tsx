@@ -74,17 +74,30 @@ function NavLinks({
 function SidebarBrand({
   title,
   subtitle,
+  logoUrl,
 }: {
   title: string;
   subtitle?: string;
+  logoUrl?: string;
 }) {
   return (
     <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-5">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl gold-gradient text-[#0c0b09]">
-        <Scissors className="h-5 w-5" />
-      </div>
-      <div>
-        <p className="font-display text-sm font-bold tracking-tight">{title}</p>
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logoUrl}
+          alt={title}
+          className="h-10 w-10 rounded-xl object-cover ring-1 ring-[var(--border)]"
+        />
+      ) : (
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl gold-gradient text-[var(--on-gold)]">
+          <Scissors className="h-5 w-5" />
+        </div>
+      )}
+      <div className="min-w-0">
+        <p className="truncate font-display text-sm font-bold tracking-tight">
+          {title}
+        </p>
         {subtitle && (
           <p className="text-xs text-[var(--text-faint)]">{subtitle}</p>
         )}
@@ -124,12 +137,14 @@ function SidebarFooter({
 export function Sidebar({
   title,
   subtitle,
+  logoUrl,
   items,
   footerHref = "/",
   footerLabel = "Sign out",
 }: {
   title: string;
   subtitle?: string;
+  logoUrl?: string;
   items: { href: string; label: string; icon: LucideIcon }[];
   footerHref?: string;
   footerLabel?: string;
@@ -156,7 +171,7 @@ export function Sidebar({
   return (
     <>
       <aside className="hidden h-dvh w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-elevated)] lg:flex">
-        <SidebarBrand title={title} subtitle={subtitle} />
+        <SidebarBrand title={title} subtitle={subtitle} logoUrl={logoUrl} />
         <NavLinks items={items} />
         <SidebarFooter footerHref={footerHref} footerLabel={footerLabel} />
       </aside>
@@ -167,7 +182,7 @@ export function Sidebar({
             <motion.button
               type="button"
               aria-label="Close menu"
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -181,7 +196,7 @@ export function Sidebar({
               transition={{ type: "spring", stiffness: 380, damping: 36 }}
             >
               <div className="relative pr-12">
-                <SidebarBrand title={title} subtitle={subtitle} />
+                <SidebarBrand title={title} subtitle={subtitle} logoUrl={logoUrl} />
                 <button
                   type="button"
                   onClick={close}
@@ -215,13 +230,13 @@ export function Topbar({
   const mobileNav = useMobileNav();
 
   return (
-    <header className="safe-top sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg)]/90 px-4 backdrop-blur-xl md:h-16 md:px-6">
+    <header className="safe-top sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg)]/85 px-4 backdrop-blur-xl md:h-16 md:px-6">
       <div className="flex min-w-0 items-center gap-2.5">
         {mobileNav && (
           <button
             type="button"
             onClick={() => mobileNav.setOpen(true)}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] text-[var(--text)] transition hover:border-[var(--gold-dim)] hover:text-[var(--gold-soft)] lg:hidden"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text)] shadow-[var(--shadow-soft)] transition hover:border-[var(--gold-dim)] hover:text-[var(--gold-soft)] lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
@@ -265,7 +280,7 @@ export function AppShell({
         {sidebar}
         <div className="flex min-w-0 flex-1 flex-col">
           <main
-            className={cn("flex-1 overflow-y-auto", bottomNav && "pb-24 lg:pb-6")}
+            className={cn("flex-1 overflow-y-auto", bottomNav && "pb-28 lg:pb-6")}
           >
             {children}
           </main>

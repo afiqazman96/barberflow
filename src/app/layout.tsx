@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   applicationName: "BarberFlow",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "BarberFlow",
   },
   formatDetection: { telephone: false },
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0c0b09",
+  themeColor: "#fcfbf8",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -75,13 +75,13 @@ export default function RootLayout({
         <ServiceWorkerRegister />
         {children}
         <Toaster
-          theme="dark"
+          theme="light"
           position="top-center"
           toastOptions={{
             style: {
-              background: "#1a1814",
-              border: "1px solid #2e2a24",
-              color: "#f5f0e8",
+              background: "#ffffff",
+              border: "1px solid #e8e2d6",
+              color: "#1c1917",
             },
           }}
         />

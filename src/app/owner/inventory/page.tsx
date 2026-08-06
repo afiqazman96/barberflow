@@ -18,6 +18,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { ImageUpload } from "@/components/ui/image-upload";
 import { useAppStore } from "@/lib/store/app-store";
 import { formatCurrency } from "@/lib/utils";
 
@@ -38,6 +39,7 @@ export default function OwnerInventoryPage() {
     price: 40,
     stock: 20,
     sku: "",
+    imageUrl: undefined as string | undefined,
   });
 
   const categories = useMemo(
@@ -83,9 +85,17 @@ export default function OwnerInventoryPage() {
       price: Number(form.price) || 0,
       stock: Number(form.stock) || 0,
       sku,
+      imageUrl: form.imageUrl,
     });
     toast.success("Product added", { description: form.name });
-    setForm({ name: "", category: "Styling", price: 40, stock: 20, sku: "" });
+    setForm({
+      name: "",
+      category: "Styling",
+      price: 40,
+      stock: 20,
+      sku: "",
+      imageUrl: undefined,
+    });
     setOpenAdd(false);
   }
 
@@ -206,9 +216,18 @@ export default function OwnerInventoryPage() {
                   <Card className="p-4">
                     <div className="mb-3 flex items-start justify-between">
                       <div className="flex gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--bg-muted)]">
-                          <Package className="h-5 w-5 text-[var(--gold)]" />
-                        </div>
+                        {product.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={product.imageUrl}
+                            alt={product.name}
+                            className="h-12 w-12 rounded-xl object-cover ring-1 ring-[var(--border)]"
+                          />
+                        ) : (
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--bg-muted)]">
+                            <Package className="h-5 w-5 text-[var(--gold)]" />
+                          </div>
+                        )}
                         <div>
                           <p className="font-medium">{product.name}</p>
                           <p className="text-xs text-[var(--text-faint)]">
@@ -217,6 +236,17 @@ export default function OwnerInventoryPage() {
                         </div>
                       </div>
                       <Badge variant={status.variant}>{status.label}</Badge>
+                    </div>
+
+                    <div className="mb-3">
+                      <ImageUpload
+                        label="Product image"
+                        value={product.imageUrl}
+                        onChange={(imageUrl) =>
+                          updateProduct(product.id, { imageUrl })
+                        }
+                        previewClassName="h-20 w-20"
+                      />
                     </div>
 
                     <div className="mb-3">
@@ -297,6 +327,11 @@ export default function OwnerInventoryPage() {
         description="New retail SKU for POS & inventory"
       >
         <form onSubmit={handleAdd} className="space-y-3">
+          <ImageUpload
+            label="Product image"
+            value={form.imageUrl}
+            onChange={(imageUrl) => setForm({ ...form, imageUrl })}
+          />
           <div>
             <Label>Name</Label>
             <Input

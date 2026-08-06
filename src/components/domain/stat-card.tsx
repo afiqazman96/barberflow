@@ -54,7 +54,7 @@ export function StatCard({
             )}
           </div>
           {Icon && (
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--gold)]/10 text-[var(--gold)]">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--gold)]/15 text-[var(--gold-soft)]">
               <Icon className="h-5 w-5" />
             </div>
           )}

@@ -26,9 +26,10 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { useAppStore } from "@/lib/store/app-store";
-import { TENANT, MEMBERSHIP_PLANS } from "@/lib/mock/data";
+import { MEMBERSHIP_PLANS } from "@/lib/mock/data";
 import type { Branch, Service } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
+import { ImageUpload } from "@/components/ui/image-upload";
 
 const TABS = [
   { id: "profile", label: "Business", icon: Building2 },
@@ -52,7 +53,7 @@ type BranchDraft = Pick<
 
 type ServiceDraft = Pick<
   Service,
-  "name" | "category" | "durationMins" | "price" | "membershipPrice"
+  "name" | "category" | "durationMins" | "price" | "membershipPrice" | "imageUrl"
 >;
 
 const emptyBranchForm = {
@@ -70,6 +71,7 @@ const emptyServiceForm = {
   durationMins: 30,
   price: 45,
   membershipPrice: 38,
+  imageUrl: undefined as string | undefined,
 };
 
 export default function OwnerSettingsPage() {
@@ -85,13 +87,16 @@ export default function OwnerSettingsPage() {
   const assignChair = useAppStore((s) => s.assignChair);
   const addService = useAppStore((s) => s.addService);
   const updateService = useAppStore((s) => s.updateService);
+  const businessProfile = useAppStore((s) => s.businessProfile);
+  const updateBusinessProfile = useAppStore((s) => s.updateBusinessProfile);
 
   const [profile, setProfile] = useState({
-    name: TENANT.name,
-    phone: "+60 3-2141 8890",
-    email: "hello@fadehouse.my",
-    address: "88 Jalan Bukit Bintang, Lot 12, KL",
-    taxId: "W10-1808-32000123",
+    name: businessProfile.name,
+    phone: businessProfile.phone,
+    email: businessProfile.email,
+    address: businessProfile.address,
+    taxId: businessProfile.taxId,
+    logoUrl: businessProfile.logoUrl,
   });
 
   const [branchDrafts, setBranchDrafts] = useState<Record<string, BranchDraft>>(
@@ -190,6 +195,7 @@ export default function OwnerSettingsPage() {
         durationMins: service.durationMins,
         price: service.price,
         membershipPrice: service.membershipPrice,
+        imageUrl: service.imageUrl,
       }
     );
   }
@@ -222,6 +228,20 @@ export default function OwnerSettingsPage() {
   function handleSave(section: string) {
     toast.success("Settings saved", {
       description: `${section} updated successfully`,
+    });
+  }
+
+  function handleSaveProfile() {
+    updateBusinessProfile({
+      name: profile.name.trim() || "My Business",
+      phone: profile.phone,
+      email: profile.email,
+      address: profile.address,
+      taxId: profile.taxId,
+      logoUrl: profile.logoUrl,
+    });
+    toast.success("Settings saved", {
+      description: "Business profile updated successfully",
     });
   }
 
@@ -278,6 +298,7 @@ export default function OwnerSettingsPage() {
       durationMins: newServiceForm.durationMins,
       price: newServiceForm.price,
       membershipPrice: newServiceForm.membershipPrice,
+      imageUrl: newServiceForm.imageUrl,
       popular: false,
     });
     toast.success("Service added", { description: created.name });
@@ -341,6 +362,17 @@ export default function OwnerSettingsPage() {
                       <CardHeader>
                         <CardTitle>Business Profile</CardTitle>
                       </CardHeader>
+                      <div className="mb-6">
+                        <ImageUpload
+                          label="Company Logo"
+                          hint="Shown in sidebar & menus · PNG/JPG/WebP · max ~700KB"
+                          value={profile.logoUrl}
+                          onChange={(logoUrl) =>
+                            setProfile({ ...profile, logoUrl })
+                          }
+                          previewClassName="h-28 w-28"
+                        />
+                      </div>
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <Label>Business Name</Label>
@@ -389,10 +421,7 @@ export default function OwnerSettingsPage() {
                           />
                         </div>
                       </div>
-                      <Button
-                        className="mt-6"
-                        onClick={() => handleSave("Business profile")}
-                      >
+                      <Button className="mt-6" onClick={handleSaveProfile}>
                         <Save className="h-4 w-4" />
                         Save Profile
                       </Button>
@@ -500,6 +529,15 @@ export default function OwnerSettingsPage() {
                         const draft = getServiceDraft(svc);
                         return (
                           <Card key={svc.id} className="p-4">
+                            <div className="mb-4">
+                              <ImageUpload
+                                label="Service image"
+                                value={draft.imageUrl}
+                                onChange={(imageUrl) =>
+                                  patchServiceDraft(svc.id, { imageUrl })
+                                }
+                              />
+                            </div>
                             <div className="grid gap-3 sm:grid-cols-5">
                               <Input
                                 value={draft.name}
@@ -1081,6 +1119,13 @@ export default function OwnerSettingsPage() {
         description="Add a new service to your menu."
       >
         <form onSubmit={handleAddService} className="space-y-4">
+          <ImageUpload
+            label="Service image"
+            value={newServiceForm.imageUrl}
+            onChange={(imageUrl) =>
+              setNewServiceForm({ ...newServiceForm, imageUrl })
+            }
+          />
           <div>
             <Label>Service Name</Label>
             <Input

@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type {
   Booking,
   Branch,
+  BusinessProfile,
   Chair,
   CommissionRule,
   PaymentMethod,
@@ -25,6 +26,7 @@ import {
   SALES,
   SERVICES,
   STAFF,
+  TENANT,
 } from "@/lib/mock/data";
 
 interface PosItem {
@@ -39,6 +41,7 @@ interface AppState {
   role: UserRole | null;
   staffId: string | null;
   branchId: string;
+  businessProfile: BusinessProfile;
   queue: QueueTicket[];
   bookings: Booking[];
   sales: Sale[];
@@ -57,6 +60,7 @@ interface AppState {
 
   setRole: (role: UserRole | null, staffId?: string | null) => void;
   setBranchId: (id: string) => void;
+  updateBusinessProfile: (patch: Partial<BusinessProfile>) => void;
   updateStaffStatus: (staffId: string, status: StaffStatus) => void;
   authenticate: (
     email: string,
@@ -145,6 +149,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   role: null,
   staffId: null,
   branchId: "b1",
+  businessProfile: {
+    name: TENANT.name,
+    phone: "+60 3-2141 8890",
+    email: "hello@fadehouse.my",
+    address: "88 Jalan Bukit Bintang, Lot 12, KL",
+    taxId: "W10-1808-32000123",
+  },
   queue: QUEUE,
   bookings: BOOKINGS,
   sales: SALES,
@@ -163,6 +174,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setRole: (role, staffId = null) => set({ role, staffId }),
   setBranchId: (branchId) => set({ branchId }),
+  updateBusinessProfile: (patch) =>
+    set((s) => ({
+      businessProfile: { ...s.businessProfile, ...patch },
+    })),
 
   updateStaffStatus: (staffId, status) =>
     set((s) => ({

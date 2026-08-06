@@ -154,6 +154,8 @@ export interface Service {
   price: number;
   membershipPrice: number;
   popular?: boolean;
+  /** Data URL or CDN URL — client upload until backend storage exists */
+  imageUrl?: string;
 }
 
 export interface Product {
@@ -163,6 +165,18 @@ export interface Product {
   price: number;
   stock: number;
   sku: string;
+  /** Data URL or CDN URL — client upload until backend storage exists */
+  imageUrl?: string;
+}
+
+export interface BusinessProfile {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  taxId: string;
+  /** Company logo as data URL or remote URL */
+  logoUrl?: string;
 }
 
 export interface Customer {

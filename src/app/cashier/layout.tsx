@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { useAppStore } from "@/lib/store/app-store";
 
 const navItems = [
   { href: "/cashier/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -34,12 +35,15 @@ export default function CashierLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const business = useAppStore((s) => s.businessProfile);
+
   return (
     <AppShell
       sidebar={
         <Sidebar
-          title="Fade House"
+          title={business.name}
           subtitle="Cashier Portal"
+          logoUrl={business.logoUrl}
           items={navItems}
           footerHref="/"
         />

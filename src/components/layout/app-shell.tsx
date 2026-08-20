@@ -15,12 +15,11 @@ import {
   LucideIcon,
   Scissors,
   Bell,
-  LogOut,
   Menu,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 
 type MobileNavContextValue = {
   open: boolean;
@@ -107,11 +106,9 @@ function SidebarBrand({
 }
 
 function SidebarFooter({
-  footerHref,
   footerLabel,
   onNavigate,
 }: {
-  footerHref: string;
   footerLabel: string;
   onNavigate?: () => void;
 }) {
@@ -124,12 +121,7 @@ function SidebarFooter({
           3
         </span>
       </div>
-      <Button asChild variant="ghost" className="w-full justify-start" size="sm">
-        <Link href={footerHref} onClick={onNavigate}>
-          <LogOut className="h-4 w-4" />
-          {footerLabel}
-        </Link>
-      </Button>
+      <SignOutButton label={footerLabel} onNavigate={onNavigate} />
     </div>
   );
 }
@@ -139,14 +131,12 @@ export function Sidebar({
   subtitle,
   logoUrl,
   items,
-  footerHref = "/",
   footerLabel = "Sign out",
 }: {
   title: string;
   subtitle?: string;
   logoUrl?: string;
   items: { href: string; label: string; icon: LucideIcon }[];
-  footerHref?: string;
   footerLabel?: string;
 }) {
   const mobileNav = useMobileNav();
@@ -173,7 +163,7 @@ export function Sidebar({
       <aside className="hidden h-dvh w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-elevated)] lg:flex">
         <SidebarBrand title={title} subtitle={subtitle} logoUrl={logoUrl} />
         <NavLinks items={items} />
-        <SidebarFooter footerHref={footerHref} footerLabel={footerLabel} />
+        <SidebarFooter footerLabel={footerLabel} />
       </aside>
 
       <AnimatePresence>
@@ -207,11 +197,7 @@ export function Sidebar({
                 </button>
               </div>
               <NavLinks items={items} onNavigate={close} />
-              <SidebarFooter
-                footerHref={footerHref}
-                footerLabel={footerLabel}
-                onNavigate={close}
-              />
+              <SidebarFooter footerLabel={footerLabel} onNavigate={close} />
             </motion.aside>
           </div>
         )}

@@ -1,6 +1,8 @@
 "use client";
 
 import { create } from "zustand";
+
+import type { SessionUser } from "@/lib/auth/dto";
 import type {
   Booking,
   Branch,
@@ -38,6 +40,14 @@ interface PosItem {
 }
 
 interface AppState {
+  /**
+   * The verified session, mirrored from the server by `<SessionSync>` so that
+   * client-only screens can read who is signed in. Never write to it from a
+   * form or a page — the server guards are the source of truth, this is a
+   * read-through copy that disappears on refresh and is re-seeded by the
+   * portal layout.
+   */
+  session: SessionUser | null;
   role: UserRole | null;
   staffId: string | null;
   branchId: string;
@@ -58,14 +68,11 @@ interface AppState {
   lastReceipt: Sale | null;
   trackingTicketId: string | null;
 
+  setSession: (session: SessionUser | null) => void;
   setRole: (role: UserRole | null, staffId?: string | null) => void;
   setBranchId: (id: string) => void;
   updateBusinessProfile: (patch: Partial<BusinessProfile>) => void;
   updateStaffStatus: (staffId: string, status: StaffStatus) => void;
-  authenticate: (
-    email: string,
-    password: string,
-  ) => { ok: true; staff: StaffMember } | { ok: false; error: string };
   setStaffPassword: (
     staffId: string,
     password: string,
@@ -147,6 +154,7 @@ const initialStatuses = Object.fromEntries(
 
 export const useAppStore = create<AppState>((set, get) => ({
   role: null,
+  session: null,
   staffId: null,
   branchId: "b1",
   businessProfile: {
@@ -172,6 +180,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   lastReceipt: null,
   trackingTicketId: null,
 
+  setSession: (session) =>
+    set((s) => ({
+      session,
+      role: session?.role ?? null,
+      staffId: session?.staffId ?? null,
+      // Owners have no home branch (branchId is null) and can switch freely, so
+      // leave whatever branch they were looking at selected.
+      branchId: session?.branchId ?? s.branchId,
+    })),
   setRole: (role, staffId = null) => set({ role, staffId }),
   setBranchId: (branchId) => set({ branchId }),
   updateBusinessProfile: (patch) =>
@@ -184,23 +201,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       staffStatuses: { ...s.staffStatuses, [staffId]: status },
       staff: s.staff.map((m) => (m.id === staffId ? { ...m, status } : m)),
     })),
-
-  authenticate: (email, password) => {
-    const normalized = email.trim().toLowerCase();
-    const member = get().staff.find(
-      (s) => s.email.toLowerCase() === normalized,
-    );
-    if (!member) {
-      return { ok: false, error: "No account found for this email" };
-    }
-    if (!member.active) {
-      return { ok: false, error: "Account disabled. Contact your owner." };
-    }
-    if (member.password !== password) {
-      return { ok: false, error: "Incorrect password" };
-    }
-    return { ok: true, staff: member };
-  },
 
   setStaffPassword: (staffId, password, opts) =>
     set((s) => ({

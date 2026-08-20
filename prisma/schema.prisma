@@ -1,0 +1,682 @@
+// BarberFlow — multi-tenant barber/salon SaaS.
+// Models the domain described in docs/BACKEND_HANDOFF.md §5 and src/lib/types.ts.
+//
+// Isolation rule: every tenant-owned row carries `tenantId`. Queries must filter
+// on it — the schema cannot enforce that, the API layer must.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum FeatureKey {
+  QUEUE
+  BOOKING
+  POS
+  COMMISSION
+  INVENTORY
+  MEMBERSHIP
+  ANALYTICS
+  API
+  WHITE_LABEL
+}
+
+enum TenantStatus {
+  ACTIVE
+  TRIAL
+  SUSPENDED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum BranchStatus {
+  OPEN
+  CLOSED
+  BUSY
+}
+
+enum StaffRole {
+  OWNER
+  CASHIER
+  BARBER
+}
+
+/// BUSY is never set directly — only "Start Service" may transition into it
+/// (BACKEND_HANDOFF §6.6, §8).
+enum StaffStatus {
+  OFF_DUTY
+  AVAILABLE
+  BUSY
+  BREAK
+}
+
+enum MembershipTier {
+  NONE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum QueueStatus {
+  WAITING
+  CALLED
+  IN_SERVICE
+  AWAITING_PAYMENT
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+enum QueueSource {
+  QR
+  CASHIER
+  BOOKING
+}
+
+enum BookingStatus {
+  CONFIRMED
+  CHECKED_IN
+  IN_SERVICE
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  QR
+}
+
+enum CommissionType {
+  FIXED
+  PERCENTAGE
+  SERVICE_BASED
+  PRODUCT_BASED
+}
+
+enum CommissionScope {
+  ALL
+  SERVICE
+  PRODUCT
+}
+
+enum SaleItemType {
+  SERVICE
+  PRODUCT
+}
+
+// ---------------------------------------------------------------------------
+// Platform (Super Admin)
+// ---------------------------------------------------------------------------
+
+/// Super Admin console login. Deliberately separate from `Staff` so platform
+/// accounts can never authenticate through the shop-facing login.
+model PlatformAdmin {
+  id    String @id @default(cuid())
+  email String @unique
+  name  String
+  /// Supabase `auth.users.id`. Credentials live in Supabase Auth, not here.
+  /// Null means the row exists but nobody can sign in as it yet.
+  authUserId String?  @unique @db.Uuid
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("platform_admins")
+}
+
+model Package {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  /// Monthly list price.
+  price       Decimal  @db.Decimal(10, 2)
+  yearlyPrice Decimal  @db.Decimal(10, 2)
+  /// Marketing bullets shown on /pricing.
+  features    String[]
+  popular     Boolean  @default(false)
+  /// Hard limits — enforce on write, not just in the UI (BACKEND_HANDOFF §8).
+  maxBranches Int
+  maxStaff    Int
+  trialDays   Int      @default(14)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  featureFlags PackageFeature[]
+  tenants      Tenant[]
+
+  @@map("packages")
+}
+
+/// The per-package feature matrix Super Admin toggles (BACKEND_HANDOFF §9).
+/// A missing row means the feature is off.
+model PackageFeature {
+  id        String     @id @default(cuid())
+  packageId String
+  feature   FeatureKey
+  enabled   Boolean    @default(false)
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@unique([packageId, feature])
+  @@map("package_features")
+}
+
+model Tenant {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  logoUrl     String?
+  packageId   String
+  status      TenantStatus @default(TRIAL)
+  billing     BillingCycle @default(MONTHLY)
+  /// Monthly recurring revenue. 0 while TRIAL or SUSPENDED (BACKEND_HANDOFF §5.1).
+  mrr         Decimal      @default(0) @db.Decimal(10, 2)
+  ownerName   String
+  ownerEmail  String
+  trialEndsAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  package         Package          @relation(fields: [packageId], references: [id])
+  settings        TenantSettings?
+  branches        Branch[]
+  staff           Staff[]
+  customers       Customer[]
+  services        Service[]
+  products        Product[]
+  membershipPlans MembershipPlan[]
+  commissionRules CommissionRule[]
+  queueTickets    QueueTicket[]
+  bookings        Booking[]
+  sales           Sale[]
+  supportTickets  SupportTicket[]
+
+  @@index([packageId])
+  @@index([status])
+  @@map("tenants")
+}
+
+/// Business profile / receipt header (src/lib/types.ts BusinessProfile).
+model TenantSettings {
+  id                     String  @id @default(cuid())
+  tenantId               String  @unique
+  phone                  String?
+  email                  String?
+  address                String?
+  taxId                  String?
+  logoUrl                String?
+  /// IANA zone — no-show and daily queue resets are evaluated in this zone.
+  timezone               String  @default("Asia/Kuala_Lumpur")
+  currency               String  @default("MYR")
+  /// Default minutes a late booking is held before auto no-show.
+  defaultGracePeriodMins Int     @default(10)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_settings")
+}
+
+model SupportTicket {
+  id         String         @id @default(cuid())
+  tenantId   String
+  subject    String
+  body       String?
+  priority   TicketPriority @default(MEDIUM)
+  status     TicketStatus   @default(OPEN)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  resolvedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("support_tickets")
+}
+
+// ---------------------------------------------------------------------------
+// Tenant structure
+// ---------------------------------------------------------------------------
+
+model Branch {
+  id        String       @id @default(cuid())
+  tenantId  String
+  name      String
+  address   String?
+  city      String?
+  phone     String?
+  status    BranchStatus @default(OPEN)
+  /// Display string, e.g. "10:00 – 22:00".
+  openHours String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chairs        Chair[]
+  staff         Staff[]
+  queueTickets  QueueTicket[]
+  bookings      Booking[]
+  sales         Sale[]
+  queueCounters QueueCounter[]
+
+  @@index([tenantId])
+  @@map("branches")
+}
+
+model Chair {
+  id       String @id @default(cuid())
+  branchId String
+  number   Int
+  label    String
+
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  /// A chair holds at most one staff member; `Staff.chairId` is the unique side.
+  staff        Staff?
+  queueTickets QueueTicket[]
+
+  @@unique([branchId, number])
+  @@map("chairs")
+}
+
+/// Shop-side login: owner, cashier, or barber (BACKEND_HANDOFF §5.5).
+model Staff {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  /// Null for owners, who span every branch under the tenant.
+  branchId           String?
+  name  String
+  /// Globally unique, because Supabase Auth keys accounts on email. One login
+  /// therefore maps to exactly one staff row and one tenant.
+  email String @unique
+  /// Supabase `auth.users.id`. Credentials live in Supabase Auth, not here.
+  /// Null means the row exists but nobody can sign in as it yet.
+  authUserId         String?   @unique @db.Uuid
+  phone              String?
+  role               StaffRole
+  /// Soft disable — reject login when false.
+  active             Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
+  avatarUrl          String?
+
+  status                    StaffStatus @default(OFF_DUTY)
+  chairId                   String?     @unique
+  specialty                 String?
+  rating                    Decimal?    @db.Decimal(3, 2)
+  /// Sales target for the current month; aggregates are computed from `sales`.
+  monthlyTarget             Decimal?    @db.Decimal(10, 2)
+  /// Overrides matching commission rules when set (BACKEND_HANDOFF §6.8).
+  commissionOverridePercent Decimal?    @db.Decimal(5, 2)
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  chair  Chair?  @relation(fields: [chairId], references: [id], onDelete: SetNull)
+
+  preferredByTickets   QueueTicket[]    @relation("TicketPreferredStaff")
+  assignedTickets      QueueTicket[]    @relation("TicketAssignedStaff")
+  bookings             Booking[]
+  sales                Sale[]
+  commissionRules      CommissionRule[]
+  preferredByCustomers Customer[]
+
+  @@index([tenantId])
+  @@index([branchId, status])
+  @@map("staff")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+model Service {
+  id              String   @id @default(cuid())
+  tenantId        String
+  name            String
+  category        String?
+  durationMins    Int
+  price           Decimal  @db.Decimal(10, 2)
+  membershipPrice Decimal  @db.Decimal(10, 2)
+  popular         Boolean  @default(false)
+  imageUrl        String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  queueTickets    QueueTicketService[]
+  bookings        BookingService[]
+  commissionRules CommissionRule[]
+
+  @@index([tenantId])
+  @@map("services")
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  category  String?
+  sku       String
+  price     Decimal  @db.Decimal(10, 2)
+  stock     Int      @default(0)
+  imageUrl  String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  commissionRules CommissionRule[]
+
+  @@unique([tenantId, sku])
+  @@map("products")
+}
+
+model MembershipPlan {
+  id              String         @id @default(cuid())
+  tenantId        String
+  name            String
+  tier            MembershipTier
+  price           Decimal        @db.Decimal(10, 2)
+  discountPercent Decimal        @db.Decimal(5, 2)
+  benefits        String[]
+  active          Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customers Customer[]
+
+  @@unique([tenantId, tier])
+  @@map("membership_plans")
+}
+
+model CommissionRule {
+  id        String          @id @default(cuid())
+  tenantId  String
+  name      String
+  type      CommissionType
+  /// Ringgit for FIXED, percent for PERCENTAGE.
+  value     Decimal         @db.Decimal(10, 2)
+  appliesTo CommissionScope @default(ALL)
+  serviceId String?
+  productId String?
+  /// Narrows the rule to one staff member.
+  staffId   String?
+  active    Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service Service? @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  staff   Staff?   @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active])
+  @@map("commission_rules")
+}
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+/// Customers never log in — they are matched on phone or email at join time
+/// (BACKEND_HANDOFF §4.5). At least one of the two must be present; enforce in
+/// the API, since Postgres cannot express it as a Prisma-level constraint.
+model Customer {
+  id               String         @id @default(cuid())
+  tenantId         String
+  name             String
+  phone            String?
+  email            String?
+  membership       MembershipTier @default(NONE)
+  membershipPlanId String?
+  preferredStaffId String?
+  notes            String?
+  lastVisitAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  membershipPlan MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+  preferredStaff Staff?          @relation(fields: [preferredStaffId], references: [id], onDelete: SetNull)
+  queueTickets   QueueTicket[]
+  bookings       Booking[]
+  sales          Sale[]
+
+  /// `visits` and `totalSpent` in the prototype are derived from `sales`.
+  @@unique([tenantId, phone])
+  @@unique([tenantId, email])
+  @@index([tenantId, name])
+  @@map("customers")
+}
+
+// ---------------------------------------------------------------------------
+// Queue
+// ---------------------------------------------------------------------------
+
+/// Per-branch, per-day allocator backing atomic queue numbers
+/// (BACKEND_HANDOFF §8). Increment inside the same transaction as the ticket.
+model QueueCounter {
+  id         String   @id @default(cuid())
+  branchId   String
+  /// Service day in the branch timezone, at midnight UTC.
+  queueDate  DateTime @db.Date
+  lastNumber Int      @default(0)
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, queueDate])
+  @@map("queue_counters")
+}
+
+model QueueTicket {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String
+  /// Display number, e.g. "A021".
+  number    String
+  /// Service day this ticket belongs to; scopes `number` uniqueness.
+  queueDate DateTime @db.Date
+
+  customerId    String
+  /// Contact snapshot as given at join time.
+  customerName  String
+  customerPhone String?
+  customerEmail String?
+
+  /// Null means "Any Barber" — assign to the next available (§6.5).
+  preferredStaffId String?
+  assignedStaffId  String?
+  chairId          String?
+
+  status            QueueStatus @default(WAITING)
+  source            QueueSource
+  estimatedWaitMins Int         @default(0)
+
+  createdAt   DateTime  @default(now())
+  calledAt    DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch         Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer       Customer             @relation(fields: [customerId], references: [id])
+  preferredStaff Staff?               @relation("TicketPreferredStaff", fields: [preferredStaffId], references: [id], onDelete: SetNull)
+  assignedStaff  Staff?               @relation("TicketAssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  chair          Chair?               @relation(fields: [chairId], references: [id], onDelete: SetNull)
+  services       QueueTicketService[]
+  /// Set when the ticket originated from a checked-in booking.
+  booking        Booking?
+  sale           Sale?
+
+  @@unique([branchId, queueDate, number])
+  @@index([branchId, status])
+  @@index([tenantId])
+  @@map("queue_tickets")
+}
+
+/// Line item on a ticket. Price and duration are snapshotted so later catalog
+/// edits do not rewrite history.
+model QueueTicketService {
+  id           String  @id @default(cuid())
+  ticketId     String
+  serviceId    String
+  name         String
+  price        Decimal @db.Decimal(10, 2)
+  durationMins Int
+
+  ticket  QueueTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  service Service     @relation(fields: [serviceId], references: [id])
+
+  @@unique([ticketId, serviceId])
+  @@map("queue_ticket_services")
+}
+
+// ---------------------------------------------------------------------------
+// Bookings
+// ---------------------------------------------------------------------------
+
+model Booking {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  customerId    String
+  customerName  String
+  customerPhone String?
+
+  /// Null means "Any Barber".
+  staffId String?
+
+  /// Absolute start instant — store UTC, render in the branch timezone.
+  scheduledAt     DateTime
+  durationMins    Int
+  /// Minutes past `scheduledAt` before auto no-show may fire (§6.4).
+  gracePeriodMins Int           @default(10)
+  status          BookingStatus @default(CONFIRMED)
+  notes           String?
+
+  /// The walk-in ticket created at check-in.
+  queueTicketId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer    Customer         @relation(fields: [customerId], references: [id])
+  staff       Staff?           @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  queueTicket QueueTicket?     @relation(fields: [queueTicketId], references: [id], onDelete: SetNull)
+  services    BookingService[]
+
+  @@index([branchId, scheduledAt])
+  @@index([status, scheduledAt])
+  @@index([tenantId])
+  @@map("bookings")
+}
+
+model BookingService {
+  id           String  @id @default(cuid())
+  bookingId    String
+  serviceId    String
+  name         String
+  price        Decimal @db.Decimal(10, 2)
+  durationMins Int
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@unique([bookingId, serviceId])
+  @@map("booking_services")
+}
+
+// ---------------------------------------------------------------------------
+// Sales & payment
+// ---------------------------------------------------------------------------
+
+model Sale {
+  id       String @id @default(cuid())
+  tenantId String
+  branchId String
+
+  customerId    String?
+  staffId       String?
+  /// Set when the sale settled a walk-in/booking ticket.
+  queueTicketId String? @unique
+
+  receiptNo String
+
+  subtotal Decimal @db.Decimal(10, 2)
+  discount Decimal @default(0) @db.Decimal(10, 2)
+  voucher  Decimal @default(0) @db.Decimal(10, 2)
+  total    Decimal @db.Decimal(10, 2)
+
+  paymentMethod PaymentMethod
+  /// Recomputed server-side at payment time — never trusted from the client (§8).
+  commission    Decimal       @default(0) @db.Decimal(10, 2)
+
+  /// Client-supplied key making checkout retries safe (§8).
+  idempotencyKey String?
+  paidAt         DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer    Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  staff       Staff?       @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  queueTicket QueueTicket? @relation(fields: [queueTicketId], references: [id], onDelete: SetNull)
+  items       SaleItem[]
+
+  @@unique([tenantId, receiptNo])
+  @@unique([tenantId, idempotencyKey])
+  @@index([branchId, paidAt])
+  @@index([staffId, paidAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String       @id @default(cuid())
+  saleId    String
+  type      SaleItemType
+  /// Points at a Service or Product depending on `type`; kept loose so catalog
+  /// rows can be deleted without destroying sales history.
+  refId     String?
+  name      String
+  quantity  Int          @default(1)
+  unitPrice Decimal      @db.Decimal(10, 2)
+  total     Decimal      @db.Decimal(10, 2)
+
+  sale Sale @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([saleId])
+  @@map("sale_items")
+}

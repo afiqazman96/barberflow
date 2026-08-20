@@ -1,66 +1,23 @@
-"use client";
+import { SessionProvider } from "@/components/auth/session-provider";
+import { requirePortal } from "@/lib/auth/session";
 
-import {
-  LayoutDashboard,
-  ListOrdered,
-  CalendarDays,
-  ShoppingCart,
-  UserCircle,
-  Users,
-  Percent,
-  Package,
-  BarChart3,
-  CreditCard,
-  Settings,
-  Menu,
-} from "lucide-react";
-import { AppShell, Sidebar } from "@/components/layout/app-shell";
-import { BottomNav } from "@/components/layout/bottom-nav";
-import { useAppStore } from "@/lib/store/app-store";
+import { PortalShell } from "./portal-shell";
 
-const navItems = [
-  { href: "/owner/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/owner/queue", label: "Queue", icon: ListOrdered },
-  { href: "/owner/appointment", label: "Appointment", icon: CalendarDays },
-  { href: "/owner/pos", label: "POS", icon: ShoppingCart },
-  { href: "/owner/customer", label: "Customer", icon: UserCircle },
-  { href: "/owner/staff", label: "Staff", icon: Users },
-  { href: "/owner/commission", label: "Commission", icon: Percent },
-  { href: "/owner/inventory", label: "Inventory", icon: Package },
-  { href: "/owner/reports", label: "Reports", icon: BarChart3 },
-  { href: "/owner/billing", label: "Billing", icon: CreditCard },
-  { href: "/owner/settings", label: "Settings", icon: Settings },
-];
-
-const bottomNavItems = [
-  { href: "/owner/dashboard", label: "Home", icon: LayoutDashboard },
-  { href: "/owner/queue", label: "Queue", icon: ListOrdered },
-  { href: "/owner/appointment", label: "Appt", icon: CalendarDays },
-  { href: "/owner/pos", label: "POS", icon: ShoppingCart },
-  { label: "Menu", icon: Menu, action: "menu" as const },
-];
-
-export default function OwnerLayout({
+/**
+ * Server guard for the owner portal. Everything below this segment assumes a
+ * signed-in owner; `requirePortal` redirects anyone else before the shell
+ * renders, so no page under here repeats the check.
+ */
+export default async function OwnerLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const business = useAppStore((s) => s.businessProfile);
+  const session = await requirePortal("owner");
 
   return (
-    <AppShell
-      sidebar={
-        <Sidebar
-          title={business.name}
-          subtitle="Owner"
-          logoUrl={business.logoUrl}
-          items={navItems}
-          footerHref="/"
-        />
-      }
-      bottomNav={<BottomNav items={bottomNavItems} />}
-    >
-      {children}
-    </AppShell>
+    <SessionProvider session={session}>
+      <PortalShell>{children}</PortalShell>
+    </SessionProvider>
   );
 }

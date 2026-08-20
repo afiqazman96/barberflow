@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
+import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/store/app-store";
 import type { QueueTicket, StaffMember, StaffStatus } from "@/lib/types";
 
+/**
+ * Everything the staff portal screens read about "me".
+ *
+ * `staffId` comes from the session the layout guard resolved on the server —
+ * the portal cannot render without one, so there is no anonymous fallback to
+ * pick a barber at random.
+ */
 export function useStaffPortal() {
-  const staffId = useAppStore((s) => s.staffId) ?? "s1";
-  const setRole = useAppStore((s) => s.setRole);
+  const staffId = useSession().staffId ?? "";
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const queue = useAppStore((s) => s.queue);
   const sales = useAppStore((s) => s.sales);
@@ -15,12 +22,6 @@ export function useStaffPortal() {
   const updateStaffStatus = useAppStore((s) => s.updateStaffStatus);
   const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
   const assignChair = useAppStore((s) => s.assignChair);
-
-  useEffect(() => {
-    if (!useAppStore.getState().staffId) {
-      setRole("staff", "s1");
-    }
-  }, [setRole]);
 
   const staff: StaffMember = useMemo(
     () =>
@@ -76,7 +77,6 @@ export function useStaffPortal() {
     updateStaffStatus,
     updateQueueTicket,
     assignChair,
-    setRole,
   };
 }
 

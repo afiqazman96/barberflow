@@ -1,14 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import { Suspense, useEffect, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
   Armchair,
   KeyRound,
-  LogOut,
   Mail,
   Phone,
   Star,
@@ -20,8 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/badge";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
-import { useAppStore } from "@/lib/store/app-store";
+import { changePassword } from "@/lib/auth/actions";
 import { formatCurrency, initials } from "@/lib/utils";
 
 function ChangePasswordSection() {
@@ -29,12 +28,10 @@ function ChangePasswordSection() {
   const forceChange = searchParams.get("changePassword") === "1";
   const sectionRef = useRef<HTMLDivElement>(null);
 
-  const { staffId, staff } = useStaffPortal();
-  const setStaffPassword = useAppStore((s) => s.setStaffPassword);
-
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [pending, startTransition] = useTransition();
 
   useEffect(() => {
     if (!forceChange) return;
@@ -46,24 +43,26 @@ function ChangePasswordSection() {
   function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
 
-    if (currentPassword !== staff.password) {
-      toast.error("Current password is incorrect");
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast.error("New password must be at least 6 characters");
-      return;
-    }
+    // Only the match check stays on the client — it is about the two boxes
+    // agreeing, not about the password being right. Everything else is the
+    // server's call, since that is where the real credential lives.
     if (newPassword !== confirmPassword) {
       toast.error("New passwords do not match");
       return;
     }
 
-    setStaffPassword(staffId, newPassword, { mustChangePassword: false });
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    toast.success("Password updated");
+    startTransition(async () => {
+      const result = await changePassword(currentPassword, newPassword);
+      if (!result.ok) {
+        toast.error("Could not update password", { description: result.error });
+        return;
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast.success("Password updated");
+    });
   }
 
   return (
@@ -123,8 +122,8 @@ function ChangePasswordSection() {
             required
           />
         </div>
-        <Button type="submit" className="w-full">
-          Update password
+        <Button type="submit" className="w-full" disabled={pending}>
+          {pending ? "Updating…" : "Update password"}
         </Button>
       </form>
     </Card>
@@ -133,12 +132,7 @@ function ChangePasswordSection() {
 }
 
 function StaffProfileContent() {
-  const { staff, status, chair, setRole } = useStaffPortal();
-
-  function handleLogout() {
-    setRole(null, null);
-    toast.success("Signed out");
-  }
+  const { staff, status, chair } = useStaffPortal();
 
   return (
     <div className="space-y-6">
@@ -250,12 +244,12 @@ function StaffProfileContent() {
         </div>
       </Card>
 
-      <Button asChild variant="outline" size="lg" className="w-full">
-        <Link href="/" onClick={handleLogout}>
-          <LogOut className="h-4 w-4" />
-          Sign Out
-        </Link>
-      </Button>
+      <SignOutButton
+        label="Sign Out"
+        variant="outline"
+        size="lg"
+        className="w-full"
+      />
     </div>
   );
 }

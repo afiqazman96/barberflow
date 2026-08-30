@@ -262,7 +262,7 @@ export function AppShell({
 
   return (
     <MobileNavContext.Provider value={value}>
-      <div className="app-bg flex min-h-dvh">
+      <div className="app-bg flex h-dvh overflow-hidden">
         {sidebar}
         <div className="flex min-w-0 flex-1 flex-col">
           <main

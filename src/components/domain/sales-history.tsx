@@ -140,17 +140,17 @@ export function SalesHistory() {
       <Modal
         open={!!selected}
         onOpenChange={(v) => !v && setSelected(null)}
-        className="max-w-md p-0"
+        className="max-w-md"
       >
         {selected && (
           <div>
-            <div className="border-b border-[var(--border)] bg-[var(--bg-muted)] px-5 py-4 text-center">
+            <div className="-mx-6 -mt-6 mb-4 border-b border-[var(--border)] bg-[var(--bg-muted)] px-5 py-4 text-center">
               <p className="font-display text-lg font-bold">{business.name}</p>
               <p className="text-xs text-[var(--text-faint)]">
                 {business.address} · {business.phone}
               </p>
             </div>
-            <div className="space-y-4 p-5">
+            <div className="space-y-4">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--text-muted)]">Receipt</span>
                 <Badge variant="gold">{selected.receiptNo}</Badge>

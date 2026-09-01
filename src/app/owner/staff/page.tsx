@@ -148,6 +148,18 @@ export default function OwnerStaffPage() {
     });
   }
 
+  function handleTransferBranch(newBranchId: string) {
+    if (!selected || newBranchId === selected.branchId) return;
+    if (selected.chairId) {
+      assignChair(selected.chairId, null);
+    }
+    updateStaff(selected.id, { branchId: newBranchId, chairId: null });
+    const branchName = branches.find((b) => b.id === newBranchId)?.name;
+    toast.success("Staff transferred", {
+      description: `${selected.name} → ${branchName ?? "branch"}`,
+    });
+  }
+
   function handleAddStaff(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.branchId) {
@@ -694,6 +706,25 @@ export default function OwnerStaffPage() {
             </div>
 
             <p className="text-sm text-[var(--text-muted)]">{selected.phone}</p>
+
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 px-4 py-3">
+              <p className="text-sm font-medium">Branch</p>
+              <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                Transfer this staff member to another branch. Their chair
+                assignment is cleared.
+              </p>
+              <Select
+                value={selected.branchId}
+                onChange={(e) => handleTransferBranch(e.target.value)}
+                className="mt-2"
+              >
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
             <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 px-4 py-3">
               <div>

@@ -13,6 +13,8 @@ import {
   Bell,
   Save,
   Plus,
+  Pencil,
+  Trash2,
   QrCode,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -26,8 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { useAppStore } from "@/lib/store/app-store";
-import { MEMBERSHIP_PLANS } from "@/lib/mock/data";
-import type { Branch, Service } from "@/lib/types";
+import type { Branch, MembershipPlan, Service } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
 import { ImageUpload } from "@/components/ui/image-upload";
 
@@ -74,6 +75,24 @@ const emptyServiceForm = {
   imageUrl: undefined as string | undefined,
 };
 
+type PlanForm = {
+  name: string;
+  tier: MembershipPlan["tier"];
+  price: number;
+  discountPercent: number;
+  benefits: string;
+  members: number;
+};
+
+const emptyPlanForm: PlanForm = {
+  name: "",
+  tier: "silver",
+  price: 49,
+  discountPercent: 10,
+  benefits: "",
+  members: 0,
+};
+
 export default function OwnerSettingsPage() {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -87,6 +106,10 @@ export default function OwnerSettingsPage() {
   const assignChair = useAppStore((s) => s.assignChair);
   const addService = useAppStore((s) => s.addService);
   const updateService = useAppStore((s) => s.updateService);
+  const membershipPlans = useAppStore((s) => s.membershipPlans);
+  const addMembershipPlan = useAppStore((s) => s.addMembershipPlan);
+  const updateMembershipPlan = useAppStore((s) => s.updateMembershipPlan);
+  const deleteMembershipPlan = useAppStore((s) => s.deleteMembershipPlan);
   const businessProfile = useAppStore((s) => s.businessProfile);
   const updateBusinessProfile = useAppStore((s) => s.updateBusinessProfile);
 
@@ -119,7 +142,9 @@ export default function OwnerSettingsPage() {
     storeBranches[0]?.id ?? "",
   );
 
-  const [plans] = useState(MEMBERSHIP_PLANS.map((p) => ({ ...p })));
+  const [planModalOpen, setPlanModalOpen] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
 
   const [queueRules, setQueueRules] = useState({
     gracePeriodMins: 10,
@@ -304,6 +329,57 @@ export default function OwnerSettingsPage() {
     toast.success("Service added", { description: created.name });
     setAddServiceOpen(false);
     setNewServiceForm(emptyServiceForm);
+  }
+
+  function openAddPlan() {
+    setEditingPlanId(null);
+    setPlanForm(emptyPlanForm);
+    setPlanModalOpen(true);
+  }
+
+  function openEditPlan(plan: MembershipPlan) {
+    setEditingPlanId(plan.id);
+    setPlanForm({
+      name: plan.name,
+      tier: plan.tier,
+      price: plan.price,
+      discountPercent: plan.discountPercent,
+      benefits: plan.benefits.join("\n"),
+      members: plan.members,
+    });
+    setPlanModalOpen(true);
+  }
+
+  function handleSubmitPlan(e: React.FormEvent) {
+    e.preventDefault();
+    if (!planForm.name.trim()) {
+      toast.error("Plan name is required");
+      return;
+    }
+    const payload = {
+      name: planForm.name.trim(),
+      tier: planForm.tier,
+      price: Number(planForm.price) || 0,
+      discountPercent: Number(planForm.discountPercent) || 0,
+      benefits: planForm.benefits
+        .split("\n")
+        .map((b) => b.trim())
+        .filter(Boolean),
+      members: Number(planForm.members) || 0,
+    };
+    if (editingPlanId) {
+      updateMembershipPlan(editingPlanId, payload);
+      toast.success("Plan updated", { description: payload.name });
+    } else {
+      addMembershipPlan(payload);
+      toast.success("Plan added", { description: payload.name });
+    }
+    setPlanModalOpen(false);
+  }
+
+  function handleDeletePlan(plan: MembershipPlan) {
+    deleteMembershipPlan(plan.id);
+    toast.success("Plan removed", { description: plan.name });
   }
 
   function handleAddChair(e: React.FormEvent) {
@@ -864,11 +940,23 @@ export default function OwnerSettingsPage() {
                   )}
 
                   {activeTab === "membership" && (
-                    <div className="space-y-4">
-                      {plans.map((plan) => (
+                    <div className="space-y-3">
+                      <div className="flex justify-end">
+                        <Button size="sm" onClick={openAddPlan}>
+                          <Plus className="h-4 w-4" />
+                          Add Plan
+                        </Button>
+                      </div>
+                      {membershipPlans.length === 0 && (
+                        <Card className="py-10 text-center text-sm text-[var(--text-muted)]">
+                          No membership plans yet. Add one to offer member
+                          pricing.
+                        </Card>
+                      )}
+                      {membershipPlans.map((plan) => (
                         <Card key={plan.id} className="p-4">
-                          <div className="flex items-start justify-between">
-                            <div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
                               <div className="flex items-center gap-2">
                                 <p className="font-display text-lg font-semibold">
                                   {plan.name}
@@ -885,14 +973,34 @@ export default function OwnerSettingsPage() {
                                 ))}
                               </ul>
                             </div>
-                            <Badge variant="default">{plan.members} members</Badge>
+                            <div className="flex shrink-0 flex-col items-end gap-2">
+                              <Badge variant="default">
+                                {plan.members} members
+                              </Badge>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => openEditPlan(plan)}
+                                  aria-label={`Edit ${plan.name}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 text-[var(--danger)]"
+                                  onClick={() => handleDeletePlan(plan)}
+                                  aria-label={`Delete ${plan.name}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
                           </div>
                         </Card>
                       ))}
-                      <Button onClick={() => handleSave("Membership plans")}>
-                        <Save className="h-4 w-4" />
-                        Save Plans
-                      </Button>
                     </div>
                   )}
 
@@ -1192,6 +1300,96 @@ export default function OwnerSettingsPage() {
           </div>
           <Button type="submit" className="w-full" size="lg">
             Add Service
+          </Button>
+        </form>
+      </Modal>
+
+      <Modal
+        open={planModalOpen}
+        onOpenChange={setPlanModalOpen}
+        title={editingPlanId ? "Edit Membership Plan" : "Add Membership Plan"}
+        description="Plans set the member discount applied at checkout."
+      >
+        <form onSubmit={handleSubmitPlan} className="space-y-4">
+          <div>
+            <Label>Plan Name</Label>
+            <Input
+              value={planForm.name}
+              onChange={(e) =>
+                setPlanForm({ ...planForm, name: e.target.value })
+              }
+              placeholder="Gold"
+              required
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div>
+              <Label>Tier</Label>
+              <Select
+                value={planForm.tier}
+                onChange={(e) =>
+                  setPlanForm({
+                    ...planForm,
+                    tier: e.target.value as MembershipPlan["tier"],
+                  })
+                }
+              >
+                <option value="silver">Silver</option>
+                <option value="gold">Gold</option>
+                <option value="platinum">Platinum</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Price (RM/mo)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={planForm.price}
+                onChange={(e) =>
+                  setPlanForm({ ...planForm, price: Number(e.target.value) })
+                }
+              />
+            </div>
+            <div>
+              <Label>Discount (%)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={planForm.discountPercent}
+                onChange={(e) =>
+                  setPlanForm({
+                    ...planForm,
+                    discountPercent: Number(e.target.value),
+                  })
+                }
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Benefits (one per line)</Label>
+            <Textarea
+              rows={4}
+              value={planForm.benefits}
+              onChange={(e) =>
+                setPlanForm({ ...planForm, benefits: e.target.value })
+              }
+              placeholder={"15% off services\nPriority queue"}
+            />
+          </div>
+          <div>
+            <Label>Members</Label>
+            <Input
+              type="number"
+              min={0}
+              value={planForm.members}
+              onChange={(e) =>
+                setPlanForm({ ...planForm, members: Number(e.target.value) })
+              }
+            />
+          </div>
+          <Button type="submit" className="w-full" size="lg">
+            {editingPlanId ? "Save Changes" : "Add Plan"}
           </Button>
         </form>
       </Modal>

@@ -9,6 +9,7 @@ import type {
   BusinessProfile,
   Chair,
   CommissionRule,
+  MembershipPlan,
   PaymentMethod,
   Product,
   QueueTicket,
@@ -23,6 +24,7 @@ import {
   BRANCHES,
   CHAIRS,
   COMMISSION_RULES,
+  MEMBERSHIP_PLANS,
   PRODUCTS,
   QUEUE,
   SALES,
@@ -61,6 +63,7 @@ interface AppState {
   commissionRules: CommissionRule[];
   services: Service[];
   products: Product[];
+  membershipPlans: MembershipPlan[];
   staffStatuses: Record<string, StaffStatus>;
   posItems: PosItem[];
   posDiscount: number;
@@ -89,6 +92,9 @@ interface AppState {
   updateCommissionRule: (id: string, patch: Partial<CommissionRule>) => void;
   addService: (service: Omit<Service, "id">) => Service;
   updateService: (id: string, patch: Partial<Service>) => void;
+  addMembershipPlan: (plan: Omit<MembershipPlan, "id">) => MembershipPlan;
+  updateMembershipPlan: (id: string, patch: Partial<MembershipPlan>) => void;
+  deleteMembershipPlan: (id: string) => void;
   addProduct: (product: Omit<Product, "id">) => Product;
   updateProduct: (id: string, patch: Partial<Product>) => void;
   addQueueTicket: (ticket: QueueTicket) => void;
@@ -172,6 +178,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   chairs: CHAIRS.map((c) => ({ ...c })),
   commissionRules: COMMISSION_RULES.map((r) => ({ ...r })),
   services: SERVICES.map((s) => ({ ...s })),
+  membershipPlans: MEMBERSHIP_PLANS.map((p) => ({ ...p })),
   products: PRODUCTS.map((p) => ({ ...p })),
   staffStatuses: initialStatuses,
   posItems: [],
@@ -332,6 +339,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateService: (id, patch) =>
     set((s) => ({
       services: s.services.map((sv) => (sv.id === id ? { ...sv, ...patch } : sv)),
+    })),
+
+  addMembershipPlan: (plan) => {
+    const created: MembershipPlan = { ...plan, id: `m-${Date.now()}` };
+    set((s) => ({ membershipPlans: [...s.membershipPlans, created] }));
+    return created;
+  },
+
+  updateMembershipPlan: (id, patch) =>
+    set((s) => ({
+      membershipPlans: s.membershipPlans.map((p) =>
+        p.id === id ? { ...p, ...patch } : p,
+      ),
+    })),
+
+  deleteMembershipPlan: (id) =>
+    set((s) => ({
+      membershipPlans: s.membershipPlans.filter((p) => p.id !== id),
     })),
 
   addProduct: (product) => {

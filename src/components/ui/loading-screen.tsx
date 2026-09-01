@@ -20,8 +20,8 @@ export function LoadingScreen({
     <div
       className={
         fullscreen
-          ? "app-bg flex min-h-dvh w-full flex-col items-center justify-center gap-6 p-8"
-          : "flex min-h-[60vh] w-full flex-col items-center justify-center gap-6 p-8"
+          ? "app-bg fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 p-8"
+          : "flex h-full min-h-[70vh] w-full flex-1 flex-col items-center justify-center gap-6 p-8"
       }
     >
       <div className="relative">

@@ -93,6 +93,15 @@ export default function OwnerStaffPage() {
     });
   }, [staff, search, roleFilter]);
 
+  const filteredBarbers = useMemo(
+    () => filtered.filter((s) => s.role === "barber"),
+    [filtered],
+  );
+  const filteredManagement = useMemo(
+    () => filtered.filter((s) => s.role !== "barber"),
+    [filtered],
+  );
+
   const barbers = useMemo(
     () => staff.filter((s) => s.role === "barber"),
     [staff],
@@ -283,49 +292,152 @@ export default function OwnerStaffPage() {
             </select>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {filtered.map((member, i) => {
-              const status = staffStatuses[member.id];
-              const currentCustomer = queue.find(
-                (q) =>
-                  q.assignedStaffId === member.id && q.status === "in-service",
-              )?.customerName;
-              const chairId = member.chairId;
-              const chair = chairs.find((c) => c.id === chairId);
-              const branchChairs = chairs.filter(
-                (c) => c.branchId === member.branchId,
-              );
-              const targetPct =
-                member.monthlyTarget > 0
-                  ? Math.min(
-                      100,
-                      (member.monthlySales / member.monthlyTarget) * 100,
-                    )
-                  : 0;
-              const isActive = member.active ?? true;
+          {filtered.length === 0 && (
+            <Card className="py-12 text-center">
+              <p className="text-sm text-[var(--text-muted)]">
+                No staff match your search.
+              </p>
+            </Card>
+          )}
 
-              return (
-                <motion.div
-                  key={member.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.04 }}
-                  className="relative"
-                >
-                  {member.role === "barber" ? (
-                    <StaffCard
-                      staff={member}
-                      status={status}
-                      currentCustomer={currentCustomer}
-                    />
-                  ) : (
-                    <Card className={`p-4 ${!isActive ? "opacity-60" : ""}`}>
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--gold)]/20 font-display text-sm font-semibold text-[var(--gold-soft)]">
-                          {initials(member.name)}
+          {filteredBarbers.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+                Barbers
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredBarbers.map((member, i) => {
+                  const status = staffStatuses[member.id];
+                  const currentCustomer = queue.find(
+                    (q) =>
+                      q.assignedStaffId === member.id &&
+                      q.status === "in-service",
+                  )?.customerName;
+                  const chairId = member.chairId;
+                  const branchChairs = chairs.filter(
+                    (c) => c.branchId === member.branchId,
+                  );
+                  const chair = chairs.find((c) => c.id === chairId);
+                  const targetPct =
+                    member.monthlyTarget > 0
+                      ? Math.min(
+                          100,
+                          (member.monthlySales / member.monthlyTarget) * 100,
+                        )
+                      : 0;
+
+                  return (
+                    <motion.div
+                      key={member.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                      className="flex h-full flex-col gap-2"
+                    >
+                      <StaffCard
+                        staff={member}
+                        status={status}
+                        currentCustomer={currentCustomer}
+                      />
+
+                      <div className="mt-auto space-y-2 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 p-3">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                            <Target className="h-3.5 w-3.5" />
+                            Monthly target
+                          </span>
+                          <span>{Math.round(targetPct)}%</span>
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between">
+                        <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-muted)]">
+                          <div
+                            className="h-full rounded-full gold-gradient"
+                            style={{ width: `${targetPct}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            value={status}
+                            onChange={(e) =>
+                              handleStatusChange(
+                                member.id,
+                                e.target.value as StaffStatus,
+                              )
+                            }
+                            className="h-9 flex-1 text-xs"
+                          >
+                            {STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </Select>
+                          <Select
+                            value={chairId ?? ""}
+                            onChange={(e) =>
+                              handleChairAssign(member.id, e.target.value)
+                            }
+                            className="h-9 flex-1 text-xs"
+                          >
+                            <option value="">No chair</option>
+                            {branchChairs.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-9 w-9 shrink-0 p-0"
+                            onClick={() => openDetail(member)}
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {chair && (
+                          <p className="flex items-center gap-1 text-[10px] text-[var(--text-faint)]">
+                            <Armchair className="h-3 w-3" />
+                            Assigned to {chair.label}
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {filteredManagement.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-faint)]">
+                Management
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredManagement.map((member, i) => {
+                  const status = staffStatuses[member.id];
+                  const isActive = member.active ?? true;
+
+                  return (
+                    <motion.button
+                      key={member.id}
+                      type="button"
+                      onClick={() => openDetail(member)}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                      className="text-left"
+                    >
+                      <Card
+                        className={`p-4 transition hover:border-[var(--gold-dim)]/40 ${
+                          !isActive ? "opacity-60" : ""
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--gold)]/20 font-display text-sm font-semibold text-[var(--gold-soft)]">
+                            {initials(member.name)}
+                          </div>
+                          <div className="flex flex-1 items-start justify-between">
                             <div>
                               <p className="font-medium">{member.name}</p>
                               <p className="text-xs capitalize text-[var(--text-muted)]">
@@ -340,77 +452,13 @@ export default function OwnerStaffPage() {
                             </div>
                           </div>
                         </div>
-                      </div>
-                    </Card>
-                  )}
-
-                  {member.role === "barber" && (
-                    <div className="mt-2 space-y-2 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 p-3">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="flex items-center gap-1 text-[var(--text-muted)]">
-                          <Target className="h-3.5 w-3.5" />
-                          Monthly target
-                        </span>
-                        <span>{Math.round(targetPct)}%</span>
-                      </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-muted)]">
-                        <div
-                          className="h-full rounded-full gold-gradient"
-                          style={{ width: `${targetPct}%` }}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Select
-                          value={status}
-                          onChange={(e) =>
-                            handleStatusChange(
-                              member.id,
-                              e.target.value as StaffStatus,
-                            )
-                          }
-                          className="h-9 flex-1 text-xs"
-                        >
-                          {STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </Select>
-                        <Select
-                          value={chairId ?? ""}
-                          onChange={(e) =>
-                            handleChairAssign(member.id, e.target.value)
-                          }
-                          className="h-9 flex-1 text-xs"
-                        >
-                          <option value="">No chair</option>
-                          {branchChairs.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.label}
-                            </option>
-                          ))}
-                        </Select>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-9 w-9 shrink-0 p-0"
-                          onClick={() => openDetail(member)}
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      {chair && (
-                        <p className="flex items-center gap-1 text-[10px] text-[var(--text-faint)]">
-                          <Armchair className="h-3 w-3" />
-                          Assigned to {chair.label}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </motion.div>
-              );
-            })}
-          </div>
+                      </Card>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </section>
+          )}
         </div>
       </PageTransition>
 

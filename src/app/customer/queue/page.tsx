@@ -3,7 +3,7 @@
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
@@ -80,6 +80,9 @@ function QueueWizard() {
     (sum, s) => sum + s.durationMins,
     0,
   );
+  // One estimate, used in the summary and written onto the ticket, so the
+  // number the customer sees here matches the one on the tracking screen.
+  const estWaitMins = branch.avgWaitMins + Math.min(serviceIds.length * 4, 16);
 
   const contactOk =
     contactMode === "phone" ? isValidPhone(phone) : isValidEmail(email);
@@ -123,9 +126,9 @@ function QueueWizard() {
       assignedStaffId: null,
       chairId: null,
       status: "waiting",
-      estimatedWaitMins: branch.avgWaitMins + Math.floor(Math.random() * 8),
+      estimatedWaitMins: estWaitMins,
       createdAt: new Date().toISOString(),
-      source: fromQr ? "qr" : "qr",
+      source: "qr",
     };
 
     addQueueTicket(ticket);
@@ -173,15 +176,13 @@ function QueueWizard() {
         Step {step + 1} of {STEPS.length} · {STEPS[step]}
       </p>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={step}
-          initial={{ opacity: 0, x: 12 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -12 }}
-          transition={{ duration: 0.2 }}
-        >
-          {step === 0 && (
+      <motion.div
+        key={step}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18 }}
+      >
+        {step === 0 && (
             <div className="space-y-4">
               <div>
                 <Label htmlFor="name">Your Name</Label>
@@ -242,8 +243,7 @@ function QueueWizard() {
                   />
                 )}
                 <p className="mt-2 text-xs text-[var(--text-faint)]">
-                  Wajib isi phone <span className="text-[var(--text-muted)]">atau</span>{" "}
-                  email supaya kedai boleh hubungi anda.
+                  A phone number or email is required so the shop can reach you.
                 </p>
               </div>
             </div>
@@ -294,16 +294,6 @@ function QueueWizard() {
                   </button>
                 );
               })}
-              {selectedServices.length > 0 && (
-                <Card className="p-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text-muted)]">Total</span>
-                    <span className="font-semibold text-[var(--gold-soft)]">
-                      {formatCurrency(totalPrice)} · {totalDuration} min
-                    </span>
-                  </div>
-                </Card>
-              )}
             </div>
           )}
 
@@ -377,62 +367,80 @@ function QueueWizard() {
               )}
 
               <Card className="space-y-2 p-4 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-[var(--text-muted)]">Guest</span>
-                  <span>{name}</span>
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--text-muted)]">Name</span>
+                  <span className="text-right">{name}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-4">
                   <span className="text-[var(--text-muted)]">Contact</span>
                   <span className="text-right">
                     {contactMode === "phone" ? phone : email}
                   </span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-4">
                   <span className="text-[var(--text-muted)]">Services</span>
                   <span className="text-right">
                     {selectedServices.map((s) => s.name).join(", ")}
                   </span>
                 </div>
-                <div className="flex justify-between border-t border-[var(--border)] pt-2">
+                <div className="flex justify-between gap-4">
+                  <span className="text-[var(--text-muted)]">Total</span>
+                  <span className="text-right">
+                    {formatCurrency(totalPrice)} · {totalDuration} min
+                  </span>
+                </div>
+                <div className="flex justify-between gap-4 border-t border-[var(--border)] pt-2">
                   <span className="text-[var(--text-muted)]">Est. wait</span>
                   <span className="font-semibold text-[var(--gold-soft)]">
-                    ~{branch.avgWaitMins} min
+                    ~{estWaitMins} min
                   </span>
                 </div>
               </Card>
             </div>
           )}
-        </motion.div>
-      </AnimatePresence>
+      </motion.div>
 
-      <div className="flex gap-3 pt-2">
-        {step > 0 && (
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() => setStep((s) => s - 1)}
-          >
-            Back
-          </Button>
+      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-20 -mx-4 mt-2 border-t border-[var(--border)] bg-[var(--bg)]/92 px-4 pb-3 pt-3 backdrop-blur-lg lg:bottom-4 lg:rounded-2xl lg:border">
+        {step === 1 && (
+          <div className="mb-2.5 flex items-center justify-between text-sm">
+            <span className="text-[var(--text-muted)]">
+              {serviceIds.length} selected
+            </span>
+            <span className="font-semibold text-[var(--gold-soft)]">
+              {formatCurrency(totalPrice)}
+              {totalDuration > 0 && ` · ${totalDuration} min`}
+            </span>
+          </div>
         )}
-        {step < STEPS.length - 1 ? (
-          <Button
-            className="flex-1"
-            disabled={!canProceed()}
-            onClick={() => setStep((s) => s + 1)}
-          >
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        ) : (
-          <Button
-            className="flex-1"
-            disabled={!canProceed()}
-            onClick={handleSubmit}
-          >
-            Get Queue Number
-          </Button>
-        )}
+        <div className="flex gap-3">
+          {step > 0 && (
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setStep((s) => s - 1)}
+            >
+              Back
+            </Button>
+          )}
+          {step < STEPS.length - 1 ? (
+            <Button
+              className="flex-1"
+              disabled={!canProceed()}
+              onClick={() => setStep((s) => s + 1)}
+            >
+              Continue
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              className="flex-1"
+              disabled={!canProceed()}
+              onClick={handleSubmit}
+            >
+              Get Queue Number
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

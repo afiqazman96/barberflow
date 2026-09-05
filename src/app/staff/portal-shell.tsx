@@ -25,7 +25,7 @@ export function PortalShell({
 }) {
   return (
     <div className="app-bg min-h-dvh">
-      <main className="safe-top mx-auto max-w-lg px-4 pb-28 pt-6">
+      <main className="safe-top mx-auto max-w-lg px-4 pb-32 pt-6">
         <PageTransition>{children}</PageTransition>
       </main>
       <BottomNav items={navItems} hideFrom={false} />

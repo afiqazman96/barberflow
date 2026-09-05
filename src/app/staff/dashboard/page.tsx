@@ -187,8 +187,6 @@ export default function StaffDashboardPage() {
         <StatCard
           label="Today's Commission"
           value={formatCurrency(staff.todayCommission)}
-          change="+12% vs yesterday"
-          trend="up"
           icon={TrendingUp}
           delay={0.15}
         />

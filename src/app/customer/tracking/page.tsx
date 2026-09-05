@@ -14,9 +14,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
 import { BRANCHES, STAFF } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export default function TrackingPage() {
   const queue = useAppStore((s) => s.queue);
@@ -25,14 +27,17 @@ export default function TrackingPage() {
 
   const [pulse, setPulse] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [leaveOpen, setLeaveOpen] = useState(false);
 
-  const ticket = useMemo(() => {
-    if (trackingTicketId) {
-      const t = queue.find((q) => q.id === trackingTicketId);
-      if (t) return t;
-    }
-    return queue.find((q) => q.status === "waiting") ?? null;
-  }, [queue, trackingTicketId]);
+  // Only ever show the visitor their own ticket — never fall back to some
+  // other customer's live entry.
+  const ticket = useMemo(
+    () =>
+      trackingTicketId
+        ? (queue.find((q) => q.id === trackingTicketId) ?? null)
+        : null,
+    [queue, trackingTicketId],
+  );
 
   const branch = ticket ? BRANCHES.find((b) => b.id === ticket.branchId) : null;
 
@@ -50,6 +55,15 @@ export default function TrackingPage() {
   const staffName = ticket?.preferredStaffId
     ? STAFF.find((s) => s.id === ticket.preferredStaffId)?.name
     : null;
+
+  function handleLeave() {
+    if (!ticket) return;
+    updateQueueTicket(ticket.id, { status: "cancelled" });
+    setLeaveOpen(false);
+    toast.success("You've left the queue", {
+      description: `Ticket ${ticket.number} cancelled`,
+    });
+  }
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -92,10 +106,39 @@ export default function TrackingPage() {
     );
   }
 
+  if (ticket.status === "cancelled") {
+    return (
+      <div className="flex flex-col items-center py-12 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--bg-muted)]">
+          <Ticket className="h-8 w-8 text-[var(--text-faint)]" />
+        </div>
+        <h1 className="mt-4 font-display text-xl font-bold">
+          You&apos;ve left the queue
+        </h1>
+        <p className="mt-2 max-w-xs text-sm text-[var(--text-muted)]">
+          Ticket {ticket.number} was cancelled. Rejoin any time to get a new
+          number.
+        </p>
+        <div className="mt-6 w-full space-y-3">
+          <Button asChild size="lg" className="w-full">
+            <Link href={`/customer/queue?branch=${ticket.branchId}`}>
+              Rejoin Queue
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="lg" className="w-full">
+            <Link href="/customer/home">Back to Home</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const isActive =
     ticket.status === "waiting" ||
     ticket.status === "called" ||
     ticket.status === "in-service";
+  const canLeave =
+    ticket.status === "waiting" || ticket.status === "called";
 
   return (
     <div className="space-y-6">
@@ -180,19 +223,24 @@ export default function TrackingPage() {
       </motion.div>
 
       {isActive && (
-        <div className="flex gap-1 px-8">
-          {[0, 1, 2].map((i) => (
-            <motion.div
-              key={i}
-              className="h-1 flex-1 rounded-full bg-[var(--gold)]"
-              animate={{ opacity: [0.3, 1, 0.3] }}
-              transition={{
-                duration: 1.5,
-                repeat: Infinity,
-                delay: i * 0.3,
-              }}
-            />
-          ))}
+        <div className="flex flex-col items-center gap-2">
+          <div className="flex w-40 gap-1">
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                className="h-1 flex-1 rounded-full bg-[var(--gold)]"
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{
+                  duration: 1.5,
+                  repeat: Infinity,
+                  delay: i * 0.3,
+                }}
+              />
+            ))}
+          </div>
+          <p className="text-[11px] uppercase tracking-wide text-[var(--text-faint)]">
+            Live · updates automatically
+          </p>
         </div>
       )}
 
@@ -223,8 +271,18 @@ export default function TrackingPage() {
 
       {ticket.status === "waiting" && (
         <p className="text-center text-xs text-[var(--text-faint)]">
-          Stay nearby — we&apos;ll notify you when it&apos;s almost your turn
+          Keep this screen open — your position updates on its own.
         </p>
+      )}
+
+      {canLeave && (
+        <Button
+          variant="outline"
+          className="w-full text-[var(--danger)]"
+          onClick={() => setLeaveOpen(true)}
+        >
+          Leave queue
+        </Button>
       )}
 
       {ticket.status === "completed" && (
@@ -232,6 +290,26 @@ export default function TrackingPage() {
           <Link href="/customer/home">Done · Back to Home</Link>
         </Button>
       )}
+
+      <Modal
+        open={leaveOpen}
+        onOpenChange={setLeaveOpen}
+        title="Leave the queue?"
+        description={`Ticket ${ticket.number} will be cancelled. You'd need to rejoin for a new number.`}
+      >
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => setLeaveOpen(false)}
+          >
+            Stay in queue
+          </Button>
+          <Button variant="danger" className="flex-1" onClick={handleLeave}>
+            Leave queue
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

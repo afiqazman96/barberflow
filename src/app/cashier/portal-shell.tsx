@@ -8,6 +8,7 @@ import {
   CreditCard,
   ListOrdered,
   Receipt,
+  Wallet,
   Menu,
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
@@ -22,6 +23,7 @@ const navItems = [
   { href: "/cashier/pos", label: "POS", icon: ShoppingCart },
   { href: "/cashier/payment", label: "Payment", icon: CreditCard },
   { href: "/cashier/sales", label: "Sales & Receipts", icon: Receipt },
+  { href: "/cashier/drawer", label: "Cash Drawer", icon: Wallet },
 ];
 
 const bottomNavItems = [

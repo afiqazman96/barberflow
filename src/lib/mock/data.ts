@@ -585,8 +585,9 @@ export const SALES: Sale[] = Array.from({ length: 24 }, (_, i) => {
   const product = PRODUCTS[i % PRODUCTS.length];
   const subtotal = service.price + (hasProduct ? product.price : 0);
   const discount = i % 5 === 0 ? 5 : 0;
-  const total = subtotal - discount;
-  const commission = Math.round(total * 0.3 * 100) / 100;
+  const tip = i % 4 === 0 ? 5 : i % 7 === 0 ? 10 : 0;
+  const total = subtotal - discount + tip;
+  const commission = Math.round((subtotal - discount) * 0.3 * 100) / 100;
   return {
     id: `sale${i + 1}`,
     branchId: "b1",
@@ -619,6 +620,7 @@ export const SALES: Sale[] = Array.from({ length: 24 }, (_, i) => {
     subtotal,
     discount,
     voucher: 0,
+    tip,
     total,
     paymentMethod: (["cash", "card", "qr"] as const)[i % 3],
     commission,

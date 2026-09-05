@@ -7,8 +7,10 @@ import type {
   Booking,
   Branch,
   BusinessProfile,
+  CashMovement,
   Chair,
   CommissionRule,
+  DrawerSession,
   MembershipPlan,
   PaymentMethod,
   Product,
@@ -68,12 +70,20 @@ interface AppState {
   staffStatuses: Record<string, StaffStatus>;
   posItems: PosItem[];
   posDiscount: number;
+  posDiscountMode: "amount" | "percent";
+  posDiscountReason: string;
+  posTip: number;
   posCustomerId: string | null;
   /** The queue ticket being checked out, if the sale came from the queue. */
   posTicketId: string | null;
   /** The barber the sale (and its commission) is credited to. */
   posStaffId: string | null;
+  /** A membership plan being sold to the customer on this visit. */
+  posMembershipPlanId: string | null;
   lastReceipt: Sale | null;
+  /** The open cash-drawer shift, or null when the till is closed. */
+  drawerSession: DrawerSession | null;
+  drawerHistory: DrawerSession[];
   trackingTicketId: string | null;
 
   setSession: (session: SessionUser | null) => void;
@@ -111,12 +121,29 @@ interface AppState {
   updatePosQty: (id: string, quantity: number) => void;
   removePosItem: (id: string) => void;
   setPosDiscount: (n: number) => void;
+  setPosDiscountMode: (mode: "amount" | "percent") => void;
+  setPosDiscountReason: (reason: string) => void;
+  setPosTip: (n: number) => void;
   setPosCustomerId: (id: string | null) => void;
+  setPosMembershipPlan: (planId: string | null) => void;
   /** Load a queue ticket into the POS: customer, its barber, and its services. */
   loadPosTicket: (ticketId: string) => void;
   setPosStaffId: (id: string | null) => void;
   clearPos: () => void;
   completePayment: (method: PaymentMethod) => Sale;
+  voidSale: (saleId: string, reason: string, by: string) => void;
+  openDrawer: (input: {
+    cashierId: string;
+    cashierName: string;
+    openingFloat: number;
+  }) => void;
+  addCashMovement: (input: {
+    type: CashMovement["type"];
+    amount: number;
+    note: string;
+    saleId?: string;
+  }) => void;
+  closeDrawer: (input: { countedAmount: number; closingNote?: string }) => void;
   setTrackingTicketId: (id: string | null) => void;
 }
 
@@ -191,9 +218,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   staffStatuses: initialStatuses,
   posItems: [],
   posDiscount: 0,
+  posDiscountMode: "amount",
+  posDiscountReason: "",
+  posTip: 0,
   posCustomerId: null,
   posTicketId: null,
   posStaffId: null,
+  posMembershipPlanId: null,
+  drawerSession: null,
+  drawerHistory: [],
   lastReceipt: null,
   trackingTicketId: null,
 
@@ -428,7 +461,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   removePosItem: (id) =>
     set((s) => ({ posItems: s.posItems.filter((p) => p.id !== id) })),
   setPosDiscount: (posDiscount) => set({ posDiscount }),
+  setPosDiscountMode: (posDiscountMode) => set({ posDiscountMode }),
+  setPosDiscountReason: (posDiscountReason) => set({ posDiscountReason }),
+  setPosTip: (posTip) => set({ posTip: Math.max(0, posTip) }),
   setPosCustomerId: (posCustomerId) => set({ posCustomerId }),
+  setPosMembershipPlan: (posMembershipPlanId) => set({ posMembershipPlanId }),
   setPosStaffId: (posStaffId) => set({ posStaffId }),
 
   loadPosTicket: (ticketId) =>
@@ -469,18 +506,17 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       posItems: [],
       posDiscount: 0,
+      posDiscountMode: "amount",
+      posDiscountReason: "",
+      posTip: 0,
       posCustomerId: null,
       posTicketId: null,
       posStaffId: null,
+      posMembershipPlanId: null,
     }),
 
   completePayment: (method) => {
     const state = get();
-    const subtotal = state.posItems.reduce(
-      (sum, i) => sum + i.unitPrice * i.quantity,
-      0,
-    );
-    const total = Math.max(0, subtotal - state.posDiscount);
 
     const ticket = state.posTicketId
       ? state.queue.find((q) => q.id === state.posTicketId)
@@ -502,20 +538,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const customerName =
       ticket?.customerName ?? crmCustomer?.name ?? "Walk-in Customer";
 
-    const commission = calcCommission(
-      total,
-      staff.id,
-      state.posItems,
-      state.commissionRules,
-    );
-    const sale: Sale = {
-      id: `sale-${Date.now()}`,
-      branchId: state.branchId,
-      customerId: state.posCustomerId ?? "walk-in",
-      customerName,
-      staffId: staff.id,
-      staffName: staff.name,
-      items: state.posItems.map((i, idx) => ({
+    const plan = state.posMembershipPlanId
+      ? state.membershipPlans.find((p) => p.id === state.posMembershipPlanId)
+      : undefined;
+
+    const items: Sale["items"] = [
+      ...state.posItems.map((i, idx) => ({
         id: `pi-${idx}`,
         type: i.type,
         name: i.name,
@@ -523,9 +551,53 @@ export const useAppStore = create<AppState>((set, get) => ({
         unitPrice: i.unitPrice,
         total: i.unitPrice * i.quantity,
       })),
+      ...(plan
+        ? [
+            {
+              id: "pi-membership",
+              type: "product" as const,
+              name: `${plan.name} Membership`,
+              quantity: 1,
+              unitPrice: plan.price,
+              total: plan.price,
+            },
+          ]
+        : []),
+    ];
+
+    const subtotal = items.reduce((sum, i) => sum + i.total, 0);
+    const discount =
+      state.posDiscountMode === "percent"
+        ? Math.round(((subtotal * state.posDiscount) / 100) * 100) / 100
+        : state.posDiscount;
+    const goodsTotal = Math.max(0, subtotal - discount);
+    const tip = state.posTip;
+    const total = goodsTotal + tip;
+
+    // Commission is on the goods, not the tip; the tip passes straight through.
+    const commission = calcCommission(
+      goodsTotal,
+      staff.id,
+      state.posItems,
+      state.commissionRules,
+    );
+
+    const sale: Sale = {
+      id: `sale-${Date.now()}`,
+      branchId: state.branchId,
+      customerId: state.posCustomerId ?? "walk-in",
+      customerName,
+      staffId: staff.id,
+      staffName: staff.name,
+      items,
       subtotal,
-      discount: state.posDiscount,
+      discount,
+      discountReason:
+        discount > 0 && state.posDiscountReason.trim()
+          ? state.posDiscountReason.trim()
+          : undefined,
       voucher: 0,
+      tip,
       total,
       paymentMethod: method,
       commission,
@@ -533,44 +605,214 @@ export const useAppStore = create<AppState>((set, get) => ({
       receiptNo: `FH-KL-${Math.floor(1100 + Math.random() * 800)}`,
     };
 
-    set((s) => ({
-      sales: [sale, ...s.sales],
-      lastReceipt: sale,
-      posItems: [],
-      posDiscount: 0,
-      posCustomerId: null,
-      posTicketId: null,
-      posStaffId: null,
-      staffStatuses: {
-        ...s.staffStatuses,
-        [staff.id]: "available",
-      },
-      staff: s.staff.map((m) =>
-        m.id === staff.id
+    const soldProductIds = new Map(
+      state.posItems
+        .filter((i) => i.type === "product")
+        .map((i) => [i.id, i.quantity] as const),
+    );
+
+    set((s) => {
+      const barberTake = commission + tip;
+      const cashMovement: CashMovement | null =
+        method === "cash" && s.drawerSession
           ? {
-              ...m,
-              status: "available",
-              todaySales: m.todaySales + total,
-              todayCommission: m.todayCommission + commission,
-              todayCustomers: m.todayCustomers + 1,
-              monthlySales: m.monthlySales + total,
-              monthlyCommission: m.monthlyCommission + commission,
+              id: `cm-${Date.now()}`,
+              type: "sale",
+              amount: total,
+              note: `${sale.receiptNo} · ${customerName}`,
+              at: sale.createdAt,
+              saleId: sale.id,
             }
-          : m,
-      ),
-      queue: s.queue.map((q) =>
-        q.id === state.posTicketId &&
-        (q.status === "awaiting-payment" || q.status === "in-service")
-          ? { ...q, status: "completed" as const }
-          : q,
-      ),
-    }));
+          : null;
+
+      return {
+        sales: [sale, ...s.sales],
+        lastReceipt: sale,
+        posItems: [],
+        posDiscount: 0,
+        posDiscountMode: "amount" as const,
+        posDiscountReason: "",
+        posTip: 0,
+        posCustomerId: null,
+        posTicketId: null,
+        posStaffId: null,
+        posMembershipPlanId: null,
+        membershipPlans: plan
+          ? s.membershipPlans.map((p) =>
+              p.id === plan.id ? { ...p, members: p.members + 1 } : p,
+            )
+          : s.membershipPlans,
+        products: soldProductIds.size
+          ? s.products.map((p) =>
+              soldProductIds.has(p.id)
+                ? {
+                    ...p,
+                    stock: Math.max(0, p.stock - (soldProductIds.get(p.id) ?? 0)),
+                  }
+                : p,
+            )
+          : s.products,
+        drawerSession:
+          cashMovement && s.drawerSession
+            ? {
+                ...s.drawerSession,
+                movements: [...s.drawerSession.movements, cashMovement],
+              }
+            : s.drawerSession,
+        staffStatuses: {
+          ...s.staffStatuses,
+          [staff.id]: "available",
+        },
+        staff: s.staff.map((m) =>
+          m.id === staff.id
+            ? {
+                ...m,
+                status: "available",
+                todaySales: m.todaySales + goodsTotal,
+                todayCommission: m.todayCommission + barberTake,
+                todayCustomers: m.todayCustomers + 1,
+                monthlySales: m.monthlySales + goodsTotal,
+                monthlyCommission: m.monthlyCommission + barberTake,
+              }
+            : m,
+        ),
+        queue: s.queue.map((q) =>
+          q.id === state.posTicketId &&
+          (q.status === "awaiting-payment" || q.status === "in-service")
+            ? { ...q, status: "completed" as const }
+            : q,
+        ),
+      };
+    });
 
     return sale;
   },
 
+  voidSale: (saleId, reason, by) =>
+    set((s) => {
+      const sale = s.sales.find((x) => x.id === saleId);
+      if (!sale || sale.voided) return {};
+      const at = new Date().toISOString();
+      const goodsTotal = sale.total - sale.tip;
+      const barberTake = sale.commission + sale.tip;
+
+      const refundMovement: CashMovement | null =
+        sale.paymentMethod === "cash" && s.drawerSession
+          ? {
+              id: `cm-${Date.now()}`,
+              type: "refund",
+              amount: -sale.total,
+              note: `Void ${sale.receiptNo} · ${reason}`,
+              at,
+              saleId: sale.id,
+            }
+          : null;
+
+      const restock = new Map(
+        sale.items
+          .filter((i) => i.type === "product")
+          .map((i) => [i.name, i.quantity] as const),
+      );
+
+      return {
+        sales: s.sales.map((x) =>
+          x.id === saleId ? { ...x, voided: { reason, at, by } } : x,
+        ),
+        staff: s.staff.map((m) =>
+          m.id === sale.staffId
+            ? {
+                ...m,
+                todaySales: Math.max(0, m.todaySales - goodsTotal),
+                todayCommission: Math.max(0, m.todayCommission - barberTake),
+                todayCustomers: Math.max(0, m.todayCustomers - 1),
+                monthlySales: Math.max(0, m.monthlySales - goodsTotal),
+                monthlyCommission: Math.max(0, m.monthlyCommission - barberTake),
+              }
+            : m,
+        ),
+        products: restock.size
+          ? s.products.map((p) =>
+              restock.has(p.name)
+                ? { ...p, stock: p.stock + (restock.get(p.name) ?? 0) }
+                : p,
+            )
+          : s.products,
+        drawerSession:
+          refundMovement && s.drawerSession
+            ? {
+                ...s.drawerSession,
+                movements: [...s.drawerSession.movements, refundMovement],
+              }
+            : s.drawerSession,
+      };
+    }),
+
+  openDrawer: ({ cashierId, cashierName, openingFloat }) =>
+    set((s) => {
+      if (s.drawerSession) return {};
+      return {
+        drawerSession: {
+          id: `drw-${Date.now()}`,
+          branchId: s.branchId,
+          cashierId,
+          cashierName,
+          openedAt: new Date().toISOString(),
+          openingFloat: Math.max(0, openingFloat),
+          movements: [],
+        },
+      };
+    }),
+
+  addCashMovement: ({ type, amount, note, saleId }) =>
+    set((s) => {
+      if (!s.drawerSession) return {};
+      const signed =
+        type === "pay-out" || type === "refund"
+          ? -Math.abs(amount)
+          : Math.abs(amount);
+      return {
+        drawerSession: {
+          ...s.drawerSession,
+          movements: [
+            ...s.drawerSession.movements,
+            {
+              id: `cm-${Date.now()}`,
+              type,
+              amount: signed,
+              note,
+              at: new Date().toISOString(),
+              saleId,
+            },
+          ],
+        },
+      };
+    }),
+
+  closeDrawer: ({ countedAmount, closingNote }) =>
+    set((s) => {
+      if (!s.drawerSession) return {};
+      const closed: DrawerSession = {
+        ...s.drawerSession,
+        closedAt: new Date().toISOString(),
+        countedAmount: Math.max(0, countedAmount),
+        closingNote: closingNote?.trim() || undefined,
+      };
+      return {
+        drawerSession: null,
+        drawerHistory: [closed, ...s.drawerHistory],
+      };
+    }),
+
   setTrackingTicketId: (trackingTicketId) => set({ trackingTicketId }),
 }));
+
+/** Cash the drawer should hold right now: opening float plus every movement. */
+export function drawerExpected(session: DrawerSession): number {
+  return (
+    session.openingFloat +
+    session.movements.reduce((sum, m) => sum + m.amount, 0)
+  );
+}
 
 export function getBranchJoinUrl(branchId: string, origin?: string) {
   const base =

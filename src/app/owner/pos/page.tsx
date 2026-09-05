@@ -41,7 +41,6 @@ const METHODS: {
 ];
 
 export default function OwnerPosPage() {
-  const queue = useAppStore((s) => s.queue);
   const PRODUCTS = useAppStore((s) => s.products);
   const SERVICES = useAppStore((s) => s.services);
   const posItems = useAppStore((s) => s.posItems);
@@ -53,9 +52,12 @@ export default function OwnerPosPage() {
   const removePosItem = useAppStore((s) => s.removePosItem);
   const setPosDiscount = useAppStore((s) => s.setPosDiscount);
   const setPosCustomerId = useAppStore((s) => s.setPosCustomerId);
+  const posStaffId = useAppStore((s) => s.posStaffId);
+  const setPosStaffId = useAppStore((s) => s.setPosStaffId);
+  const staff = useAppStore((s) => s.staff);
+  const branchId = useAppStore((s) => s.branchId);
   const clearPos = useAppStore((s) => s.clearPos);
   const completePayment = useAppStore((s) => s.completePayment);
-  const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
 
   const [tab, setTab] = useState<Tab>("services");
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -69,6 +71,9 @@ export default function OwnerPosPage() {
     : null;
   const customerName = customer?.name ?? null;
   const membership = customer?.membership ?? "none";
+  const barbers = staff.filter(
+    (s) => s.role === "barber" && s.branchId === branchId,
+  );
 
   const subtotal = posItems.reduce(
     (sum, i) => sum + i.unitPrice * i.quantity,
@@ -134,6 +139,10 @@ export default function OwnerPosPage() {
       toast.error("Cart is empty");
       return;
     }
+    if (!posStaffId) {
+      toast.error("Pick the barber who earns commission on this sale");
+      return;
+    }
     setPaid(false);
     setMethod(null);
     setPayOpen(true);
@@ -147,14 +156,6 @@ export default function OwnerPosPage() {
     setProcessing(true);
     setTimeout(() => {
       const sale = completePayment(method);
-      const ticket = queue.find(
-        (q) =>
-          q.customerId === sale.customerId &&
-          q.status === "awaiting-payment",
-      );
-      if (ticket) {
-        updateQueueTicket(ticket.id, { status: "completed" });
-      }
       setPaid(true);
       setProcessing(false);
       toast.success("Payment complete!", {
@@ -283,22 +284,39 @@ export default function OwnerPosPage() {
                 <CardTitle>Cart</CardTitle>
               </CardHeader>
 
-              <div className="mb-3">
-                <Label>Customer (optional)</Label>
-                <select
-                  value={posCustomerId ?? ""}
-                  onChange={(e) =>
-                    setPosCustomerId(e.target.value || null)
-                  }
-                  className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
-                >
-                  <option value="">Walk-in</option>
-                  {CUSTOMERS.slice(0, 20).map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+              <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label>Customer (optional)</Label>
+                  <select
+                    value={posCustomerId ?? ""}
+                    onChange={(e) =>
+                      setPosCustomerId(e.target.value || null)
+                    }
+                    className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
+                  >
+                    <option value="">Walk-in</option>
+                    {CUSTOMERS.slice(0, 20).map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Barber</Label>
+                  <select
+                    value={posStaffId ?? ""}
+                    onChange={(e) => setPosStaffId(e.target.value || null)}
+                    className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
+                  >
+                    <option value="">Select…</option>
+                    {barbers.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               {customerName && (

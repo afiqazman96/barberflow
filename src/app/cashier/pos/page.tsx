@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -11,12 +11,13 @@ import {
   Sparkles,
   ShoppingBag,
   User,
+  Scissors,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
@@ -28,37 +29,48 @@ type Tab = "services" | "products";
 export default function CashierPosPage() {
   const router = useRouter();
   const queue = useAppStore((s) => s.queue);
+  const staff = useAppStore((s) => s.staff);
+  const branchId = useAppStore((s) => s.branchId);
   const PRODUCTS = useAppStore((s) => s.products);
   const SERVICES = useAppStore((s) => s.services);
   const posItems = useAppStore((s) => s.posItems);
   const posDiscount = useAppStore((s) => s.posDiscount);
   const posCustomerId = useAppStore((s) => s.posCustomerId);
+  const posTicketId = useAppStore((s) => s.posTicketId);
+  const posStaffId = useAppStore((s) => s.posStaffId);
   const addPosItem = useAppStore((s) => s.addPosItem);
   const updatePosQty = useAppStore((s) => s.updatePosQty);
   const removePosItem = useAppStore((s) => s.removePosItem);
   const setPosDiscount = useAppStore((s) => s.setPosDiscount);
-  const setPosCustomerId = useAppStore((s) => s.setPosCustomerId);
+  const setPosStaffId = useAppStore((s) => s.setPosStaffId);
+  const loadPosTicket = useAppStore((s) => s.loadPosTicket);
   const clearPos = useAppStore((s) => s.clearPos);
 
   const [tab, setTab] = useState<Tab>("services");
   const [catalogSearch, setCatalogSearch] = useState("");
 
   const awaitingPayment = queue.filter((q) => q.status === "awaiting-payment");
+  const barbers = staff.filter(
+    (s) => s.role === "barber" && s.branchId === branchId,
+  );
 
-  const customer = posCustomerId
-    ? CUSTOMERS.find((c) => c.id === posCustomerId) ??
-      queue.find((q) => q.customerId === posCustomerId)
+  // One customer waiting to pay is the common case — load them so the cashier
+  // isn't retyping a service the barber already recorded.
+  useEffect(() => {
+    if (!posTicketId && posItems.length === 0 && awaitingPayment.length === 1) {
+      loadPosTicket(awaitingPayment[0].id);
+    }
+  }, [posTicketId, posItems.length, awaitingPayment, loadPosTicket]);
+
+  const ticket = posTicketId
+    ? queue.find((q) => q.id === posTicketId)
+    : null;
+  const crmCustomer = posCustomerId
+    ? CUSTOMERS.find((c) => c.id === posCustomerId)
     : null;
 
-  const customerName =
-    customer && "name" in customer
-      ? customer.name
-      : customer && "customerName" in customer
-        ? customer.customerName
-        : null;
-
-  const membership =
-    customer && "membership" in customer ? customer.membership : "none";
+  const customerName = ticket?.customerName ?? crmCustomer?.name ?? null;
+  const membership = crmCustomer?.membership ?? "none";
 
   const subtotal = posItems.reduce(
     (sum, i) => sum + i.unitPrice * i.quantity,
@@ -119,35 +131,18 @@ export default function CashierPosPage() {
     toast.success("Added to cart", { description: item.name });
   }
 
-  function handleSelectCustomer(customerId: string) {
-    const ticket = queue.find((q) => q.customerId === customerId);
-    if (!ticket) return;
-    setPosCustomerId(customerId);
-    if (posItems.length === 0) {
-      ticket.serviceIds.forEach((sid) => {
-        const svc = SERVICES.find((s) => s.id === sid);
-        if (svc) {
-          const cust = CUSTOMERS.find((c) => c.id === customerId);
-          const price =
-            cust && cust.membership !== "none"
-              ? svc.membershipPrice
-              : svc.price;
-          addPosItem({
-            id: svc.id,
-            type: "service",
-            name: svc.name,
-            quantity: 1,
-            unitPrice: price,
-          });
-        }
-      });
-    }
-    toast.success("Customer selected", { description: ticket.customerName });
+  function handleSelectTicket(ticketId: string, ticketName: string) {
+    loadPosTicket(ticketId);
+    toast.success("Loaded for checkout", { description: ticketName });
   }
 
   function handlePay() {
     if (posItems.length === 0) {
       toast.error("Cart is empty");
+      return;
+    }
+    if (!posStaffId) {
+      toast.error("Pick the barber who served this customer");
       return;
     }
     router.push("/cashier/payment");
@@ -232,10 +227,12 @@ export default function CashierPosPage() {
                       </div>
                     )}
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
                         <p className="truncate font-medium">{item.name}</p>
                         {"popular" in item && item.popular && (
-                          <Badge variant="gold">Popular</Badge>
+                          <Badge variant="gold" className="shrink-0">
+                            Popular
+                          </Badge>
                         )}
                       </div>
                       <p className="text-xs text-[var(--text-faint)]">
@@ -272,9 +269,9 @@ export default function CashierPosPage() {
                   {awaitingPayment.map((t) => (
                     <button
                       key={t.id}
-                      onClick={() => handleSelectCustomer(t.customerId)}
+                      onClick={() => handleSelectTicket(t.id, t.customerName)}
                       className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${
-                        posCustomerId === t.customerId
+                        posTicketId === t.id
                           ? "bg-[var(--gold)]/15 ring-1 ring-[var(--gold)]/30"
                           : "bg-[var(--bg-muted)] hover:bg-[var(--bg-hover)]"
                       }`}
@@ -305,6 +302,24 @@ export default function CashierPosPage() {
                   )}
                 </div>
               )}
+
+              <div className="mb-3">
+                <Label className="flex items-center gap-1.5 text-xs">
+                  <Scissors className="h-3.5 w-3.5 text-[var(--gold)]" />
+                  Barber (earns commission)
+                </Label>
+                <Select
+                  value={posStaffId ?? ""}
+                  onChange={(e) => setPosStaffId(e.target.value || null)}
+                >
+                  <option value="">Select barber…</option>
+                  {barbers.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
 
               {membership !== "none" && (
                 <p className="mb-3 rounded-lg border border-[var(--gold)]/20 bg-[var(--gold)]/5 px-3 py-2 text-xs text-[var(--gold-soft)]">
@@ -399,7 +414,7 @@ export default function CashierPosPage() {
                   className="w-full"
                   size="lg"
                   onClick={handlePay}
-                  disabled={posItems.length === 0}
+                  disabled={posItems.length === 0 || !posStaffId}
                 >
                   Pay {formatCurrency(total)}
                 </Button>

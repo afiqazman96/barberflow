@@ -40,8 +40,6 @@ export default function CashierPaymentPage() {
   const posDiscount = useAppStore((s) => s.posDiscount);
   const lastReceipt = useAppStore((s) => s.lastReceipt);
   const completePayment = useAppStore((s) => s.completePayment);
-  const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
-  const queue = useAppStore((s) => s.queue);
 
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [paid, setPaid] = useState(false);
@@ -66,15 +64,9 @@ export default function CashierPaymentPage() {
 
     setProcessing(true);
     setTimeout(() => {
+      // completePayment records the sale, frees the barber and closes the
+      // queue ticket in one step.
       const sale = completePayment(method);
-      const ticket = queue.find(
-        (q) =>
-          q.customerId === sale.customerId &&
-          q.status === "awaiting-payment",
-      );
-      if (ticket) {
-        updateQueueTicket(ticket.id, { status: "completed" });
-      }
       setPaid(true);
       setProcessing(false);
       toast.success("Payment complete!", {

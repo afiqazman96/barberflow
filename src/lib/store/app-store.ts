@@ -24,6 +24,7 @@ import {
   BRANCHES,
   CHAIRS,
   COMMISSION_RULES,
+  CUSTOMERS,
   MEMBERSHIP_PLANS,
   PRODUCTS,
   QUEUE,
@@ -68,6 +69,10 @@ interface AppState {
   posItems: PosItem[];
   posDiscount: number;
   posCustomerId: string | null;
+  /** The queue ticket being checked out, if the sale came from the queue. */
+  posTicketId: string | null;
+  /** The barber the sale (and its commission) is credited to. */
+  posStaffId: string | null;
   lastReceipt: Sale | null;
   trackingTicketId: string | null;
 
@@ -107,6 +112,9 @@ interface AppState {
   removePosItem: (id: string) => void;
   setPosDiscount: (n: number) => void;
   setPosCustomerId: (id: string | null) => void;
+  /** Load a queue ticket into the POS: customer, its barber, and its services. */
+  loadPosTicket: (ticketId: string) => void;
+  setPosStaffId: (id: string | null) => void;
   clearPos: () => void;
   completePayment: (method: PaymentMethod) => Sale;
   setTrackingTicketId: (id: string | null) => void;
@@ -184,6 +192,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   posItems: [],
   posDiscount: 0,
   posCustomerId: null,
+  posTicketId: null,
+  posStaffId: null,
   lastReceipt: null,
   trackingTicketId: null,
 
@@ -419,7 +429,50 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({ posItems: s.posItems.filter((p) => p.id !== id) })),
   setPosDiscount: (posDiscount) => set({ posDiscount }),
   setPosCustomerId: (posCustomerId) => set({ posCustomerId }),
-  clearPos: () => set({ posItems: [], posDiscount: 0, posCustomerId: null }),
+  setPosStaffId: (posStaffId) => set({ posStaffId }),
+
+  loadPosTicket: (ticketId) =>
+    set((s) => {
+      const ticket = s.queue.find((q) => q.id === ticketId);
+      if (!ticket) return {};
+      const cust = CUSTOMERS.find((c) => c.id === ticket.customerId);
+      const items: PosItem[] =
+        s.posItems.length > 0
+          ? s.posItems
+          : ticket.serviceIds.flatMap((sid) => {
+              const svc = s.services.find((v) => v.id === sid);
+              if (!svc) return [];
+              const price =
+                cust && cust.membership !== "none"
+                  ? svc.membershipPrice
+                  : svc.price;
+              return [
+                {
+                  id: svc.id,
+                  type: "service" as const,
+                  name: svc.name,
+                  quantity: 1,
+                  unitPrice: price,
+                },
+              ];
+            });
+      return {
+        posTicketId: ticket.id,
+        posCustomerId: ticket.customerId,
+        posStaffId:
+          ticket.assignedStaffId ?? ticket.preferredStaffId ?? s.posStaffId,
+        posItems: items,
+      };
+    }),
+
+  clearPos: () =>
+    set({
+      posItems: [],
+      posDiscount: 0,
+      posCustomerId: null,
+      posTicketId: null,
+      posStaffId: null,
+    }),
 
   completePayment: (method) => {
     const state = get();
@@ -428,10 +481,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       0,
     );
     const total = Math.max(0, subtotal - state.posDiscount);
+
+    const ticket = state.posTicketId
+      ? state.queue.find((q) => q.id === state.posTicketId)
+      : undefined;
+
+    // The sale is credited to a barber — the one picked on the POS, else the
+    // one the ticket was assigned to. Never the cashier ringing it up.
     const staff =
-      state.staff.find((s) => s.id === state.staffId) ??
+      state.staff.find((s) => s.id === state.posStaffId) ??
+      state.staff.find(
+        (s) => s.id === (ticket?.assignedStaffId ?? ticket?.preferredStaffId),
+      ) ??
       state.staff.find((s) => s.role === "barber") ??
       STAFF[2];
+
+    const crmCustomer = state.posCustomerId
+      ? CUSTOMERS.find((c) => c.id === state.posCustomerId)
+      : undefined;
+    const customerName =
+      ticket?.customerName ?? crmCustomer?.name ?? "Walk-in Customer";
+
     const commission = calcCommission(
       total,
       staff.id,
@@ -442,9 +512,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       id: `sale-${Date.now()}`,
       branchId: state.branchId,
       customerId: state.posCustomerId ?? "walk-in",
-      customerName:
-        state.queue.find((q) => q.customerId === state.posCustomerId)
-          ?.customerName ?? "Walk-in Customer",
+      customerName,
       staffId: staff.id,
       staffName: staff.name,
       items: state.posItems.map((i, idx) => ({
@@ -471,6 +539,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       posItems: [],
       posDiscount: 0,
       posCustomerId: null,
+      posTicketId: null,
+      posStaffId: null,
       staffStatuses: {
         ...s.staffStatuses,
         [staff.id]: "available",
@@ -489,7 +559,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           : m,
       ),
       queue: s.queue.map((q) =>
-        q.customerId === state.posCustomerId &&
+        q.id === state.posTicketId &&
         (q.status === "awaiting-payment" || q.status === "in-service")
           ? { ...q, status: "completed" as const }
           : q,

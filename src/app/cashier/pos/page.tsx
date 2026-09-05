@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useAppStore } from "@/lib/store/app-store";
+import { useAppStore, calcCommission } from "@/lib/store/app-store";
 import { CUSTOMERS } from "@/lib/mock/data";
 import { formatCurrency } from "@/lib/utils";
 
@@ -33,16 +33,24 @@ export default function CashierPosPage() {
   const branchId = useAppStore((s) => s.branchId);
   const PRODUCTS = useAppStore((s) => s.products);
   const SERVICES = useAppStore((s) => s.services);
+  const commissionRules = useAppStore((s) => s.commissionRules);
+  const membershipPlans = useAppStore((s) => s.membershipPlans);
   const posItems = useAppStore((s) => s.posItems);
   const posDiscount = useAppStore((s) => s.posDiscount);
+  const posDiscountMode = useAppStore((s) => s.posDiscountMode);
+  const posDiscountReason = useAppStore((s) => s.posDiscountReason);
   const posCustomerId = useAppStore((s) => s.posCustomerId);
   const posTicketId = useAppStore((s) => s.posTicketId);
   const posStaffId = useAppStore((s) => s.posStaffId);
+  const posMembershipPlanId = useAppStore((s) => s.posMembershipPlanId);
   const addPosItem = useAppStore((s) => s.addPosItem);
   const updatePosQty = useAppStore((s) => s.updatePosQty);
   const removePosItem = useAppStore((s) => s.removePosItem);
   const setPosDiscount = useAppStore((s) => s.setPosDiscount);
+  const setPosDiscountMode = useAppStore((s) => s.setPosDiscountMode);
+  const setPosDiscountReason = useAppStore((s) => s.setPosDiscountReason);
   const setPosStaffId = useAppStore((s) => s.setPosStaffId);
+  const setPosMembershipPlan = useAppStore((s) => s.setPosMembershipPlan);
   const loadPosTicket = useAppStore((s) => s.loadPosTicket);
   const clearPos = useAppStore((s) => s.clearPos);
 
@@ -70,13 +78,48 @@ export default function CashierPosPage() {
     : null;
 
   const customerName = ticket?.customerName ?? crmCustomer?.name ?? null;
-  const membership = crmCustomer?.membership ?? "none";
+  const upsellPlan = posMembershipPlanId
+    ? membershipPlans.find((p) => p.id === posMembershipPlanId)
+    : null;
+  const membership = upsellPlan
+    ? upsellPlan.tier
+    : (crmCustomer?.membership ?? "none");
 
-  const subtotal = posItems.reduce(
+  const cartSubtotal = posItems.reduce(
     (sum, i) => sum + i.unitPrice * i.quantity,
     0,
   );
-  const total = Math.max(0, subtotal - posDiscount);
+  const subtotal = cartSubtotal + (upsellPlan?.price ?? 0);
+  const discountValue =
+    posDiscountMode === "percent"
+      ? Math.round(((subtotal * posDiscount) / 100) * 100) / 100
+      : posDiscount;
+  const total = Math.max(0, subtotal - discountValue);
+
+  const barberCommission =
+    posStaffId && posItems.length > 0
+      ? calcCommission(
+          Math.max(0, cartSubtotal - discountValue),
+          posStaffId,
+          posItems,
+          commissionRules,
+        )
+      : 0;
+  const barberName = barbers.find((b) => b.id === posStaffId)?.name;
+
+  // Show the member-price saving only when the customer isn't already one.
+  const alreadyMember =
+    (crmCustomer?.membership ?? "none") !== "none";
+  const cheapestPlan = [...membershipPlans].sort((a, b) => a.price - b.price)[0];
+  const memberSaving =
+    cheapestPlan && !alreadyMember
+      ? posItems
+          .filter((i) => i.type === "service")
+          .reduce((sum, i) => {
+            const svc = SERVICES.find((v) => v.id === i.id);
+            return svc ? sum + (svc.price - svc.membershipPrice) * i.quantity : sum;
+          }, 0)
+      : 0;
 
   const catalog = useMemo(() => {
     const items =
@@ -319,9 +362,51 @@ export default function CashierPosPage() {
                     </option>
                   ))}
                 </Select>
+                {barberCommission > 0 && barberName && (
+                  <p className="mt-1.5 text-xs text-[var(--text-muted)]">
+                    {barberName} earns{" "}
+                    <span className="font-semibold text-[var(--gold-soft)]">
+                      ≈ {formatCurrency(barberCommission)}
+                    </span>{" "}
+                    commission
+                  </p>
+                )}
               </div>
 
-              {membership !== "none" && (
+              {upsellPlan ? (
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-[var(--gold)]/25 bg-[var(--gold)]/8 px-3 py-2 text-xs">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--gold)]" />
+                  <span className="text-[var(--gold-soft)]">
+                    {upsellPlan.name} membership added ·{" "}
+                    {formatCurrency(upsellPlan.price)}
+                  </span>
+                  <button
+                    onClick={() => setPosMembershipPlan(null)}
+                    className="ml-auto text-[var(--text-faint)] underline underline-offset-2 hover:text-[var(--text)]"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                memberSaving > 0 &&
+                cheapestPlan && (
+                  <button
+                    onClick={() => setPosMembershipPlan(cheapestPlan.id)}
+                    className="mb-3 flex w-full items-start gap-2 rounded-lg border border-dashed border-[var(--gold)]/40 bg-[var(--gold)]/5 px-3 py-2 text-left text-xs transition hover:bg-[var(--gold)]/10"
+                  >
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--gold)]" />
+                    <span>
+                      <span className="font-medium text-[var(--gold-soft)]">
+                        Add {cheapestPlan.name} membership
+                      </span>{" "}
+                      ({formatCurrency(cheapestPlan.price)}/mo) — this visit saves{" "}
+                      {formatCurrency(memberSaving)}
+                    </span>
+                  </button>
+                )
+              )}
+
+              {membership !== "none" && !upsellPlan && (
                 <p className="mb-3 rounded-lg border border-[var(--gold)]/20 bg-[var(--gold)]/5 px-3 py-2 text-xs text-[var(--gold-soft)]">
                   Membership pricing applied for {membership} member
                 </p>
@@ -380,10 +465,28 @@ export default function CashierPosPage() {
 
               <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
                 <div>
-                  <Label>Discount (RM)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Discount</Label>
+                    <div className="flex gap-1 rounded-lg bg-[var(--bg-muted)] p-0.5 text-xs">
+                      {(["amount", "percent"] as const).map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => setPosDiscountMode(m)}
+                          className={`rounded px-2 py-0.5 transition ${
+                            posDiscountMode === m
+                              ? "bg-[var(--bg-elevated)] font-medium text-[var(--text)]"
+                              : "text-[var(--text-faint)]"
+                          }`}
+                        >
+                          {m === "amount" ? "RM" : "%"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <Input
                     type="number"
                     min={0}
+                    max={posDiscountMode === "percent" ? 100 : undefined}
                     step={1}
                     value={posDiscount || ""}
                     onChange={(e) =>
@@ -391,16 +494,33 @@ export default function CashierPosPage() {
                     }
                     placeholder="0"
                   />
+                  {posDiscount > 0 && (
+                    <Select
+                      value={posDiscountReason}
+                      onChange={(e) => setPosDiscountReason(e.target.value)}
+                      className="mt-2 text-xs"
+                    >
+                      <option value="">Reason for discount…</option>
+                      <option value="Regular customer">Regular customer</option>
+                      <option value="Birthday">Birthday</option>
+                      <option value="Service issue">Service issue</option>
+                      <option value="Staff / family">Staff / family</option>
+                      <option value="Promotion">Promotion</option>
+                    </Select>
+                  )}
                 </div>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between text-[var(--text-muted)]">
                     <span>Subtotal</span>
                     <span>{formatCurrency(subtotal)}</span>
                   </div>
-                  {posDiscount > 0 && (
+                  {discountValue > 0 && (
                     <div className="flex justify-between text-[var(--success)]">
-                      <span>Discount</span>
-                      <span>-{formatCurrency(posDiscount)}</span>
+                      <span>
+                        Discount
+                        {posDiscountMode === "percent" && ` (${posDiscount}%)`}
+                      </span>
+                      <span>-{formatCurrency(discountValue)}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-display text-lg font-semibold">
@@ -409,6 +529,9 @@ export default function CashierPosPage() {
                       {formatCurrency(total)}
                     </span>
                   </div>
+                  <p className="pt-1 text-xs text-[var(--text-faint)]">
+                    Add a tip at payment
+                  </p>
                 </div>
                 <Button
                   className="w-full"

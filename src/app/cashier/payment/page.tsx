@@ -12,11 +12,13 @@ import {
   CheckCircle2,
   ShoppingCart,
   ArrowLeft,
+  HandCoins,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
@@ -38,6 +40,12 @@ export default function CashierPaymentPage() {
   const router = useRouter();
   const posItems = useAppStore((s) => s.posItems);
   const posDiscount = useAppStore((s) => s.posDiscount);
+  const posDiscountMode = useAppStore((s) => s.posDiscountMode);
+  const posTip = useAppStore((s) => s.posTip);
+  const setPosTip = useAppStore((s) => s.setPosTip);
+  const posMembershipPlanId = useAppStore((s) => s.posMembershipPlanId);
+  const membershipPlans = useAppStore((s) => s.membershipPlans);
+  const drawerSession = useAppStore((s) => s.drawerSession);
   const lastReceipt = useAppStore((s) => s.lastReceipt);
   const completePayment = useAppStore((s) => s.completePayment);
 
@@ -45,12 +53,21 @@ export default function CashierPaymentPage() {
   const [paid, setPaid] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  const subtotal = posItems.reduce(
-    (sum, i) => sum + i.unitPrice * i.quantity,
-    0,
-  );
-  const total = Math.max(0, subtotal - posDiscount);
+  const upsellPlan = posMembershipPlanId
+    ? membershipPlans.find((p) => p.id === posMembershipPlanId)
+    : null;
+  const subtotal =
+    posItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0) +
+    (upsellPlan?.price ?? 0);
+  const discountValue =
+    posDiscountMode === "percent"
+      ? Math.round(((subtotal * posDiscount) / 100) * 100) / 100
+      : posDiscount;
+  const goodsTotal = Math.max(0, subtotal - discountValue);
+  const total = goodsTotal + posTip;
   const receipt = paid ? lastReceipt : null;
+
+  const TIP_PCTS = [0, 10, 15, 20];
 
   function handlePay() {
     if (!method) {
@@ -59,6 +76,12 @@ export default function CashierPaymentPage() {
     }
     if (posItems.length === 0 && !paid) {
       toast.error("No items to pay. Go to POS first.");
+      return;
+    }
+    if (method === "cash" && !drawerSession) {
+      toast.error("Open the cash drawer before taking cash", {
+        description: "Cashier → Cash Drawer",
+      });
       return;
     }
 
@@ -144,15 +167,27 @@ export default function CashierPaymentPage() {
                           </div>
                         ))}
                       </div>
+                      {upsellPlan && (
+                        <div className="mt-2 flex justify-between text-sm text-[var(--gold-soft)]">
+                          <span>{upsellPlan.name} Membership</span>
+                          <span>{formatCurrency(upsellPlan.price)}</span>
+                        </div>
+                      )}
                       <div className="mt-4 space-y-1 border-t border-[var(--border)] pt-4 text-sm">
                         <div className="flex justify-between text-[var(--text-muted)]">
                           <span>Subtotal</span>
                           <span>{formatCurrency(subtotal)}</span>
                         </div>
-                        {posDiscount > 0 && (
+                        {discountValue > 0 && (
                           <div className="flex justify-between text-[var(--success)]">
                             <span>Discount</span>
-                            <span>-{formatCurrency(posDiscount)}</span>
+                            <span>-{formatCurrency(discountValue)}</span>
+                          </div>
+                        )}
+                        {posTip > 0 && (
+                          <div className="flex justify-between text-[var(--text-muted)]">
+                            <span>Tip</span>
+                            <span>+{formatCurrency(posTip)}</span>
                           </div>
                         )}
                         <div className="flex justify-between font-display text-xl font-semibold">
@@ -163,6 +198,52 @@ export default function CashierPaymentPage() {
                         </div>
                       </div>
                     </Card>
+
+                    <div>
+                      <p className="mb-3 flex items-center gap-1.5 text-sm font-medium text-[var(--text-muted)]">
+                        <HandCoins className="h-4 w-4 text-[var(--gold)]" />
+                        Add a tip for the barber
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {TIP_PCTS.map((pct) => {
+                          const amount =
+                            pct === 0
+                              ? 0
+                              : Math.round(goodsTotal * pct) / 100;
+                          const active =
+                            pct === 0 ? posTip === 0 : posTip === amount;
+                          return (
+                            <button
+                              key={pct}
+                              onClick={() => setPosTip(amount)}
+                              className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+                                active
+                                  ? "border-[var(--gold)]/50 bg-[var(--gold)]/10 text-[var(--gold-soft)]"
+                                  : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--gold-dim)]"
+                              }`}
+                            >
+                              {pct === 0 ? "No tip" : `${pct}%`}
+                              {pct !== 0 && (
+                                <span className="ml-1 text-xs text-[var(--text-faint)]">
+                                  {formatCurrency(amount)}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                        <Input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={posTip || ""}
+                          onChange={(e) =>
+                            setPosTip(Math.max(0, Number(e.target.value) || 0))
+                          }
+                          placeholder="Custom RM"
+                          className="w-28"
+                        />
+                      </div>
+                    </div>
 
                     <div>
                       <p className="mb-3 text-sm font-medium text-[var(--text-muted)]">
@@ -289,8 +370,18 @@ export default function CashierPaymentPage() {
                           </div>
                           {receipt.discount > 0 && (
                             <div className="flex justify-between text-[var(--success)]">
-                              <span>Discount</span>
+                              <span>
+                                Discount
+                                {receipt.discountReason &&
+                                  ` · ${receipt.discountReason}`}
+                              </span>
                               <span>-{formatCurrency(receipt.discount)}</span>
+                            </div>
+                          )}
+                          {receipt.tip > 0 && (
+                            <div className="flex justify-between">
+                              <span>Tip</span>
+                              <span>+{formatCurrency(receipt.tip)}</span>
                             </div>
                           )}
                           <div className="flex justify-between font-display text-lg font-semibold">
@@ -304,7 +395,8 @@ export default function CashierPaymentPage() {
                               {receipt.paymentMethod}
                             </span>
                             <span>
-                              Commission: {formatCurrency(receipt.commission)}
+                              Barber gets:{" "}
+                              {formatCurrency(receipt.commission + receipt.tip)}
                             </span>
                           </div>
                         </div>

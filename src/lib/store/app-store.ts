@@ -147,7 +147,7 @@ interface AppState {
   setTrackingTicketId: (id: string | null) => void;
 }
 
-function calcCommission(
+export function calcCommission(
   total: number,
   staffId: string,
   items: PosItem[],
@@ -465,7 +465,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPosDiscountReason: (posDiscountReason) => set({ posDiscountReason }),
   setPosTip: (posTip) => set({ posTip: Math.max(0, posTip) }),
   setPosCustomerId: (posCustomerId) => set({ posCustomerId }),
-  setPosMembershipPlan: (posMembershipPlanId) => set({ posMembershipPlanId }),
+
+  setPosMembershipPlan: (posMembershipPlanId) =>
+    set((s) => {
+      const member = posMembershipPlanId !== null;
+      // Re-price services on the cart to match — that discount is the pitch.
+      return {
+        posMembershipPlanId,
+        posItems: s.posItems.map((item) => {
+          if (item.type !== "service") return item;
+          const svc = s.services.find((v) => v.id === item.id);
+          if (!svc) return item;
+          return {
+            ...item,
+            unitPrice: member ? svc.membershipPrice : svc.price,
+          };
+        }),
+      };
+    }),
   setPosStaffId: (posStaffId) => set({ posStaffId }),
 
   loadPosTicket: (ticketId) =>

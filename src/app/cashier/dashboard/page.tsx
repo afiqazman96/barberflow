@@ -30,7 +30,9 @@ export default function CashierDashboardPage() {
   const today = todayIso();
   const waiting = queue.filter((q) => q.status === "waiting").length;
   const awaitingPay = queue.filter((q) => q.status === "awaiting-payment").length;
-  const todaySalesList = sales.filter((s) => s.createdAt.slice(0, 10) === today);
+  const todaySalesList = sales.filter(
+    (s) => !s.voided && s.createdAt.slice(0, 10) === today,
+  );
   const todaySales = todaySalesList.reduce((sum, s) => sum + s.total, 0);
   const serving = queue.find((q) => q.status === "in-service");
   const barbers = STAFF.filter((s) => s.role === "barber");

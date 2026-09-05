@@ -22,10 +22,17 @@ const STORAGE_KEY = "barberflow-guest-profile";
 
 const demoCustomer = CUSTOMERS[0];
 
+function daysAgoIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 const visitHistory = [
   { date: demoCustomer.lastVisit, service: "Signature Fade", price: 45 },
-  { date: "2026-07-12", service: "Beard Trim & Shape", price: 28 },
-  { date: "2026-06-28", service: "Classic Haircut", price: 38 },
+  { date: daysAgoIso(24), service: "Beard Trim & Shape", price: 28 },
+  { date: daysAgoIso(52), service: "Classic Haircut", price: 38 },
 ];
 
 export default function ProfilePage() {

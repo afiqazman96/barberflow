@@ -18,7 +18,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
 import { STAFF, SALES_TREND, TOP_SERVICES, CUSTOMERS } from "@/lib/mock/data";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, todayIso } from "@/lib/utils";
 
 export default function OwnerDashboardPage() {
   const queue = useAppStore((s) => s.queue);
@@ -26,14 +26,15 @@ export default function OwnerDashboardPage() {
   const bookings = useAppStore((s) => s.bookings);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
 
-  const today = "2026-07-30";
-  const todaySales = sales.reduce((sum, s) => sum + s.total, 0);
+  const today = todayIso();
+  const todaySalesList = sales.filter((s) => s.createdAt.slice(0, 10) === today);
+  const todaySales = todaySalesList.reduce((sum, s) => sum + s.total, 0);
   const waiting = queue.filter((q) => q.status === "waiting").length;
   const todayBookings = bookings.filter((b) => b.date === today).length;
   const avgWait =
     queue.filter((q) => q.status === "waiting").reduce((sum, q) => sum + q.estimatedWaitMins, 0) /
       Math.max(waiting, 1);
-  const uniqueCustomers = new Set(sales.map((s) => s.customerId)).size;
+  const uniqueCustomers = new Set(todaySalesList.map((s) => s.customerId)).size;
   const barbers = STAFF.filter((s) => s.role === "barber");
   const maxServiceCount = TOP_SERVICES[0]?.count ?? 1;
 
@@ -53,7 +54,7 @@ export default function OwnerDashboardPage() {
             <StatCard
               label="Today's Sales"
               value={formatCurrency(todaySales)}
-              change={`${sales.length} transactions`}
+              change={`${todaySalesList.length} transactions`}
               trend="up"
               icon={DollarSign}
               delay={0}

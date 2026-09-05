@@ -20,16 +20,18 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
 import { STAFF } from "@/lib/mock/data";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, todayIso } from "@/lib/utils";
 
 export default function CashierDashboardPage() {
   const queue = useAppStore((s) => s.queue);
   const sales = useAppStore((s) => s.sales);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
 
+  const today = todayIso();
   const waiting = queue.filter((q) => q.status === "waiting").length;
   const awaitingPay = queue.filter((q) => q.status === "awaiting-payment").length;
-  const todaySales = sales.reduce((sum, s) => sum + s.total, 0);
+  const todaySalesList = sales.filter((s) => s.createdAt.slice(0, 10) === today);
+  const todaySales = todaySalesList.reduce((sum, s) => sum + s.total, 0);
   const serving = queue.find((q) => q.status === "in-service");
   const barbers = STAFF.filter((s) => s.role === "barber");
 
@@ -65,7 +67,7 @@ export default function CashierDashboardPage() {
             <StatCard
               label="Today's Sales"
               value={formatCurrency(todaySales)}
-              change={`${sales.length} transactions`}
+              change={`${todaySalesList.length} transactions`}
               trend="up"
               icon={DollarSign}
               delay={0.1}

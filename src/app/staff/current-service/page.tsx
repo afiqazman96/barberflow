@@ -22,23 +22,28 @@ import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { formatCurrency, formatTime } from "@/lib/utils";
 
 function useElapsedTimer(startedAt?: string) {
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(() =>
+    startedAt
+      ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+      : 0,
+  );
 
   useEffect(() => {
-    if (!startedAt) {
-      setElapsed(0);
-      return;
-    }
+    if (!startedAt) return;
     const start = new Date(startedAt).getTime();
-    const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000));
+    const tick = () =>
+      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [startedAt]);
 
-  const mins = Math.floor(elapsed / 60);
-  const secs = elapsed % 60;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  const mm = String(m).padStart(2, "0");
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 export default function CurrentServicePage() {

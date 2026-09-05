@@ -14,7 +14,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Booking, QueueTicket } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatDate, todayIso } from "@/lib/utils";
 
 function nextQueueNumber(queue: QueueTicket[]) {
   const nums = queue
@@ -34,7 +34,7 @@ export default function CashierAppointmentPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Booking | null>(null);
 
-  const today = "2026-07-30";
+  const today = todayIso();
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => {

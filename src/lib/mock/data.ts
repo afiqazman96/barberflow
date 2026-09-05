@@ -15,6 +15,42 @@ import type {
   Tenant,
 } from "@/lib/types";
 
+/**
+ * Mock fixtures are pinned to the day the demo is opened, so elapsed timers,
+ * "x ago" labels and today / this-week filters stay sensible instead of
+ * counting from a frozen calendar date. Timestamps keep the app's local-naive
+ * ISO shape ("YYYY-MM-DDTHH:mm:ss") — the same shape the API is expected to
+ * return.
+ */
+const MOCK_NOW = new Date();
+
+function mpad(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** Local-naive ISO timestamp `mins` minutes before now. */
+function minutesAgo(mins: number): string {
+  const d = new Date(MOCK_NOW.getTime() - mins * 60_000);
+  return `${d.getFullYear()}-${mpad(d.getMonth() + 1)}-${mpad(d.getDate())}T${mpad(d.getHours())}:${mpad(d.getMinutes())}:00`;
+}
+
+/** `YYYY-MM-DD`, `days` days from now (negative = past). */
+function dayOffset(days: number): string {
+  const d = new Date(MOCK_NOW);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${mpad(d.getMonth() + 1)}-${mpad(d.getDate())}`;
+}
+
+/** Local-naive ISO at a given hour, `days` days from now. */
+function dateAt(days: number, hour: number, minute = 0): string {
+  const d = new Date(MOCK_NOW);
+  d.setDate(d.getDate() + days);
+  d.setHours(hour, minute, 0, 0);
+  return `${d.getFullYear()}-${mpad(d.getMonth() + 1)}-${mpad(d.getDate())}T${mpad(d.getHours())}:${mpad(d.getMinutes())}:00`;
+}
+
+export const TODAY = dayOffset(0);
+
 export const TENANT: Tenant = {
   id: "t1",
   name: "Fade House",
@@ -360,7 +396,7 @@ function makeCustomers(): Customer[] {
       membership: tiers[i % tiers.length],
       visits,
       totalSpent: visits * (35 + (i % 40)),
-      lastVisit: `2026-07-${String((i % 28) + 1).padStart(2, "0")}`,
+      lastVisit: dayOffset(-((i % 28) + 1)),
       preferredStaffId: i % 3 === 0 ? "s1" : i % 3 === 1 ? "s2" : "s3",
     };
   });
@@ -383,8 +419,8 @@ export const QUEUE: QueueTicket[] = [
     chairId: "ch1",
     status: "in-service",
     estimatedWaitMins: 0,
-    createdAt: "2026-07-30T13:10:00",
-    startedAt: "2026-07-30T13:45:00",
+    createdAt: minutesAgo(38),
+    startedAt: minutesAgo(21),
     source: "qr",
   },
   {
@@ -401,7 +437,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 12,
-    createdAt: "2026-07-30T13:20:00",
+    createdAt: minutesAgo(14),
     source: "cashier",
   },
   {
@@ -418,7 +454,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 8,
-    createdAt: "2026-07-30T13:28:00",
+    createdAt: minutesAgo(11),
     source: "booking",
   },
   {
@@ -435,7 +471,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 22,
-    createdAt: "2026-07-30T13:35:00",
+    createdAt: minutesAgo(7),
     source: "qr",
   },
   {
@@ -452,7 +488,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 35,
-    createdAt: "2026-07-30T13:42:00",
+    createdAt: minutesAgo(4),
     source: "cashier",
   },
   {
@@ -469,8 +505,8 @@ export const QUEUE: QueueTicket[] = [
     chairId: "ch2",
     status: "awaiting-payment",
     estimatedWaitMins: 0,
-    createdAt: "2026-07-30T12:50:00",
-    startedAt: "2026-07-30T13:05:00",
+    createdAt: minutesAgo(70),
+    startedAt: minutesAgo(52),
     source: "qr",
   },
   {
@@ -487,8 +523,8 @@ export const QUEUE: QueueTicket[] = [
     chairId: "ch1",
     status: "completed",
     estimatedWaitMins: 0,
-    createdAt: "2026-07-30T12:10:00",
-    startedAt: "2026-07-30T12:25:00",
+    createdAt: minutesAgo(155),
+    startedAt: minutesAgo(133),
     source: "booking",
   },
 ];
@@ -496,7 +532,6 @@ export const QUEUE: QueueTicket[] = [
 export const BOOKINGS: Booking[] = Array.from({ length: 20 }, (_, i) => {
   const cust = CUSTOMERS[i + 10];
   const staff = STAFF[2 + (i % 3)];
-  const day = 30 + Math.floor(i / 6);
   const hour = 10 + (i % 8);
   const statuses: Booking["status"][] = [
     "confirmed",
@@ -506,6 +541,9 @@ export const BOOKINGS: Booking[] = Array.from({ length: 20 }, (_, i) => {
     "completed",
     "no-show",
   ];
+  // Keep each booking's date consistent with its status: past days are done or
+  // no-shows, today holds the confirmed / checked-in ones, and a few sit ahead.
+  const dayShift = [0, 1, 3, 0, -1, -2][i % 6];
   return {
     id: `bk${i + 1}`,
     branchId: "b1",
@@ -516,7 +554,7 @@ export const BOOKINGS: Booking[] = Array.from({ length: 20 }, (_, i) => {
     serviceNames: [i % 2 === 0 ? "Signature Fade" : "Hair + Beard Combo"],
     staffId: i % 4 === 0 ? null : staff.id,
     staffName: i % 4 === 0 ? "Any Barber" : staff.name,
-    date: `2026-07-${String(Math.min(day, 31)).padStart(2, "0")}`,
+    date: dayOffset(dayShift),
     time: `${String(hour).padStart(2, "0")}:${i % 2 === 0 ? "00" : "30"}`,
     durationMins: i % 2 === 0 ? 45 : 60,
     gracePeriodMins: 10,
@@ -569,7 +607,7 @@ export const SALES: Sale[] = Array.from({ length: 24 }, (_, i) => {
     total,
     paymentMethod: (["cash", "card", "qr"] as const)[i % 3],
     commission,
-    createdAt: `2026-07-30T${String(10 + (i % 10)).padStart(2, "0")}:${String((i * 7) % 60).padStart(2, "0")}:00`,
+    createdAt: dateAt(0, 9 + (i % 10), (i * 7) % 60),
     receiptNo: `FH-KL-${String(1040 + i)}`,
   };
 });

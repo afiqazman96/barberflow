@@ -21,7 +21,7 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Booking } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { formatDate, todayIso } from "@/lib/utils";
 
 export default function OwnerAppointmentPage() {
   const bookings = useAppStore((s) => s.bookings);
@@ -29,7 +29,7 @@ export default function OwnerAppointmentPage() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [dateFilter, setDateFilter] = useState("2026-07-30");
+  const [dateFilter, setDateFilter] = useState(todayIso);
   const [selected, setSelected] = useState<Booking | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
 
@@ -65,7 +65,7 @@ export default function OwnerAppointmentPage() {
     return groups;
   }, [filtered]);
 
-  const today = "2026-07-30";
+  const today = todayIso();
   const todayCount = bookings.filter((b) => b.date === today).length;
   const confirmedCount = bookings.filter(
     (b) => b.date === today && b.status === "confirmed",

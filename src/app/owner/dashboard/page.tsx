@@ -27,7 +27,9 @@ export default function OwnerDashboardPage() {
   const staffStatuses = useAppStore((s) => s.staffStatuses);
 
   const today = todayIso();
-  const todaySalesList = sales.filter((s) => s.createdAt.slice(0, 10) === today);
+  const todaySalesList = sales.filter(
+    (s) => !s.voided && s.createdAt.slice(0, 10) === today,
+  );
   const todaySales = todaySalesList.reduce((sum, s) => sum + s.total, 0);
   const waiting = queue.filter((q) => q.status === "waiting").length;
   const todayBookings = bookings.filter((b) => b.date === today).length;

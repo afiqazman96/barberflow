@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Receipt as ReceiptIcon, Printer } from "lucide-react";
+import { Search, Receipt as ReceiptIcon, Printer, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/store/app-store";
 import type { PaymentMethod, Sale } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
@@ -21,12 +22,35 @@ const METHOD_FILTERS: { id: "all" | PaymentMethod; label: string }[] = [
 ];
 
 export function SalesHistory() {
+  const session = useSession();
+  const isOwner = session.role === "owner";
   const sales = useAppStore((s) => s.sales);
   const business = useAppStore((s) => s.businessProfile);
+  const voidSale = useAppStore((s) => s.voidSale);
 
   const [search, setSearch] = useState("");
   const [method, setMethod] = useState<"all" | PaymentMethod>("all");
-  const [selected, setSelected] = useState<Sale | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
+
+  const selected = selectedId
+    ? (sales.find((s) => s.id === selectedId) ?? null)
+    : null;
+
+  function handleVoid() {
+    if (!selected) return;
+    if (!voidReason) {
+      toast.error("Pick a reason for the void");
+      return;
+    }
+    voidSale(selected.id, voidReason, session.name);
+    toast.success("Sale voided", {
+      description: `${selected.receiptNo} · ${voidReason}`,
+    });
+    setVoidOpen(false);
+    setVoidReason("");
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -43,7 +67,9 @@ export function SalesHistory() {
       });
   }, [sales, search, method]);
 
-  const totalShown = filtered.reduce((sum, s) => sum + s.total, 0);
+  const totalShown = filtered
+    .filter((s) => !s.voided)
+    .reduce((sum, s) => sum + s.total, 0);
 
   function handlePrint(sale: Sale) {
     toast.success("Receipt sent to printer", {
@@ -108,15 +134,22 @@ export function SalesHistory() {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: Math.min(i * 0.02, 0.4) }}
-                onClick={() => setSelected(sale)}
+                onClick={() => setSelectedId(sale.id)}
                 className="flex w-full items-center gap-4 px-4 py-3 text-left transition hover:bg-[var(--bg-muted)] md:grid md:grid-cols-[auto_1fr_auto_auto_auto]"
               >
                 <span className="w-24 shrink-0">
-                  <Badge variant="gold">{sale.receiptNo}</Badge>
+                  <Badge variant={sale.voided ? "default" : "gold"}>
+                    {sale.receiptNo}
+                  </Badge>
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
+                  <p className="flex items-center gap-1.5 truncate text-sm font-medium">
                     {sale.customerName}
+                    {sale.voided && (
+                      <span className="rounded bg-[var(--danger)]/12 px-1.5 text-[10px] font-semibold uppercase text-[var(--danger)]">
+                        Voided
+                      </span>
+                    )}
                   </p>
                   <p className="truncate text-xs text-[var(--text-faint)]">
                     {sale.items.map((it) => it.name).join(" · ")}
@@ -128,7 +161,13 @@ export function SalesHistory() {
                 <span className="hidden w-16 text-center text-xs uppercase text-[var(--text-muted)] md:block">
                   {sale.paymentMethod}
                 </span>
-                <span className="w-24 shrink-0 text-right font-display text-sm font-semibold">
+                <span
+                  className={`w-24 shrink-0 text-right font-display text-sm font-semibold ${
+                    sale.voided
+                      ? "text-[var(--text-faint)] line-through"
+                      : ""
+                  }`}
+                >
                   {formatCurrency(sale.total)}
                 </span>
               </motion.button>
@@ -139,7 +178,7 @@ export function SalesHistory() {
 
       <Modal
         open={!!selected}
-        onOpenChange={(v) => !v && setSelected(null)}
+        onOpenChange={(v) => !v && setSelectedId(null)}
         className="max-w-md"
       >
         {selected && (
@@ -151,6 +190,13 @@ export function SalesHistory() {
               </p>
             </div>
             <div className="space-y-4">
+              {selected.voided && (
+                <div className="rounded-xl border border-[var(--danger)]/30 bg-[var(--danger)]/8 px-3 py-2 text-xs text-[var(--danger)]">
+                  <span className="font-semibold uppercase">Voided</span> ·{" "}
+                  {selected.voided.reason} · by {selected.voided.by} ·{" "}
+                  {formatDateTime(selected.voided.at)}
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--text-muted)]">Receipt</span>
                 <Badge variant="gold">{selected.receiptNo}</Badge>
@@ -180,8 +226,18 @@ export function SalesHistory() {
                 </div>
                 {selected.discount > 0 && (
                   <div className="flex justify-between text-[var(--success)]">
-                    <span>Discount</span>
+                    <span>
+                      Discount
+                      {selected.discountReason &&
+                        ` · ${selected.discountReason}`}
+                    </span>
                     <span>-{formatCurrency(selected.discount)}</span>
+                  </div>
+                )}
+                {selected.tip > 0 && (
+                  <div className="flex justify-between">
+                    <span>Tip</span>
+                    <span>+{formatCurrency(selected.tip)}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-display text-lg font-semibold">
@@ -193,21 +249,74 @@ export function SalesHistory() {
                 <div className="flex justify-between text-[var(--text-faint)]">
                   <span className="capitalize">{selected.paymentMethod}</span>
                   <span>
-                    Commission: {formatCurrency(selected.commission)}
+                    Barber got:{" "}
+                    {formatCurrency(selected.commission + selected.tip)}
                   </span>
                 </div>
               </div>
-              <Button
-                variant="secondary"
-                className="w-full"
-                onClick={() => handlePrint(selected)}
-              >
-                <Printer className="h-4 w-4" />
-                Print Receipt
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  className="flex-1"
+                  onClick={() => handlePrint(selected)}
+                >
+                  <Printer className="h-4 w-4" />
+                  Print
+                </Button>
+                {isOwner && !selected.voided && (
+                  <Button
+                    variant="danger"
+                    className="flex-1"
+                    onClick={() => setVoidOpen(true)}
+                  >
+                    <Ban className="h-4 w-4" />
+                    Void sale
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={voidOpen}
+        onOpenChange={setVoidOpen}
+        title="Void this sale?"
+        description={
+          selected
+            ? `${selected.receiptNo} · ${formatCurrency(selected.total)}. This reverses the barber's takings, restocks products, and logs a cash refund.`
+            : ""
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <Label>Reason</Label>
+            <Select
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+            >
+              <option value="">Select a reason…</option>
+              <option value="Wrong item rung up">Wrong item rung up</option>
+              <option value="Wrong price">Wrong price</option>
+              <option value="Duplicate charge">Duplicate charge</option>
+              <option value="Customer refund">Customer refund</option>
+              <option value="Test transaction">Test transaction</option>
+            </Select>
+          </div>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => setVoidOpen(false)}
+            >
+              Keep sale
+            </Button>
+            <Button variant="danger" className="flex-1" onClick={handleVoid}>
+              Void sale
+            </Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

@@ -48,6 +48,7 @@ export default function OwnerReportsPage() {
   const sales = useMemo(
     () =>
       allSales.filter((s) => {
+        if (s.voided) return false;
         const day = s.createdAt.slice(0, 10);
         if (from && day < from) return false;
         if (to && day > to) return false;

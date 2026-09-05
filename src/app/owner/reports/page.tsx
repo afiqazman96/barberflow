@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp,
@@ -14,6 +14,7 @@ import { PageTransition } from "@/components/layout/page-transition";
 import { SalesChart, PeakHoursChart } from "@/components/domain/charts";
 import { StatCard } from "@/components/domain/stat-card";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input, Label } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store/app-store";
 import {
   SALES_TREND,
@@ -22,10 +23,38 @@ import {
   STAFF,
   CUSTOMERS,
 } from "@/lib/mock/data";
-import { formatCurrency, initials } from "@/lib/utils";
+import { formatCurrency, initials, todayIso } from "@/lib/utils";
+
+function daysAgoIso(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+const RANGES = [
+  { id: "today", label: "Today", from: () => todayIso() },
+  { id: "7d", label: "7 days", from: () => daysAgoIso(6) },
+  { id: "30d", label: "30 days", from: () => daysAgoIso(29) },
+  { id: "all", label: "All time", from: () => "" },
+] as const;
 
 export default function OwnerReportsPage() {
-  const sales = useAppStore((s) => s.sales);
+  const allSales = useAppStore((s) => s.sales);
+
+  const [from, setFrom] = useState(() => daysAgoIso(29));
+  const [to, setTo] = useState(() => todayIso());
+
+  const sales = useMemo(
+    () =>
+      allSales.filter((s) => {
+        const day = s.createdAt.slice(0, 10);
+        if (from && day < from) return false;
+        if (to && day > to) return false;
+        return true;
+      }),
+    [allSales, from, to],
+  );
 
   const totalRevenue = sales.reduce((sum, s) => sum + s.total, 0);
   const avgTicket = totalRevenue / Math.max(sales.length, 1);
@@ -65,6 +94,47 @@ export default function OwnerReportsPage() {
       <Topbar title="Reports & Analytics" />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+          <Card className="p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <Label>From</Label>
+                <Input
+                  type="date"
+                  value={from}
+                  max={to || undefined}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>To</Label>
+                <Input
+                  type="date"
+                  value={to}
+                  min={from || undefined}
+                  onChange={(e) => setTo(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {RANGES.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => {
+                      setFrom(r.from());
+                      setTo(todayIso());
+                    }}
+                    className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:border-[var(--gold-dim)] hover:text-[var(--text)]"
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+              <span className="ml-auto text-xs text-[var(--text-faint)]">
+                {sales.length} of {allSales.length} sales
+              </span>
+            </div>
+          </Card>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Total Revenue"

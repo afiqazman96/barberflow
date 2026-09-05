@@ -17,8 +17,10 @@ export function StaffCard({
   currentCustomer?: string;
 }) {
   const chairs = useAppStore((s) => s.chairs);
+  const branches = useAppStore((s) => s.branches);
   const s = status ?? staff.status;
   const chair = chairs.find((c) => c.id === staff.chairId);
+  const branch = branches.find((b) => b.id === staff.branchId);
 
   return (
     <Card className="p-4">
@@ -50,6 +52,11 @@ export function StaffCard({
             <span className="flex items-center gap-1">
               <Armchair className="h-3.5 w-3.5" />
               {chair?.label ?? "No chair"}
+              {branch && (
+                <span className="text-[var(--text-faint)]">
+                  · {branch.name}
+                </span>
+              )}
             </span>
             {currentCustomer && (
               <span className="truncate text-[var(--gold-soft)]">

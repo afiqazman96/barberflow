@@ -16,37 +16,49 @@ import type {
 } from "@/lib/types";
 
 /**
- * Mock fixtures are pinned to the day the demo is opened, so elapsed timers,
- * "x ago" labels and today / this-week filters stay sensible instead of
- * counting from a frozen calendar date. Timestamps keep the app's local-naive
+ * Mock fixtures are pinned to the *calendar day* the demo is opened, so
+ * "today / this-week" filters and date labels stay sensible instead of
+ * counting from a frozen 2026-07-30. Timestamps keep the app's local-naive
  * ISO shape ("YYYY-MM-DDTHH:mm:ss") — the same shape the API is expected to
  * return.
+ *
+ * The anchor is midnight, not `new Date()`: the server evaluates this module
+ * once at start-up and the browser evaluates it again on load, often an hour
+ * or more apart. Anchoring to the date (which both agree on) and using fixed
+ * clock times keeps the server render and the client hydration identical.
+ * Live "x minutes elapsed" counters are computed in the components against
+ * the real clock, not from these strings.
  */
-const MOCK_NOW = new Date();
+const MOCK_DAY = (() => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+})();
 
 function mpad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** Local-naive ISO timestamp `mins` minutes before now. */
-function minutesAgo(mins: number): string {
-  const d = new Date(MOCK_NOW.getTime() - mins * 60_000);
-  return `${d.getFullYear()}-${mpad(d.getMonth() + 1)}-${mpad(d.getDate())}T${mpad(d.getHours())}:${mpad(d.getMinutes())}:00`;
-}
-
-/** `YYYY-MM-DD`, `days` days from now (negative = past). */
+/** `YYYY-MM-DD`, `days` days from today (negative = past). */
 function dayOffset(days: number): string {
-  const d = new Date(MOCK_NOW);
+  const d = new Date(MOCK_DAY);
   d.setDate(d.getDate() + days);
   return `${d.getFullYear()}-${mpad(d.getMonth() + 1)}-${mpad(d.getDate())}`;
 }
 
-/** Local-naive ISO at a given hour, `days` days from now. */
+/** Local-naive ISO at a fixed clock time, `days` days from today. */
 function dateAt(days: number, hour: number, minute = 0): string {
-  const d = new Date(MOCK_NOW);
-  d.setDate(d.getDate() + days);
-  d.setHours(hour, minute, 0, 0);
-  return `${d.getFullYear()}-${mpad(d.getMonth() + 1)}-${mpad(d.getDate())}T${mpad(d.getHours())}:${mpad(d.getMinutes())}:00`;
+  return `${dayOffset(days)}T${mpad(hour)}:${mpad(minute)}:00`;
+}
+
+/**
+ * A recent time earlier *today* — used for live queue tickets. `minsBack` is
+ * measured from a nominal "now" of 15:00 so the values read as a normal
+ * afternoon; the actual elapsed timer in the UI still runs off the real clock.
+ */
+function earlierToday(minsBack: number): string {
+  const total = 15 * 60 - minsBack;
+  return dateAt(0, Math.floor(total / 60), total % 60);
 }
 
 export const TODAY = dayOffset(0);
@@ -419,8 +431,8 @@ export const QUEUE: QueueTicket[] = [
     chairId: "ch1",
     status: "in-service",
     estimatedWaitMins: 0,
-    createdAt: minutesAgo(38),
-    startedAt: minutesAgo(21),
+    createdAt: earlierToday(38),
+    startedAt: earlierToday(21),
     source: "qr",
   },
   {
@@ -437,7 +449,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 12,
-    createdAt: minutesAgo(14),
+    createdAt: earlierToday(14),
     source: "cashier",
   },
   {
@@ -454,7 +466,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 8,
-    createdAt: minutesAgo(11),
+    createdAt: earlierToday(11),
     source: "booking",
   },
   {
@@ -471,7 +483,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 22,
-    createdAt: minutesAgo(7),
+    createdAt: earlierToday(7),
     source: "qr",
   },
   {
@@ -488,7 +500,7 @@ export const QUEUE: QueueTicket[] = [
     chairId: null,
     status: "waiting",
     estimatedWaitMins: 35,
-    createdAt: minutesAgo(4),
+    createdAt: earlierToday(4),
     source: "cashier",
   },
   {
@@ -505,8 +517,8 @@ export const QUEUE: QueueTicket[] = [
     chairId: "ch2",
     status: "awaiting-payment",
     estimatedWaitMins: 0,
-    createdAt: minutesAgo(70),
-    startedAt: minutesAgo(52),
+    createdAt: earlierToday(70),
+    startedAt: earlierToday(52),
     source: "qr",
   },
   {
@@ -523,8 +535,8 @@ export const QUEUE: QueueTicket[] = [
     chairId: "ch1",
     status: "completed",
     estimatedWaitMins: 0,
-    createdAt: minutesAgo(155),
-    startedAt: minutesAgo(133),
+    createdAt: earlierToday(155),
+    startedAt: earlierToday(133),
     source: "booking",
   },
 ];
@@ -565,6 +577,9 @@ export const BOOKINGS: Booking[] = Array.from({ length: 20 }, (_, i) => {
 export const SALES: Sale[] = Array.from({ length: 24 }, (_, i) => {
   const cust = CUSTOMERS[i];
   const staff = STAFF[2 + (i % 3)];
+  // First ten land today for the day's tallies; the rest fan out over the
+  // last month so date-range reports have something to filter.
+  const daysBack = i < 10 ? 0 : (i - 9) * 2;
   const service = SERVICES[i % SERVICES.length];
   const hasProduct = i % 3 === 0;
   const product = PRODUCTS[i % PRODUCTS.length];
@@ -607,7 +622,7 @@ export const SALES: Sale[] = Array.from({ length: 24 }, (_, i) => {
     total,
     paymentMethod: (["cash", "card", "qr"] as const)[i % 3],
     commission,
-    createdAt: dateAt(0, 9 + (i % 10), (i * 7) % 60),
+    createdAt: dateAt(-daysBack, 9 + (i % 10), (i * 7) % 60),
     receiptNo: `FH-KL-${String(1040 + i)}`,
   };
 });

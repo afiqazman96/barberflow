@@ -11,6 +11,7 @@ import {
   Percent,
   Package,
   BarChart3,
+  Wallet,
   CreditCard,
   Settings,
   Menu,
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/owner/commission", label: "Commission", icon: Percent },
   { href: "/owner/inventory", label: "Inventory", icon: Package },
   { href: "/owner/reports", label: "Reports", icon: BarChart3 },
+  { href: "/owner/cash-drawer", label: "Cash Drawer", icon: Wallet },
   { href: "/owner/billing", label: "Billing", icon: CreditCard },
   { href: "/owner/settings", label: "Settings", icon: Settings },
 ];

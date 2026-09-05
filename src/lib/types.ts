@@ -240,12 +240,44 @@ export interface Sale {
   items: SaleItem[];
   subtotal: number;
   discount: number;
+  /** Why a discount was given — kept for the owner's discount audit. */
+  discountReason?: string;
   voucher: number;
+  /** Barber tip, added on top of the total and paid through to the barber. */
+  tip: number;
   total: number;
   paymentMethod: PaymentMethod;
   commission: number;
   createdAt: string;
   receiptNo: string;
+  /** Set when an owner reverses the sale. */
+  voided?: { reason: string; at: string; by: string };
+}
+
+/** One line in the cash drawer log for a shift. */
+export interface CashMovement {
+  id: string;
+  type: "sale" | "refund" | "pay-in" | "pay-out";
+  /** Signed: positive adds cash to the drawer, negative removes it. */
+  amount: number;
+  note: string;
+  at: string;
+  saleId?: string;
+}
+
+/** A cashier's shift at the till, from opening float to close-out. */
+export interface DrawerSession {
+  id: string;
+  branchId: string;
+  cashierId: string;
+  cashierName: string;
+  openedAt: string;
+  openingFloat: number;
+  movements: CashMovement[];
+  closedAt?: string;
+  /** Cash counted in the drawer at close. */
+  countedAmount?: number;
+  closingNote?: string;
 }
 
 export interface SaleItem {

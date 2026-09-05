@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Scissors, Armchair } from "lucide-react";
 import { useAppStore } from "@/lib/store/app-store";
 import { StatusBadge } from "@/components/ui/badge";
+import { maskName } from "@/lib/utils";
 
 export default function QueueDisplayPage() {
   const queue = useAppStore((s) => s.queue);
@@ -89,7 +90,9 @@ export default function QueueDisplayPage() {
                     <p className="font-display text-5xl font-bold text-[var(--gold-soft)] md:text-6xl">
                       {ticket.number}
                     </p>
-                    <p className="mt-3 text-lg font-medium">{ticket.customerName}</p>
+                    <p className="mt-3 text-lg font-medium">
+                      {maskName(ticket.customerName)}
+                    </p>
                     <p className="text-sm text-[var(--text-muted)]">
                       {ticket.serviceNames.join(" · ")}
                     </p>
@@ -125,7 +128,9 @@ export default function QueueDisplayPage() {
                       {ticket.number}
                     </span>
                     <div>
-                      <p className="font-medium">{ticket.customerName}</p>
+                      <p className="font-medium">
+                        {maskName(ticket.customerName)}
+                      </p>
                       <p className="text-sm text-[var(--text-muted)]">
                         {ticket.serviceNames.join(" · ")}
                       </p>

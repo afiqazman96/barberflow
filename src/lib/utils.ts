@@ -53,6 +53,16 @@ export function elapsedSince(from: string | Date): string {
   return `${h}h ${String(mins % 60).padStart(2, "0")}m`;
 }
 
+/**
+ * Shorten a name for a public screen — "Daniel Chen" → "Daniel C." — so the
+ * lobby TV doesn't broadcast every customer's full name to the room.
+ */
+export function maskName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return parts[0] ?? "";
+  return `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.`;
+}
+
 export function initials(name: string) {
   return name
     .split(" ")

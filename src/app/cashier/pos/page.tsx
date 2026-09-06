@@ -96,6 +96,11 @@ export default function CashierPosPage() {
       : posDiscount;
   const total = Math.max(0, subtotal - discountValue);
 
+  // A barber is only needed when someone did the work. A walk-in buying a
+  // product off the shelf is a plain retail sale.
+  const hasService = posItems.some((i) => i.type === "service");
+  const needsBarber = hasService;
+
   const barberCommission =
     posStaffId && posItems.length > 0
       ? calcCommission(
@@ -184,7 +189,7 @@ export default function CashierPosPage() {
       toast.error("Cart is empty");
       return;
     }
-    if (!posStaffId) {
+    if (needsBarber && !posStaffId) {
       toast.error("Pick the barber who served this customer");
       return;
     }
@@ -349,13 +354,18 @@ export default function CashierPosPage() {
               <div className="mb-3">
                 <Label className="flex items-center gap-1.5 text-xs">
                   <Scissors className="h-3.5 w-3.5 text-[var(--gold)]" />
-                  Barber (earns commission)
+                  Barber
+                  <span className="font-normal text-[var(--text-faint)]">
+                    {needsBarber ? "· earns commission" : "· optional (retail)"}
+                  </span>
                 </Label>
                 <Select
                   value={posStaffId ?? ""}
                   onChange={(e) => setPosStaffId(e.target.value || null)}
                 >
-                  <option value="">Select barber…</option>
+                  <option value="">
+                    {needsBarber ? "Select barber…" : "No barber (retail sale)"}
+                  </option>
                   {barbers.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.name}
@@ -537,7 +547,9 @@ export default function CashierPosPage() {
                   className="w-full"
                   size="lg"
                   onClick={handlePay}
-                  disabled={posItems.length === 0 || !posStaffId}
+                  disabled={
+                    posItems.length === 0 || (needsBarber && !posStaffId)
+                  }
                 >
                   Pay {formatCurrency(total)}
                 </Button>

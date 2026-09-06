@@ -347,7 +347,11 @@ export default function CashierPaymentPage() {
                         </div>
                         <div className="text-sm text-[var(--text-muted)]">
                           <p>{receipt.customerName}</p>
-                          <p>Barber: {receipt.staffName}</p>
+                          <p>
+                            {receipt.staffId
+                              ? `Barber: ${receipt.staffName}`
+                              : "Retail sale"}
+                          </p>
                           <p>{formatDateTime(receipt.createdAt)}</p>
                         </div>
                         <div className="space-y-2 border-y border-dashed border-[var(--border)] py-4">
@@ -394,10 +398,14 @@ export default function CashierPaymentPage() {
                             <span className="capitalize">
                               {receipt.paymentMethod}
                             </span>
-                            <span>
-                              Barber gets:{" "}
-                              {formatCurrency(receipt.commission + receipt.tip)}
-                            </span>
+                            {receipt.staffId && (
+                              <span>
+                                Barber gets:{" "}
+                                {formatCurrency(
+                                  receipt.commission + receipt.tip,
+                                )}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>

@@ -203,7 +203,11 @@ export function SalesHistory() {
               </div>
               <div className="text-sm text-[var(--text-muted)]">
                 <p>{selected.customerName}</p>
-                <p>Barber: {selected.staffName}</p>
+                <p>
+                  {selected.staffId
+                    ? `Barber: ${selected.staffName}`
+                    : "Retail sale"}
+                </p>
                 <p>{formatDateTime(selected.createdAt)}</p>
               </div>
               <div className="space-y-2 border-y border-dashed border-[var(--border)] py-4">
@@ -248,10 +252,12 @@ export function SalesHistory() {
                 </div>
                 <div className="flex justify-between text-[var(--text-faint)]">
                   <span className="capitalize">{selected.paymentMethod}</span>
-                  <span>
-                    Barber got:{" "}
-                    {formatCurrency(selected.commission + selected.tip)}
-                  </span>
+                  {selected.staffId && (
+                    <span>
+                      Barber got:{" "}
+                      {formatCurrency(selected.commission + selected.tip)}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex gap-2">

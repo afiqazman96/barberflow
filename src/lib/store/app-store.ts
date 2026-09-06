@@ -539,15 +539,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       ? state.queue.find((q) => q.id === state.posTicketId)
       : undefined;
 
-    // The sale is credited to a barber — the one picked on the POS, else the
-    // one the ticket was assigned to. Never the cashier ringing it up.
+    const hasService = state.posItems.some((i) => i.type === "service");
+
+    // A service is credited to a barber — the one picked on the POS, else the
+    // one the ticket was assigned to, never the cashier. A product-only walk-in
+    // is a plain retail sale with no barber.
     const staff =
       state.staff.find((s) => s.id === state.posStaffId) ??
-      state.staff.find(
-        (s) => s.id === (ticket?.assignedStaffId ?? ticket?.preferredStaffId),
-      ) ??
-      state.staff.find((s) => s.role === "barber") ??
-      STAFF[2];
+      (hasService
+        ? (state.staff.find(
+            (s) =>
+              s.id === (ticket?.assignedStaffId ?? ticket?.preferredStaffId),
+          ) ??
+          state.staff.find((s) => s.role === "barber") ??
+          STAFF[2])
+        : null);
 
     const crmCustomer = state.posCustomerId
       ? CUSTOMERS.find((c) => c.id === state.posCustomerId)
@@ -592,20 +598,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     const total = goodsTotal + tip;
 
     // Commission is on the goods, not the tip; the tip passes straight through.
-    const commission = calcCommission(
-      goodsTotal,
-      staff.id,
-      state.posItems,
-      state.commissionRules,
-    );
+    const commission = staff
+      ? calcCommission(
+          goodsTotal,
+          staff.id,
+          state.posItems,
+          state.commissionRules,
+        )
+      : 0;
 
     const sale: Sale = {
       id: `sale-${Date.now()}`,
       branchId: state.branchId,
       customerId: state.posCustomerId ?? "walk-in",
       customerName,
-      staffId: staff.id,
-      staffName: staff.name,
+      staffId: staff?.id ?? "",
+      staffName: staff?.name ?? "Retail",
       items,
       subtotal,
       discount,
@@ -676,23 +684,24 @@ export const useAppStore = create<AppState>((set, get) => ({
                 movements: [...s.drawerSession.movements, cashMovement],
               }
             : s.drawerSession,
-        staffStatuses: {
-          ...s.staffStatuses,
-          [staff.id]: "available",
-        },
-        staff: s.staff.map((m) =>
-          m.id === staff.id
-            ? {
-                ...m,
-                status: "available",
-                todaySales: m.todaySales + goodsTotal,
-                todayCommission: m.todayCommission + barberTake,
-                todayCustomers: m.todayCustomers + 1,
-                monthlySales: m.monthlySales + goodsTotal,
-                monthlyCommission: m.monthlyCommission + barberTake,
-              }
-            : m,
-        ),
+        staffStatuses: staff
+          ? { ...s.staffStatuses, [staff.id]: "available" }
+          : s.staffStatuses,
+        staff: staff
+          ? s.staff.map((m) =>
+              m.id === staff.id
+                ? {
+                    ...m,
+                    status: "available",
+                    todaySales: m.todaySales + goodsTotal,
+                    todayCommission: m.todayCommission + barberTake,
+                    todayCustomers: m.todayCustomers + 1,
+                    monthlySales: m.monthlySales + goodsTotal,
+                    monthlyCommission: m.monthlyCommission + barberTake,
+                  }
+                : m,
+            )
+          : s.staff,
         queue: s.queue.map((q) =>
           q.id === state.posTicketId &&
           (q.status === "awaiting-payment" || q.status === "in-service")

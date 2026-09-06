@@ -81,6 +81,7 @@ export default function OwnerPosPage() {
   );
   const total = Math.max(0, subtotal - posDiscount);
   const receipt = paid ? lastReceipt : null;
+  const needsBarber = posItems.some((i) => i.type === "service");
 
   const catalog = useMemo(() => {
     const items =
@@ -139,7 +140,7 @@ export default function OwnerPosPage() {
       toast.error("Cart is empty");
       return;
     }
-    if (!posStaffId) {
+    if (needsBarber && !posStaffId) {
       toast.error("Pick the barber who earns commission on this sale");
       return;
     }
@@ -303,13 +304,15 @@ export default function OwnerPosPage() {
                   </select>
                 </div>
                 <div>
-                  <Label>Barber</Label>
+                  <Label>Barber {!needsBarber && "(optional)"}</Label>
                   <select
                     value={posStaffId ?? ""}
                     onChange={(e) => setPosStaffId(e.target.value || null)}
                     className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
                   >
-                    <option value="">Select…</option>
+                    <option value="">
+                      {needsBarber ? "Select…" : "No barber (retail)"}
+                    </option>
                     {barbers.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name}

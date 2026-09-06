@@ -43,13 +43,16 @@ function getNextDays(count: number) {
 function BookingWizard() {
   const router = useRouter();
   const params = useSearchParams();
-  const branchId = params.get("branch") ?? "b1";
+  const paramBranchId = params.get("branch");
 
   const addBooking = useAppStore((s) => s.addBooking);
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
   const queue = useAppStore((s) => s.queue);
 
+  const [branchId, setBranchId] = useState(
+    paramBranchId ?? BRANCHES[0]?.id ?? "b1",
+  );
   const branch = BRANCHES.find((b) => b.id === branchId) ?? BRANCHES[0];
   const barbers = STAFF.filter(
     (s) => s.role === "barber" && s.branchId === branch.id,
@@ -192,10 +195,10 @@ function BookingWizard() {
   return (
     <div className="space-y-6">
       <Link
-        href={`/customer/shop/${branch.id}`}
+        href={paramBranchId ? `/customer/shop/${branch.id}` : "/customer/home"}
         className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
       >
-        <ArrowLeft className="h-4 w-4" /> {branch.name}
+        <ArrowLeft className="h-4 w-4" /> {paramBranchId ? branch.name : "Home"}
       </Link>
 
       <div>
@@ -227,6 +230,25 @@ function BookingWizard() {
         >
           {step === 0 && (
             <div className="space-y-4">
+              <div>
+                <Label htmlFor="bk-branch">Shop</Label>
+                <select
+                  id="bk-branch"
+                  value={branchId}
+                  onChange={(e) => {
+                    setBranchId(e.target.value);
+                    setBarberMode("any");
+                    setPreferredStaffId(null);
+                  }}
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
+                >
+                  {BRANCHES.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name} — {b.city}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <Label htmlFor="bk-name">Your Name</Label>
                 <Input

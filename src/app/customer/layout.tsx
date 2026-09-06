@@ -1,11 +1,12 @@
 "use client";
 
-import { Home, Ticket, User } from "lucide-react";
+import { CalendarClock, Home, Ticket, User } from "lucide-react";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { PageTransition } from "@/components/layout/page-transition";
 
 const navItems = [
   { href: "/customer/home", label: "Home", icon: Home },
+  { href: "/customer/booking", label: "Book", icon: CalendarClock },
   { href: "/customer/tracking", label: "Queue", icon: Ticket },
   { href: "/customer/profile", label: "Profile", icon: User },
 ];

@@ -9,6 +9,7 @@ import {
   Users,
   ChevronRight,
   Sparkles,
+  CalendarClock,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -44,6 +45,29 @@ export default function CustomerHomePage() {
           <span className="font-medium text-[var(--gold-soft)]">Fade House</span>{" "}
           — {BRANCHES.length} locations across Malaysia
         </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Link
+          href="/customer/booking"
+          className="flex flex-col gap-1 rounded-2xl border border-[var(--gold)]/30 bg-[var(--gold)]/8 p-4 transition hover:bg-[var(--gold)]/12"
+        >
+          <CalendarClock className="h-5 w-5 text-[var(--gold-soft)]" />
+          <span className="mt-1 text-sm font-semibold">Book ahead</span>
+          <span className="text-xs text-[var(--text-muted)]">
+            Reserve a time slot
+          </span>
+        </Link>
+        <Link
+          href="/customer/tracking"
+          className="flex flex-col gap-1 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-4 transition hover:border-[var(--gold-dim)]"
+        >
+          <Users className="h-5 w-5 text-[var(--text-muted)]" />
+          <span className="mt-1 text-sm font-semibold">My queue</span>
+          <span className="text-xs text-[var(--text-muted)]">
+            Track your ticket
+          </span>
+        </Link>
       </div>
 
       <section>

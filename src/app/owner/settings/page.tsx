@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Building2,
   Scissors,
@@ -401,38 +401,35 @@ export default function OwnerSettingsPage() {
     <>
       <Topbar title="Settings" />
       <PageTransition>
-        <div className="mx-auto max-w-7xl p-4 md:p-6">
-          <div className="flex flex-col gap-6 lg:flex-row">
-            <nav className="flex shrink-0 gap-2 overflow-x-auto pb-2 lg:w-52 lg:flex-col lg:overflow-visible lg:pb-0">
-              {TABS.map((tab) => {
-                const Icon = tab.icon;
-                const active = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
-                      active
-                        ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                        : "text-[var(--text-muted)] hover:bg-[var(--bg-muted)]"
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
-
-            <div className="min-w-0 flex-1">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
+        <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+          <nav className="-mx-4 flex gap-1.5 overflow-x-auto border-b border-[var(--border)] px-4 pb-2.5 md:-mx-6 md:px-6">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                    active
+                      ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
+                      : "text-[var(--text-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--text)]"
+                  }`}
                 >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="min-w-0">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.18 }}
+            >
                   {activeTab === "profile" && (
                     <Card>
                       <CardHeader>
@@ -1129,9 +1126,7 @@ export default function OwnerSettingsPage() {
                       </Button>
                     </Card>
                   )}
-                </motion.div>
-              </AnimatePresence>
-            </div>
+            </motion.div>
           </div>
         </div>
       </PageTransition>

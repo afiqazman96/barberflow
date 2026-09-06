@@ -245,13 +245,37 @@ export interface Sale {
   voucher: number;
   /** Barber tip, added on top of the total and paid through to the barber. */
   tip: number;
+  /** Service charge levied on the bill (0 when the owner has it switched off). */
+  serviceCharge?: number;
+  /** Service charge rate applied, snapshotted at sale time. */
+  serviceChargeRate?: number;
+  /** SST / service tax on the bill (0 when switched off). */
+  tax?: number;
+  /** SST rate applied, snapshotted at sale time. */
+  taxRate?: number;
   total: number;
   paymentMethod: PaymentMethod;
+  /** Card capture details, recorded when paid by card. All fields optional. */
+  card?: { scheme?: string; last4?: string; approvalCode?: string };
   commission: number;
   createdAt: string;
   receiptNo: string;
   /** Set when an owner reverses the sale. */
   voided?: { reason: string; at: string; by: string };
+}
+
+/** Owner-configured service charge and SST. All off by default. */
+export interface TaxConfig {
+  serviceChargeEnabled: boolean;
+  /** Percent, e.g. 10 for 10%. */
+  serviceChargeRate: number;
+  sstEnabled: boolean;
+  /** Percent, e.g. 8 for 8%. */
+  sstRate: number;
+  /** Shown on the receipt when SST is charged. */
+  sstRegNo: string;
+  /** Whether charges hit service lines only, or the whole bill. */
+  applyTo: "services" | "all";
 }
 
 /** One line in the cash drawer log for a shift. */

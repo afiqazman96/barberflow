@@ -26,6 +26,7 @@ export function SalesHistory() {
   const isOwner = session.role === "owner";
   const sales = useAppStore((s) => s.sales);
   const business = useAppStore((s) => s.businessProfile);
+  const taxConfig = useAppStore((s) => s.taxConfig);
   const voidSale = useAppStore((s) => s.voidSale);
 
   const [search, setSearch] = useState("");
@@ -238,6 +239,22 @@ export function SalesHistory() {
                     <span>-{formatCurrency(selected.discount)}</span>
                   </div>
                 )}
+                {(selected.serviceCharge ?? 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span>
+                      Service charge ({selected.serviceChargeRate}%)
+                    </span>
+                    <span>
+                      +{formatCurrency(selected.serviceCharge ?? 0)}
+                    </span>
+                  </div>
+                )}
+                {(selected.tax ?? 0) > 0 && (
+                  <div className="flex justify-between">
+                    <span>SST ({selected.taxRate}%)</span>
+                    <span>+{formatCurrency(selected.tax ?? 0)}</span>
+                  </div>
+                )}
                 {selected.tip > 0 && (
                   <div className="flex justify-between">
                     <span>Tip</span>
@@ -251,7 +268,17 @@ export function SalesHistory() {
                   </span>
                 </div>
                 <div className="flex justify-between text-[var(--text-faint)]">
-                  <span className="capitalize">{selected.paymentMethod}</span>
+                  <span className="capitalize">
+                    {selected.paymentMethod}
+                    {selected.card &&
+                      (selected.card.scheme || selected.card.last4) &&
+                      ` · ${[
+                        selected.card.scheme,
+                        selected.card.last4 && `····${selected.card.last4}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}`}
+                  </span>
                   {selected.staffId && (
                     <span>
                       Barber got:{" "}
@@ -259,6 +286,17 @@ export function SalesHistory() {
                     </span>
                   )}
                 </div>
+                {selected.card?.approvalCode && (
+                  <div className="flex justify-between text-[var(--text-faint)]">
+                    <span>Approval</span>
+                    <span>{selected.card.approvalCode}</span>
+                  </div>
+                )}
+                {(selected.tax ?? 0) > 0 && taxConfig.sstRegNo && (
+                  <p className="pt-1 text-xs text-[var(--text-faint)]">
+                    SST Reg: {taxConfig.sstRegNo}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button

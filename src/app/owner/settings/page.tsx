@@ -16,6 +16,9 @@ import {
   Pencil,
   Trash2,
   QrCode,
+  Percent,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -36,6 +39,7 @@ const TABS = [
   { id: "profile", label: "Business", icon: Building2 },
   { id: "branches", label: "Branches", icon: Building2 },
   { id: "services", label: "Services", icon: Scissors },
+  { id: "tax", label: "Tax & Charges", icon: Percent },
   { id: "chairs", label: "Chairs", icon: Armchair },
   { id: "qr", label: "Walk-in QR", icon: QrCode },
   { id: "queue", label: "Queue Rules", icon: ListOrdered },
@@ -112,6 +116,8 @@ export default function OwnerSettingsPage() {
   const deleteMembershipPlan = useAppStore((s) => s.deleteMembershipPlan);
   const businessProfile = useAppStore((s) => s.businessProfile);
   const updateBusinessProfile = useAppStore((s) => s.updateBusinessProfile);
+  const taxConfig = useAppStore((s) => s.taxConfig);
+  const updateTaxConfig = useAppStore((s) => s.updateTaxConfig);
 
   const [profile, setProfile] = useState({
     name: businessProfile.name,
@@ -121,6 +127,8 @@ export default function OwnerSettingsPage() {
     taxId: businessProfile.taxId,
     logoUrl: businessProfile.logoUrl,
   });
+
+  const [tax, setTax] = useState(taxConfig);
 
   const [branchDrafts, setBranchDrafts] = useState<Record<string, BranchDraft>>(
     {},
@@ -267,6 +275,18 @@ export default function OwnerSettingsPage() {
     });
     toast.success("Settings saved", {
       description: "Business profile updated successfully",
+    });
+  }
+
+  function handleSaveTax() {
+    updateTaxConfig({
+      ...tax,
+      serviceChargeRate: Math.max(0, Math.min(100, tax.serviceChargeRate || 0)),
+      sstRate: Math.max(0, Math.min(100, tax.sstRate || 0)),
+      sstRegNo: tax.sstRegNo.trim(),
+    });
+    toast.success("Settings saved", {
+      description: "Tax & charges updated successfully",
     });
   }
 
@@ -497,6 +517,157 @@ export default function OwnerSettingsPage() {
                       <Button className="mt-6" onClick={handleSaveProfile}>
                         <Save className="h-4 w-4" />
                         Save Profile
+                      </Button>
+                    </Card>
+                  )}
+
+                  {activeTab === "tax" && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Tax &amp; Service Charge</CardTitle>
+                      </CardHeader>
+                      <p className="mb-5 text-sm text-[var(--text-muted)]">
+                        Off by default. Switch on only what your business is
+                        registered to charge — the POS then adds it to every
+                        bill and prints it on the receipt.
+                      </p>
+
+                      <div className="space-y-4">
+                        <div className="rounded-xl border border-[var(--border)] p-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTax({
+                                ...tax,
+                                serviceChargeEnabled:
+                                  !tax.serviceChargeEnabled,
+                              })
+                            }
+                            className="flex w-full items-center justify-between gap-3 text-left"
+                          >
+                            <span>
+                              <span className="block font-medium">
+                                Service charge
+                              </span>
+                              <span className="block text-xs text-[var(--text-faint)]">
+                                A flat percentage added to the bill
+                              </span>
+                            </span>
+                            {tax.serviceChargeEnabled ? (
+                              <ToggleRight className="h-8 w-8 shrink-0 text-[var(--gold)]" />
+                            ) : (
+                              <ToggleLeft className="h-8 w-8 shrink-0 text-[var(--text-faint)]" />
+                            )}
+                          </button>
+                          {tax.serviceChargeEnabled && (
+                            <div className="mt-3 max-w-[180px]">
+                              <Label>Rate (%)</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.5}
+                                value={tax.serviceChargeRate || ""}
+                                onChange={(e) =>
+                                  setTax({
+                                    ...tax,
+                                    serviceChargeRate:
+                                      Number(e.target.value) || 0,
+                                  })
+                                }
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-xl border border-[var(--border)] p-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTax({ ...tax, sstEnabled: !tax.sstEnabled })
+                            }
+                            className="flex w-full items-center justify-between gap-3 text-left"
+                          >
+                            <span>
+                              <span className="block font-medium">
+                                SST / service tax
+                              </span>
+                              <span className="block text-xs text-[var(--text-faint)]">
+                                Charged on the bill and the service charge
+                              </span>
+                            </span>
+                            {tax.sstEnabled ? (
+                              <ToggleRight className="h-8 w-8 shrink-0 text-[var(--gold)]" />
+                            ) : (
+                              <ToggleLeft className="h-8 w-8 shrink-0 text-[var(--text-faint)]" />
+                            )}
+                          </button>
+                          {tax.sstEnabled && (
+                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                              <div>
+                                <Label>Rate (%)</Label>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step={0.5}
+                                  value={tax.sstRate || ""}
+                                  onChange={(e) =>
+                                    setTax({
+                                      ...tax,
+                                      sstRate: Number(e.target.value) || 0,
+                                    })
+                                  }
+                                />
+                              </div>
+                              <div>
+                                <Label>SST registration no.</Label>
+                                <Input
+                                  value={tax.sstRegNo}
+                                  placeholder="W24-1234-56789012"
+                                  onChange={(e) =>
+                                    setTax({
+                                      ...tax,
+                                      sstRegNo: e.target.value,
+                                    })
+                                  }
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {(tax.serviceChargeEnabled || tax.sstEnabled) && (
+                          <div>
+                            <Label>Apply charges to</Label>
+                            <Select
+                              value={tax.applyTo}
+                              onChange={(e) =>
+                                setTax({
+                                  ...tax,
+                                  applyTo: e.target
+                                    .value as typeof tax.applyTo,
+                                })
+                              }
+                            >
+                              <option value="services">
+                                Services only (retail products excluded)
+                              </option>
+                              <option value="all">
+                                Everything (services + products)
+                              </option>
+                            </Select>
+                            <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                              Retail products already carry sales tax, so most
+                              salons charge on services only.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <Button className="mt-6" onClick={handleSaveTax}>
+                        <Save className="h-4 w-4" />
+                        Save Tax &amp; Charges
                       </Button>
                     </Card>
                   )}

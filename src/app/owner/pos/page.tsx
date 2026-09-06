@@ -19,14 +19,17 @@ import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { useAppStore } from "@/lib/store/app-store";
+import { computeCharges } from "@/lib/pos-pricing";
 import { CUSTOMERS } from "@/lib/mock/data";
 import type { PaymentMethod } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+
+const CARD_SCHEMES = ["Visa", "Mastercard", "Amex", "Debit", "Other"];
 
 type Tab = "services" | "products";
 
@@ -56,6 +59,7 @@ export default function OwnerPosPage() {
   const setPosStaffId = useAppStore((s) => s.setPosStaffId);
   const staff = useAppStore((s) => s.staff);
   const branchId = useAppStore((s) => s.branchId);
+  const taxConfig = useAppStore((s) => s.taxConfig);
   const clearPos = useAppStore((s) => s.clearPos);
   const completePayment = useAppStore((s) => s.completePayment);
 
@@ -65,6 +69,7 @@ export default function OwnerPosPage() {
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [processing, setProcessing] = useState(false);
   const [paid, setPaid] = useState(false);
+  const [card, setCard] = useState({ scheme: "", last4: "", approvalCode: "" });
 
   const customer = posCustomerId
     ? CUSTOMERS.find((c) => c.id === posCustomerId)
@@ -79,7 +84,16 @@ export default function OwnerPosPage() {
     (sum, i) => sum + i.unitPrice * i.quantity,
     0,
   );
-  const total = Math.max(0, subtotal - posDiscount);
+  const serviceSubtotal = posItems
+    .filter((i) => i.type === "service")
+    .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const charges = computeCharges({
+    serviceSubtotal,
+    otherSubtotal: subtotal - serviceSubtotal,
+    discount: posDiscount,
+    config: taxConfig,
+  });
+  const total = charges.total;
   const receipt = paid ? lastReceipt : null;
   const needsBarber = posItems.some((i) => i.type === "service");
 
@@ -146,6 +160,7 @@ export default function OwnerPosPage() {
     }
     setPaid(false);
     setMethod(null);
+    setCard({ scheme: "", last4: "", approvalCode: "" });
     setPayOpen(true);
   }
 
@@ -156,7 +171,16 @@ export default function OwnerPosPage() {
     }
     setProcessing(true);
     setTimeout(() => {
-      const sale = completePayment(method);
+      const sale = completePayment(
+        method,
+        method === "card"
+          ? {
+              scheme: card.scheme || undefined,
+              last4: card.last4.trim() || undefined,
+              approvalCode: card.approvalCode.trim() || undefined,
+            }
+          : undefined,
+      );
       setPaid(true);
       setProcessing(false);
       toast.success("Payment complete!", {
@@ -400,7 +424,19 @@ export default function OwnerPosPage() {
                   {posDiscount > 0 && (
                     <div className="flex justify-between text-[var(--success)]">
                       <span>Discount</span>
-                      <span>-{formatCurrency(posDiscount)}</span>
+                      <span>-{formatCurrency(charges.discount)}</span>
+                    </div>
+                  )}
+                  {charges.serviceCharge > 0 && (
+                    <div className="flex justify-between text-[var(--text-muted)]">
+                      <span>Service charge ({charges.serviceChargeRate}%)</span>
+                      <span>+{formatCurrency(charges.serviceCharge)}</span>
+                    </div>
+                  )}
+                  {charges.tax > 0 && (
+                    <div className="flex justify-between text-[var(--text-muted)]">
+                      <span>SST ({charges.taxRate}%)</span>
+                      <span>+{formatCurrency(charges.tax)}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-display text-lg font-semibold">
@@ -451,6 +487,32 @@ export default function OwnerPosPage() {
                     <span>{formatCurrency(item.unitPrice * item.quantity)}</span>
                   </div>
                 ))}
+                {(charges.discount > 0 ||
+                  charges.serviceCharge > 0 ||
+                  charges.tax > 0) && (
+                  <div className="space-y-1 border-t border-[var(--border)] pt-2 text-[var(--text-muted)]">
+                    {charges.discount > 0 && (
+                      <div className="flex justify-between text-[var(--success)]">
+                        <span>Discount</span>
+                        <span>-{formatCurrency(charges.discount)}</span>
+                      </div>
+                    )}
+                    {charges.serviceCharge > 0 && (
+                      <div className="flex justify-between">
+                        <span>
+                          Service charge ({charges.serviceChargeRate}%)
+                        </span>
+                        <span>+{formatCurrency(charges.serviceCharge)}</span>
+                      </div>
+                    )}
+                    {charges.tax > 0 && (
+                      <div className="flex justify-between">
+                        <span>SST ({charges.taxRate}%)</span>
+                        <span>+{formatCurrency(charges.tax)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {METHODS.map((m) => {
@@ -473,6 +535,51 @@ export default function OwnerPosPage() {
                   );
                 })}
               </div>
+              {method === "card" && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label>Scheme</Label>
+                    <Select
+                      value={card.scheme}
+                      onChange={(e) =>
+                        setCard({ ...card, scheme: e.target.value })
+                      }
+                    >
+                      <option value="">—</option>
+                      {CARD_SCHEMES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Last 4</Label>
+                    <Input
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="4242"
+                      value={card.last4}
+                      onChange={(e) =>
+                        setCard({
+                          ...card,
+                          last4: e.target.value.replace(/\D/g, "").slice(0, 4),
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Approval</Label>
+                    <Input
+                      placeholder="123456"
+                      value={card.approvalCode}
+                      onChange={(e) =>
+                        setCard({ ...card, approvalCode: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
               <Button
                 className="w-full"
                 size="lg"

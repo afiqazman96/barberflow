@@ -18,12 +18,15 @@ import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
+import { computeCharges } from "@/lib/pos-pricing";
 import type { PaymentMethod } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+
+const CARD_SCHEMES = ["Visa", "Mastercard", "Amex", "Debit", "Other"];
 
 const METHODS: {
   id: PaymentMethod;
@@ -46,12 +49,18 @@ export default function CashierPaymentPage() {
   const posMembershipPlanId = useAppStore((s) => s.posMembershipPlanId);
   const membershipPlans = useAppStore((s) => s.membershipPlans);
   const drawerSession = useAppStore((s) => s.drawerSession);
+  const taxConfig = useAppStore((s) => s.taxConfig);
   const lastReceipt = useAppStore((s) => s.lastReceipt);
   const completePayment = useAppStore((s) => s.completePayment);
 
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [paid, setPaid] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [card, setCard] = useState({
+    scheme: "",
+    last4: "",
+    approvalCode: "",
+  });
 
   const upsellPlan = posMembershipPlanId
     ? membershipPlans.find((p) => p.id === posMembershipPlanId)
@@ -63,8 +72,18 @@ export default function CashierPaymentPage() {
     posDiscountMode === "percent"
       ? Math.round(((subtotal * posDiscount) / 100) * 100) / 100
       : posDiscount;
-  const goodsTotal = Math.max(0, subtotal - discountValue);
-  const total = goodsTotal + posTip;
+  const serviceSubtotal = posItems
+    .filter((i) => i.type === "service")
+    .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const charges = computeCharges({
+    serviceSubtotal,
+    otherSubtotal: subtotal - serviceSubtotal,
+    discount: discountValue,
+    tip: posTip,
+    config: taxConfig,
+  });
+  const goodsTotal = charges.goodsTotal;
+  const total = charges.total;
   const receipt = paid ? lastReceipt : null;
 
   const TIP_PCTS = [0, 10, 15, 20];
@@ -89,7 +108,16 @@ export default function CashierPaymentPage() {
     setTimeout(() => {
       // completePayment records the sale, frees the barber and closes the
       // queue ticket in one step.
-      const sale = completePayment(method);
+      const sale = completePayment(
+        method,
+        method === "card"
+          ? {
+              scheme: card.scheme || undefined,
+              last4: card.last4.trim() || undefined,
+              approvalCode: card.approvalCode.trim() || undefined,
+            }
+          : undefined,
+      );
       setPaid(true);
       setProcessing(false);
       toast.success("Payment complete!", {
@@ -184,6 +212,20 @@ export default function CashierPaymentPage() {
                             <span>-{formatCurrency(discountValue)}</span>
                           </div>
                         )}
+                        {charges.serviceCharge > 0 && (
+                          <div className="flex justify-between text-[var(--text-muted)]">
+                            <span>
+                              Service charge ({charges.serviceChargeRate}%)
+                            </span>
+                            <span>+{formatCurrency(charges.serviceCharge)}</span>
+                          </div>
+                        )}
+                        {charges.tax > 0 && (
+                          <div className="flex justify-between text-[var(--text-muted)]">
+                            <span>SST ({charges.taxRate}%)</span>
+                            <span>+{formatCurrency(charges.tax)}</span>
+                          </div>
+                        )}
                         {posTip > 0 && (
                           <div className="flex justify-between text-[var(--text-muted)]">
                             <span>Tip</span>
@@ -275,6 +317,65 @@ export default function CashierPaymentPage() {
                         })}
                       </div>
                     </div>
+
+                    {method === "card" && (
+                      <div className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 p-4">
+                        <p className="text-sm font-medium text-[var(--text-muted)]">
+                          Card details{" "}
+                          <span className="font-normal text-[var(--text-faint)]">
+                            · optional
+                          </span>
+                        </p>
+                        <div className="grid gap-3 sm:grid-cols-3">
+                          <div>
+                            <Label>Scheme</Label>
+                            <Select
+                              value={card.scheme}
+                              onChange={(e) =>
+                                setCard({ ...card, scheme: e.target.value })
+                              }
+                            >
+                              <option value="">—</option>
+                              {CARD_SCHEMES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+                          <div>
+                            <Label>Last 4 digits</Label>
+                            <Input
+                              inputMode="numeric"
+                              maxLength={4}
+                              placeholder="4242"
+                              value={card.last4}
+                              onChange={(e) =>
+                                setCard({
+                                  ...card,
+                                  last4: e.target.value
+                                    .replace(/\D/g, "")
+                                    .slice(0, 4),
+                                })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label>Approval code</Label>
+                            <Input
+                              placeholder="123456"
+                              value={card.approvalCode}
+                              onChange={(e) =>
+                                setCard({
+                                  ...card,
+                                  approvalCode: e.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <Button
                       className="w-full"
@@ -382,6 +483,22 @@ export default function CashierPaymentPage() {
                               <span>-{formatCurrency(receipt.discount)}</span>
                             </div>
                           )}
+                          {(receipt.serviceCharge ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span>
+                                Service charge ({receipt.serviceChargeRate}%)
+                              </span>
+                              <span>
+                                +{formatCurrency(receipt.serviceCharge ?? 0)}
+                              </span>
+                            </div>
+                          )}
+                          {(receipt.tax ?? 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span>SST ({receipt.taxRate}%)</span>
+                              <span>+{formatCurrency(receipt.tax ?? 0)}</span>
+                            </div>
+                          )}
                           {receipt.tip > 0 && (
                             <div className="flex justify-between">
                               <span>Tip</span>
@@ -397,6 +514,11 @@ export default function CashierPaymentPage() {
                           <div className="flex justify-between text-[var(--text-faint)]">
                             <span className="capitalize">
                               {receipt.paymentMethod}
+                              {receipt.card &&
+                                (receipt.card.scheme || receipt.card.last4) &&
+                                ` · ${[receipt.card.scheme, receipt.card.last4 && `····${receipt.card.last4}`]
+                                  .filter(Boolean)
+                                  .join(" ")}`}
                             </span>
                             {receipt.staffId && (
                               <span>
@@ -407,6 +529,17 @@ export default function CashierPaymentPage() {
                               </span>
                             )}
                           </div>
+                          {receipt.card?.approvalCode && (
+                            <div className="flex justify-between text-[var(--text-faint)]">
+                              <span>Approval</span>
+                              <span>{receipt.card.approvalCode}</span>
+                            </div>
+                          )}
+                          {(receipt.tax ?? 0) > 0 && taxConfig.sstRegNo && (
+                            <p className="pt-1 text-xs text-[var(--text-faint)]">
+                              SST Reg: {taxConfig.sstRegNo}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </Card>

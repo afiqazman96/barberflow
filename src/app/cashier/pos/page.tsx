@@ -21,6 +21,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore, calcCommission } from "@/lib/store/app-store";
+import { computeCharges } from "@/lib/pos-pricing";
 import { CUSTOMERS } from "@/lib/mock/data";
 import { formatCurrency } from "@/lib/utils";
 
@@ -35,6 +36,7 @@ export default function CashierPosPage() {
   const SERVICES = useAppStore((s) => s.services);
   const commissionRules = useAppStore((s) => s.commissionRules);
   const membershipPlans = useAppStore((s) => s.membershipPlans);
+  const taxConfig = useAppStore((s) => s.taxConfig);
   const posItems = useAppStore((s) => s.posItems);
   const posDiscount = useAppStore((s) => s.posDiscount);
   const posDiscountMode = useAppStore((s) => s.posDiscountMode);
@@ -94,7 +96,17 @@ export default function CashierPosPage() {
     posDiscountMode === "percent"
       ? Math.round(((subtotal * posDiscount) / 100) * 100) / 100
       : posDiscount;
-  const total = Math.max(0, subtotal - discountValue);
+
+  const serviceSubtotal = posItems
+    .filter((i) => i.type === "service")
+    .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const charges = computeCharges({
+    serviceSubtotal,
+    otherSubtotal: subtotal - serviceSubtotal,
+    discount: discountValue,
+    config: taxConfig,
+  });
+  const total = charges.total;
 
   // A barber is only needed when someone did the work. A walk-in buying a
   // product off the shelf is a plain retail sale.
@@ -531,6 +543,18 @@ export default function CashierPosPage() {
                         {posDiscountMode === "percent" && ` (${posDiscount}%)`}
                       </span>
                       <span>-{formatCurrency(discountValue)}</span>
+                    </div>
+                  )}
+                  {charges.serviceCharge > 0 && (
+                    <div className="flex justify-between text-[var(--text-muted)]">
+                      <span>Service charge ({charges.serviceChargeRate}%)</span>
+                      <span>+{formatCurrency(charges.serviceCharge)}</span>
+                    </div>
+                  )}
+                  {charges.tax > 0 && (
+                    <div className="flex justify-between text-[var(--text-muted)]">
+                      <span>SST ({charges.taxRate}%)</span>
+                      <span>+{formatCurrency(charges.tax)}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-display text-lg font-semibold">

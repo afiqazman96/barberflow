@@ -19,8 +19,10 @@ import type {
   Service,
   StaffMember,
   StaffStatus,
+  TaxConfig,
   UserRole,
 } from "@/lib/types";
+import { computeCharges, DEFAULT_TAX_CONFIG } from "@/lib/pos-pricing";
 import {
   BOOKINGS,
   BRANCHES,
@@ -57,6 +59,8 @@ interface AppState {
   staffId: string | null;
   branchId: string;
   businessProfile: BusinessProfile;
+  /** Owner-configured service charge / SST, applied across every POS screen. */
+  taxConfig: TaxConfig;
   queue: QueueTicket[];
   bookings: Booking[];
   sales: Sale[];
@@ -90,6 +94,7 @@ interface AppState {
   setRole: (role: UserRole | null, staffId?: string | null) => void;
   setBranchId: (id: string) => void;
   updateBusinessProfile: (patch: Partial<BusinessProfile>) => void;
+  updateTaxConfig: (patch: Partial<TaxConfig>) => void;
   updateStaffStatus: (staffId: string, status: StaffStatus) => void;
   setStaffPassword: (
     staffId: string,
@@ -130,7 +135,10 @@ interface AppState {
   loadPosTicket: (ticketId: string) => void;
   setPosStaffId: (id: string | null) => void;
   clearPos: () => void;
-  completePayment: (method: PaymentMethod) => Sale;
+  completePayment: (
+    method: PaymentMethod,
+    card?: Sale["card"],
+  ) => Sale;
   voidSale: (saleId: string, reason: string, by: string) => void;
   openDrawer: (input: {
     cashierId: string;
@@ -205,6 +213,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     address: "88 Jalan Bukit Bintang, Lot 12, KL",
     taxId: "W10-1808-32000123",
   },
+  taxConfig: { ...DEFAULT_TAX_CONFIG },
   queue: QUEUE,
   bookings: BOOKINGS,
   sales: SALES,
@@ -245,6 +254,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({
       businessProfile: { ...s.businessProfile, ...patch },
     })),
+  updateTaxConfig: (patch) =>
+    set((s) => ({ taxConfig: { ...s.taxConfig, ...patch } })),
 
   updateStaffStatus: (staffId, status) =>
     set((s) => ({
@@ -532,7 +543,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       posMembershipPlanId: null,
     }),
 
-  completePayment: (method) => {
+  completePayment: (method, card) => {
     const state = get();
 
     const ticket = state.posTicketId
@@ -588,16 +599,32 @@ export const useAppStore = create<AppState>((set, get) => ({
         : []),
     ];
 
-    const subtotal = items.reduce((sum, i) => sum + i.total, 0);
-    const discount =
+    const serviceSubtotal = items
+      .filter((i) => i.type === "service")
+      .reduce((sum, i) => sum + i.total, 0);
+    const otherSubtotal = items
+      .filter((i) => i.type !== "service")
+      .reduce((sum, i) => sum + i.total, 0);
+    const rawDiscount =
       state.posDiscountMode === "percent"
-        ? Math.round(((subtotal * state.posDiscount) / 100) * 100) / 100
+        ? Math.round(
+            (((serviceSubtotal + otherSubtotal) * state.posDiscount) / 100) *
+              100,
+          ) / 100
         : state.posDiscount;
-    const goodsTotal = Math.max(0, subtotal - discount);
-    const tip = state.posTip;
-    const total = goodsTotal + tip;
 
-    // Commission is on the goods, not the tip; the tip passes straight through.
+    // computeCharges is the shared money math — service charge, SST and the
+    // final total all come from it so every POS screen agrees.
+    const charges = computeCharges({
+      serviceSubtotal,
+      otherSubtotal,
+      discount: rawDiscount,
+      tip: state.posTip,
+      config: state.taxConfig,
+    });
+    const { goodsTotal, serviceCharge, tax, tip, total } = charges;
+
+    // Commission is on the goods, not the tip, service charge or tax.
     const commission = staff
       ? calcCommission(
           goodsTotal,
@@ -615,16 +642,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       staffId: staff?.id ?? "",
       staffName: staff?.name ?? "Retail",
       items,
-      subtotal,
-      discount,
+      subtotal: charges.subtotal,
+      discount: charges.discount,
       discountReason:
-        discount > 0 && state.posDiscountReason.trim()
+        charges.discount > 0 && state.posDiscountReason.trim()
           ? state.posDiscountReason.trim()
           : undefined,
       voucher: 0,
       tip,
+      serviceCharge,
+      serviceChargeRate: charges.serviceChargeRate,
+      tax,
+      taxRate: charges.taxRate,
       total,
       paymentMethod: method,
+      card: method === "card" ? card : undefined,
       commission,
       createdAt: new Date().toISOString(),
       receiptNo: `FH-KL-${Math.floor(1100 + Math.random() * 800)}`,
@@ -719,7 +751,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const sale = s.sales.find((x) => x.id === saleId);
       if (!sale || sale.voided) return {};
       const at = new Date().toISOString();
-      const goodsTotal = sale.total - sale.tip;
+      const goodsTotal =
+        sale.total -
+        sale.tip -
+        (sale.serviceCharge ?? 0) -
+        (sale.tax ?? 0);
       const barberTake = sale.commission + sale.tip;
 
       const refundMovement: CashMovement | null =

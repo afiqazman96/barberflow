@@ -209,16 +209,16 @@ export default function ShopDetailPage({
         </div>
       </section>
 
-      <div className="sticky bottom-20 space-y-3 pt-2">
-        <Button asChild size="xl" className="w-full">
+      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+5.25rem)] z-20 -mx-4 mt-2 space-y-2 border-t border-[var(--border)] bg-[var(--bg)]/92 px-4 pb-3 pt-3 backdrop-blur-lg lg:bottom-4 lg:rounded-2xl lg:border">
+        <Button asChild size="lg" className="w-full">
           <Link href={`/customer/queue?branch=${branch.id}`}>
-            <Ticket className="h-5 w-5" />
+            <Ticket className="h-4 w-4" />
             Join Queue
           </Link>
         </Button>
-        <Button asChild variant="outline" size="xl" className="w-full">
+        <Button asChild variant="outline" size="lg" className="w-full">
           <Link href={`/customer/booking?branch=${branch.id}`}>
-            <Calendar className="h-5 w-5" />
+            <Calendar className="h-4 w-4" />
             Book Appointment
           </Link>
         </Button>

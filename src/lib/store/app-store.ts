@@ -130,6 +130,12 @@ interface AppState {
   setPosDiscountReason: (reason: string) => void;
   setPosTip: (n: number) => void;
   setPosCustomerId: (id: string | null) => void;
+  /**
+   * Pick a customer by name (not by ticket). If they have a service waiting
+   * to be paid for, loads that ticket so the barber who served them and
+   * their items carry over — same as picking them off the ticket list.
+   */
+  selectPosCustomer: (id: string | null) => void;
   setPosMembershipPlan: (planId: string | null) => void;
   /** Load a queue ticket into the POS: customer, its barber, and its services. */
   loadPosTicket: (ticketId: string) => void;
@@ -476,6 +482,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPosDiscountReason: (posDiscountReason) => set({ posDiscountReason }),
   setPosTip: (posTip) => set({ posTip: Math.max(0, posTip) }),
   setPosCustomerId: (posCustomerId) => set({ posCustomerId }),
+  selectPosCustomer: (id) => {
+    if (!id) {
+      set({ posCustomerId: null, posTicketId: null, posStaffId: null });
+      return;
+    }
+    const ticket = get().queue.find(
+      (q) => q.customerId === id && q.status === "awaiting-payment",
+    );
+    if (ticket) {
+      get().loadPosTicket(ticket.id);
+    } else {
+      set({ posCustomerId: id, posTicketId: null, posStaffId: null });
+    }
+  },
 
   setPosMembershipPlan: (posMembershipPlanId) =>
     set((s) => {

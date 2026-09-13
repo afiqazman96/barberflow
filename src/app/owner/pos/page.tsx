@@ -55,11 +55,12 @@ export default function OwnerPosPage() {
   const updatePosQty = useAppStore((s) => s.updatePosQty);
   const removePosItem = useAppStore((s) => s.removePosItem);
   const setPosDiscount = useAppStore((s) => s.setPosDiscount);
-  const setPosCustomerId = useAppStore((s) => s.setPosCustomerId);
+  const selectPosCustomer = useAppStore((s) => s.selectPosCustomer);
   const posStaffId = useAppStore((s) => s.posStaffId);
   const setPosStaffId = useAppStore((s) => s.setPosStaffId);
   const staff = useAppStore((s) => s.staff);
   const branchId = useAppStore((s) => s.branchId);
+  const queue = useAppStore((s) => s.queue);
   const taxConfig = useAppStore((s) => s.taxConfig);
   const clearPos = useAppStore((s) => s.clearPos);
   const completePayment = useAppStore((s) => s.completePayment);
@@ -148,6 +149,28 @@ export default function OwnerPosPage() {
       unitPrice: getPrice(item),
     });
     toast.success("Added to cart", { description: item.name });
+  }
+
+  function handleSelectCustomer(id: string) {
+    const customerId = id || null;
+    // A customer waiting to pay just had a service done — carry the barber
+    // who served them over instead of making the cashier pick again.
+    const ticket = customerId
+      ? queue.find(
+          (q) => q.customerId === customerId && q.status === "awaiting-payment",
+        )
+      : null;
+    selectPosCustomer(customerId);
+    if (ticket) {
+      const servedBy = barbers.find(
+        (b) => b.id === (ticket.assignedStaffId ?? ticket.preferredStaffId),
+      )?.name;
+      toast.success("Barber auto-selected", {
+        description: servedBy
+          ? `${ticket.customerName} was just served by ${servedBy}`
+          : `${ticket.customerName} is awaiting payment`,
+      });
+    }
   }
 
   function openPayment() {
@@ -316,9 +339,7 @@ export default function OwnerPosPage() {
                   <Label>Customer (optional)</Label>
                   <select
                     value={posCustomerId ?? ""}
-                    onChange={(e) =>
-                      setPosCustomerId(e.target.value || null)
-                    }
+                    onChange={(e) => handleSelectCustomer(e.target.value)}
                     className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
                   >
                     <option value="">Walk-in</option>

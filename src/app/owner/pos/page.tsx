@@ -14,6 +14,7 @@ import {
   QrCode,
   CheckCircle2,
   Printer,
+  Ticket,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -56,6 +57,7 @@ export default function OwnerPosPage() {
   const removePosItem = useAppStore((s) => s.removePosItem);
   const setPosDiscount = useAppStore((s) => s.setPosDiscount);
   const selectPosCustomer = useAppStore((s) => s.selectPosCustomer);
+  const loadPosTicket = useAppStore((s) => s.loadPosTicket);
   const posStaffId = useAppStore((s) => s.posStaffId);
   const setPosStaffId = useAppStore((s) => s.setPosStaffId);
   const staff = useAppStore((s) => s.staff);
@@ -81,6 +83,7 @@ export default function OwnerPosPage() {
   const barbers = staff.filter(
     (s) => s.role === "barber" && s.branchId === branchId,
   );
+  const awaitingPayment = queue.filter((q) => q.status === "awaiting-payment");
 
   const subtotal = posItems.reduce(
     (sum, i) => sum + i.unitPrice * i.quantity,
@@ -171,6 +174,11 @@ export default function OwnerPosPage() {
           : `${ticket.customerName} is awaiting payment`,
       });
     }
+  }
+
+  function handleSelectTicket(ticketId: string, ticketName: string) {
+    loadPosTicket(ticketId);
+    toast.success("Loaded for checkout", { description: ticketName });
   }
 
   function openPayment() {
@@ -328,7 +336,33 @@ export default function OwnerPosPage() {
             </div>
           </div>
 
-          <div className="w-full shrink-0 lg:w-96">
+          <div className="w-full shrink-0 space-y-4 lg:w-96">
+            {awaitingPayment.length > 0 && (
+              <Card className="p-4">
+                <CardHeader className="mb-3">
+                  <CardTitle className="text-sm">Awaiting Payment</CardTitle>
+                </CardHeader>
+                <div className="space-y-2">
+                  {awaitingPayment.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => handleSelectTicket(t.id, t.customerName)}
+                      className="flex w-full items-center gap-3 rounded-xl bg-[var(--bg-muted)] px-3 py-2 text-left text-sm transition hover:bg-[var(--bg-hover)]"
+                    >
+                      <Ticket className="h-4 w-4 shrink-0 text-[var(--gold)]" />
+                      <span className="font-display font-bold text-[var(--gold-soft)]">
+                        {t.number}
+                      </span>
+                      <span className="truncate">{t.customerName}</span>
+                      <span className="ml-auto shrink-0 truncate text-xs text-[var(--text-faint)]">
+                        {t.serviceNames.join(", ")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            )}
+
             <Card className="sticky top-20 p-4">
               <CardHeader className="mb-3">
                 <CardTitle>Cart</CardTitle>

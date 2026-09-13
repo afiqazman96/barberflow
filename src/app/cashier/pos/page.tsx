@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PosSubnav } from "@/components/domain/pos-subnav";
 import { useAppStore, calcCommission } from "@/lib/store/app-store";
 import { computeCharges } from "@/lib/pos-pricing";
 import { CUSTOMERS } from "@/lib/mock/data";
@@ -220,6 +221,7 @@ export default function CashierPosPage() {
           ) : null
         }
       />
+      <PosSubnav base="/cashier/pos" />
       <PageTransition>
         <div className="mx-auto flex max-w-7xl flex-col gap-5 p-4 lg:flex-row lg:p-6">
           <div className="min-w-0 flex-1 space-y-4">

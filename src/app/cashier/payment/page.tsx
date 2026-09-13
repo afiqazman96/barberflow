@@ -563,7 +563,7 @@ export default function CashierPaymentPage() {
 
                 <p className="text-center text-sm">
                   <Link
-                    href="/cashier/sales"
+                    href="/cashier/pos/receipts"
                     className="text-[var(--text-muted)] underline-offset-4 hover:text-[var(--gold-soft)] hover:underline"
                   >
                     View past receipts

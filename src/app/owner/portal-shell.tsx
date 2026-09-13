@@ -5,13 +5,11 @@ import {
   ListOrdered,
   CalendarDays,
   ShoppingCart,
-  Receipt,
   UserCircle,
   Users,
   Percent,
   Package,
   BarChart3,
-  Wallet,
   CreditCard,
   Settings,
   Menu,
@@ -24,14 +22,15 @@ const navItems = [
   { href: "/owner/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/owner/queue", label: "Queue", icon: ListOrdered },
   { href: "/owner/appointment", label: "Appointment", icon: CalendarDays },
-  { href: "/owner/pos", label: "POS", icon: ShoppingCart },
-  { href: "/owner/sales", label: "Sales & Receipts", icon: Receipt },
+  // Sell, Sales & Receipts and Cash Drawer are one POS workflow — grouped
+  // under this single entry as tabs (see PosSubnav) instead of three
+  // separate sidebar items.
+  { href: "/owner/pos", label: "Point of Sale", icon: ShoppingCart },
   { href: "/owner/customer", label: "Customer", icon: UserCircle },
   { href: "/owner/staff", label: "Staff", icon: Users },
   { href: "/owner/commission", label: "Commission", icon: Percent },
   { href: "/owner/inventory", label: "Inventory", icon: Package },
   { href: "/owner/reports", label: "Reports", icon: BarChart3 },
-  { href: "/owner/cash-drawer", label: "Cash Drawer", icon: Wallet },
   { href: "/owner/billing", label: "Billing", icon: CreditCard },
   { href: "/owner/settings", label: "Settings", icon: Settings },
 ];

@@ -339,7 +339,9 @@ function OwnerQueueContent() {
               onChange={(e) => setBarberPref(e.target.value)}
             >
               <option value="any">Any Available Barber</option>
-              {barbers.map((b) => (
+              {barbers
+                .filter((b) => b.status !== "off-duty")
+                .map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name} · {b.specialty}
                 </option>

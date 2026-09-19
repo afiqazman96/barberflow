@@ -15,6 +15,9 @@ import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { StatCard } from "@/components/domain/stat-card";
 import { StaffCard } from "@/components/domain/staff-card";
+import { CashierShiftControls } from "@/components/domain/cashier-shift";
+import { MyShiftCard, WeekSchedule } from "@/components/domain/shift-cards";
+import { useSession } from "@/components/auth/session-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -26,6 +29,7 @@ export default function CashierDashboardPage() {
   const queue = useAppStore((s) => s.queue);
   const sales = useAppStore((s) => s.sales);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
+  const myStaffId = useSession().staffId ?? "";
 
   const today = todayIso();
   const waiting = queue.filter((q) => q.status === "waiting").length;
@@ -49,6 +53,16 @@ export default function CashierDashboardPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="space-y-4">
+              <CashierShiftControls />
+              <MyShiftCard staffId={myStaffId} />
+            </div>
+            <div className="lg:col-span-2">
+              <WeekSchedule staffId={myStaffId} />
+            </div>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard
               label="Queue Waiting"

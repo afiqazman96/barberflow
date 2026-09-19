@@ -19,6 +19,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/badge";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { RecentShifts, WeekSchedule } from "@/components/domain/shift-cards";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { useAppStore } from "@/lib/store/app-store";
 import { changePassword } from "@/lib/auth/actions";
@@ -133,7 +134,7 @@ function ChangePasswordSection() {
 }
 
 function StaffProfileContent() {
-  const { staff, status, chair, currentTicket } = useStaffPortal();
+  const { staffId, staff, status, chair, currentTicket } = useStaffPortal();
   const branches = useAppStore((s) => s.branches);
   const branchName = branches.find((b) => b.id === staff?.branchId)?.name;
 
@@ -183,6 +184,9 @@ function StaffProfileContent() {
           </div>
         </div>
       </Card>
+
+      <WeekSchedule staffId={staffId} />
+      <RecentShifts staffId={staffId} />
 
       <Card>
         <CardHeader>

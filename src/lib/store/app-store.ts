@@ -12,18 +12,31 @@ import type {
   CommissionRule,
   Customer,
   DrawerSession,
+  LeaveEntry,
   MembershipPlan,
   PaymentMethod,
   Product,
   QueueTicket,
+  RosterDay,
   Sale,
   Service,
+  ShiftRecord,
   StaffMember,
   StaffStatus,
   TaxConfig,
   UserRole,
 } from "@/lib/types";
 import { computeCharges, DEFAULT_TAX_CONFIG } from "@/lib/pos-pricing";
+import {
+  AUTO_CLOSE_GRACE_MINS,
+  closingMins,
+  emptyWeek,
+  localIso,
+  minsOfDay,
+  openShiftOf,
+  parseIso,
+} from "@/lib/roster";
+import { LEAVES, ROSTER, SHIFTS } from "@/lib/mock/roster-data";
 import {
   BOOKINGS,
   BRANCHES,
@@ -77,6 +90,11 @@ interface AppState {
    * screen that resolves a customer sees the same edits. */
   customers: Customer[];
   staffStatuses: Record<string, StaffStatus>;
+  /** Clock-in/out log for barbers and cashiers, newest first. */
+  shifts: ShiftRecord[];
+  /** Weekly roster per staff id; index 0 = Sunday. */
+  roster: Record<string, RosterDay[]>;
+  leaves: LeaveEntry[];
   posItems: PosItem[];
   posDiscount: number;
   posDiscountMode: "amount" | "percent";
@@ -101,6 +119,21 @@ interface AppState {
   updateBusinessProfile: (patch: Partial<BusinessProfile>) => void;
   updateTaxConfig: (patch: Partial<TaxConfig>) => void;
   updateStaffStatus: (staffId: string, status: StaffStatus) => void;
+  /** Clock a barber or cashier in. The only way from off-duty to on-duty. */
+  startShift: (
+    staffId: string,
+    opts?: { chairId?: string | null; by?: "self" | "owner"; note?: string },
+  ) => { ok: boolean; error?: string };
+  /** Clock out and free their chair. Refuses mid-service or with the till open. */
+  endShift: (
+    staffId: string,
+    opts?: { by?: "self" | "owner"; note?: string },
+  ) => { ok: boolean; error?: string };
+  /** Ends shifts left open past closing time, or from a previous day. */
+  closeStaleShifts: (now: Date) => void;
+  setRosterDay: (staffId: string, weekday: number, patch: Partial<RosterDay>) => void;
+  addLeave: (input: Omit<LeaveEntry, "id">) => void;
+  removeLeave: (id: string) => void;
   setStaffPassword: (
     staffId: string,
     password: string,
@@ -225,6 +258,28 @@ const initialStatuses = Object.fromEntries(
   STAFF.map((s) => [s.id, s.status]),
 ) as Record<string, StaffStatus>;
 
+/** Everything that changes when someone clocks out, or is forced out. */
+function closeShiftPatch(
+  s: AppState,
+  staffId: string,
+  by: "self" | "owner" | "auto",
+  note?: string,
+  at: string = new Date().toISOString(),
+): Partial<AppState> {
+  return {
+    shifts: s.shifts.map((sh) =>
+      sh.staffId === staffId && !sh.endedAt
+        ? { ...sh, endedAt: at, endedBy: by, note: note ?? sh.note }
+        : sh,
+    ),
+    chairs: s.chairs.map((c) => (c.staffId === staffId ? { ...c, staffId: null } : c)),
+    staff: s.staff.map((m) =>
+      m.id === staffId ? { ...m, status: "off-duty" as const, chairId: null } : m,
+    ),
+    staffStatuses: { ...s.staffStatuses, [staffId]: "off-duty" as const },
+  };
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   role: null,
   session: null,
@@ -250,6 +305,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   products: PRODUCTS.map((p) => ({ ...p })),
   customers: CUSTOMERS.map((c) => ({ ...c })),
   staffStatuses: initialStatuses,
+  shifts: SHIFTS.map((x) => ({ ...x })),
+  roster: Object.fromEntries(
+    Object.entries(ROSTER).map(([id, days]) => [id, days.map((d) => ({ ...d }))]),
+  ),
+  leaves: LEAVES.map((l) => ({ ...l })),
   posItems: [],
   posDiscount: 0,
   posDiscountMode: "amount",
@@ -283,10 +343,123 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({ taxConfig: { ...s.taxConfig, ...patch } })),
 
   updateStaffStatus: (staffId, status) =>
+    set((s) => {
+      const member = s.staff.find((m) => m.id === staffId);
+      const current = s.staffStatuses[staffId] ?? member?.status;
+      if (member && member.role !== "owner") {
+        // Going on duty is a clock-in and going off duty a clock-out, so
+        // neither can be done by just flipping the flag.
+        if (current === "off-duty" && status !== "off-duty") return {};
+        if (status === "off-duty") return closeShiftPatch(s, staffId, "self");
+      }
+      return {
+        staffStatuses: { ...s.staffStatuses, [staffId]: status },
+        staff: s.staff.map((m) => (m.id === staffId ? { ...m, status } : m)),
+      };
+    }),
+
+  startShift: (staffId, opts) => {
+    const s = get();
+    const m = s.staff.find((x) => x.id === staffId);
+    if (!m || !m.active) return { ok: false, error: "This account is disabled" };
+    if (m.role === "owner") return { ok: false, error: "Owners do not clock in" };
+    if (openShiftOf(s.shifts, staffId)) return { ok: true };
+
+    const chairId = m.role === "barber" ? (opts?.chairId ?? m.chairId ?? null) : null;
+    if (chairId) {
+      const chair = s.chairs.find((c) => c.id === chairId);
+      if (!chair || chair.branchId !== m.branchId) {
+        return { ok: false, error: "Pick a chair at your own branch" };
+      }
+      if (chair.staffId && chair.staffId !== staffId) {
+        return { ok: false, error: `${chair.label} is already taken` };
+      }
+    }
+    const now = new Date();
+    const record: ShiftRecord = {
+      id: `sh-${Date.now()}`,
+      staffId,
+      branchId: m.branchId,
+      date: localIso(now),
+      startedAt: now.toISOString(),
+      chairId,
+      startedBy: opts?.by ?? "self",
+      note: opts?.note,
+    };
+    set((st) => ({
+      shifts: [record, ...st.shifts],
+      staffStatuses: { ...st.staffStatuses, [staffId]: "available" },
+      staff: st.staff.map((x) =>
+        x.id === staffId ? { ...x, status: "available" as const } : x,
+      ),
+    }));
+    if (chairId) get().assignChair(chairId, staffId);
+    return { ok: true };
+  },
+
+  endShift: (staffId, opts) => {
+    const s = get();
+    const m = s.staff.find((x) => x.id === staffId);
+    if (!m) return { ok: false, error: "Staff member not found" };
+    if (s.queue.some((q) => q.assignedStaffId === staffId && q.status === "in-service")) {
+      return { ok: false, error: "Finish the current service first" };
+    }
+    if (s.drawerSession && !s.drawerSession.closedAt && s.drawerSession.cashierId === staffId) {
+      return { ok: false, error: "Close the cash drawer first" };
+    }
+    set((st) => closeShiftPatch(st, staffId, opts?.by ?? "self", opts?.note));
+    return { ok: true };
+  },
+
+  closeStaleShifts: (now) => {
+    const s = get();
+    const today = localIso(now);
+    const nowMins = minsOfDay(now);
+    const due: { staffId: string; at: Date }[] = [];
+    for (const sh of s.shifts) {
+      if (sh.endedAt) continue;
+      if (s.queue.some((q) => q.assignedStaffId === sh.staffId && q.status === "in-service")) continue;
+      const close = closingMins(s.branches.find((b) => b.id === sh.branchId));
+      // A shift started after closing (stock take, late clean-up) stays open
+      // until the next day rather than being closed with zero minutes.
+      const startedMins = minsOfDay(new Date(sh.startedAt));
+      const stale =
+        sh.date < today ||
+        (sh.date === today &&
+          startedMins < close &&
+          nowMins >= close + AUTO_CLOSE_GRACE_MINS);
+      if (!stale) continue;
+      const closeAt = parseIso(sh.date);
+      closeAt.setHours(0, close, 0, 0);
+      const started = new Date(sh.startedAt);
+      due.push({ staffId: sh.staffId, at: closeAt > started ? closeAt : started });
+    }
+    for (const d of due) {
+      set((st) =>
+        closeShiftPatch(st, d.staffId, "auto", "Auto-closed: shift was not ended", d.at.toISOString()),
+      );
+    }
+  },
+
+  setRosterDay: (staffId, weekday, patch) =>
     set((s) => ({
-      staffStatuses: { ...s.staffStatuses, [staffId]: status },
-      staff: s.staff.map((m) => (m.id === staffId ? { ...m, status } : m)),
+      roster: {
+        ...s.roster,
+        [staffId]: (s.roster[staffId] ?? emptyWeek()).map((d, i) =>
+          i === weekday ? { ...d, ...patch } : d,
+        ),
+      },
     })),
+
+  addLeave: (input) =>
+    set((s) => ({
+      leaves: [
+        { id: `lv-${Date.now()}`, ...input },
+        ...s.leaves.filter((l) => !(l.staffId === input.staffId && l.date === input.date)),
+      ],
+    })),
+
+  removeLeave: (id) => set((s) => ({ leaves: s.leaves.filter((l) => l.id !== id) })),
 
   setStaffPassword: (staffId, password, opts) =>
     set((s) => ({
@@ -353,6 +526,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         staffStatuses: deactivating
           ? { ...s.staffStatuses, [id]: "off-duty" as const }
           : s.staffStatuses,
+        shifts: deactivating
+          ? s.shifts.map((sh) =>
+              sh.staffId === id && !sh.endedAt
+                ? {
+                    ...sh,
+                    endedAt: new Date().toISOString(),
+                    endedBy: "owner" as const,
+                    note: "Account disabled",
+                  }
+                : sh,
+            )
+          : s.shifts,
       };
     }),
 

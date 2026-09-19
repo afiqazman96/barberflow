@@ -352,3 +352,36 @@ export interface DashboardStat {
   change: string;
   trend: "up" | "down" | "neutral";
 }
+
+/** One weekday in a staff member's recurring weekly roster. */
+export interface RosterDay {
+  off: boolean;
+  /** 24h "HH:MM". Ignored when `off`. */
+  start: string;
+  end: string;
+}
+
+/** A day a rostered staff member is away (annual leave, MC, ...). */
+export interface LeaveEntry {
+  id: string;
+  staffId: string;
+  /** Local date, YYYY-MM-DD. */
+  date: string;
+  reason: string;
+}
+
+/** A barber's or cashier's clock-in → clock-out. Owners aren't tracked. */
+export interface ShiftRecord {
+  id: string;
+  staffId: string;
+  branchId: string;
+  /** Local date the shift started on, YYYY-MM-DD. */
+  date: string;
+  startedAt: string;
+  endedAt?: string;
+  chairId?: string | null;
+  startedBy: "self" | "owner";
+  endedBy?: "self" | "owner" | "auto";
+  /** Why an owner clocked someone in/out for them, or why it auto-closed. */
+  note?: string;
+}

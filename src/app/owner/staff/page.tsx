@@ -17,7 +17,10 @@ import {
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
+import Link from "next/link";
 import { StaffCard } from "@/components/domain/staff-card";
+import { useNow } from "@/hooks/use-now";
+import { attendanceFor } from "@/lib/roster";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -26,8 +29,6 @@ import { Modal } from "@/components/ui/modal";
 import { useAppStore } from "@/lib/store/app-store";
 import type { StaffMember, StaffStatus } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
-
-const STATUSES: StaffStatus[] = ["available", "busy", "break", "off-duty"];
 
 type AddStaffForm = {
   name: string;
@@ -68,6 +69,10 @@ export default function OwnerStaffPage() {
   const setStaffPassword = useAppStore((s) => s.setStaffPassword);
   const assignChair = useAppStore((s) => s.assignChair);
   const queue = useAppStore((s) => s.queue);
+  const roster = useAppStore((s) => s.roster);
+  const leaves = useAppStore((s) => s.leaves);
+  const shifts = useAppStore((s) => s.shifts);
+  const now = useNow();
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
@@ -367,8 +372,20 @@ export default function OwnerStaffPage() {
                           />
                         </div>
                         <div className="flex items-center gap-2">
+                          {/* On/off duty is a clock-in or clock-out by the
+                              barber (or an override on the Roster page) — the
+                              owner only moves them between available and break,
+                              and "busy" comes from a running service. */}
                           <Select
                             value={status}
+                            disabled={status === "off-duty" || status === "busy"}
+                            title={
+                              status === "off-duty"
+                                ? "Not clocked in — they start their own shift"
+                                : status === "busy"
+                                  ? "In service"
+                                  : undefined
+                            }
                             onChange={(e) =>
                               handleStatusChange(
                                 member.id,
@@ -377,11 +394,16 @@ export default function OwnerStaffPage() {
                             }
                             className="h-9 flex-1 text-xs"
                           >
-                            {STATUSES.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
+                            {status === "off-duty" ? (
+                              <option value="off-duty">off-duty · not clocked in</option>
+                            ) : status === "busy" ? (
+                              <option value="busy">busy · in service</option>
+                            ) : (
+                              <>
+                                <option value="available">available</option>
+                                <option value="break">break</option>
+                              </>
+                            )}
                           </Select>
                           <Select
                             value={chairId ?? ""}
@@ -706,6 +728,22 @@ export default function OwnerStaffPage() {
             </div>
 
             <p className="text-sm text-[var(--text-muted)]">{selected.phone}</p>
+
+            {selected.role !== "owner" && (
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Today&apos;s shift</p>
+                  <p className="text-xs text-[var(--text-muted)]">
+                    {now
+                      ? attendanceFor({ staffId: selected.id, roster, leaves, shifts, now }).label
+                      : "…"}
+                  </p>
+                </div>
+                <Button asChild variant="secondary" size="sm">
+                  <Link href="/owner/roster">Roster</Link>
+                </Button>
+              </div>
+            )}
 
             <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 px-4 py-3">
               <p className="text-sm font-medium">Branch</p>

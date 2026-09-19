@@ -129,14 +129,17 @@ function QueuePageContent() {
   }
 
   function handleStartAssign(ticket: QueueTicket) {
+    // Only a barber who is on shift and free can take the customer — never
+    // someone off duty or on break.
+    const free = barbers.filter((b) => staffStatuses[b.id] === "available");
     const staff =
-      barbers.find(
-        (b) =>
-          b.id === ticket.preferredStaffId &&
-          staffStatuses[b.id] === "available",
-      ) ??
-      barbers.find((b) => staffStatuses[b.id] === "available") ??
-      barbers[0];
+      free.find((b) => b.id === ticket.preferredStaffId) ?? free[0];
+    if (!staff) {
+      toast.error("No barber is free", {
+        description: "Nobody on shift is available right now",
+      });
+      return;
+    }
 
     updateQueueTicket(ticket.id, {
       status: "in-service",
@@ -289,7 +292,9 @@ function QueuePageContent() {
               onChange={(e) => setBarberPref(e.target.value)}
             >
               <option value="any">Any Available Barber</option>
-              {barbers.map((b) => (
+              {barbers
+                .filter((b) => b.status !== "off-duty")
+                .map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name} · {b.specialty}
                 </option>

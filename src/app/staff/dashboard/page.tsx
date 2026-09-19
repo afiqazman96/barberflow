@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -24,7 +24,11 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { StatCard } from "@/components/domain/stat-card";
 import { QueueCard } from "@/components/domain/queue-card";
+import { MyShiftCard } from "@/components/domain/shift-cards";
 import { findNextQueueTicket, useStaffPortal } from "@/hooks/use-staff-portal";
+import { useNow } from "@/hooks/use-now";
+import { useAppStore } from "@/lib/store/app-store";
+import { isRosteredOn, localIso } from "@/lib/roster";
 import { cn, formatCurrency } from "@/lib/utils";
 
 export default function StaffDashboardPage() {
@@ -38,8 +42,19 @@ export default function StaffDashboardPage() {
     queue,
     updateStaffStatus,
     updateQueueTicket,
-    assignChair,
   } = useStaffPortal();
+
+  const startShift = useAppStore((s) => s.startShift);
+  const endShift = useAppStore((s) => s.endShift);
+  const closeStaleShifts = useAppStore((s) => s.closeStaleShifts);
+  const roster = useAppStore((s) => s.roster);
+  const leaves = useAppStore((s) => s.leaves);
+  const now = useNow();
+
+  // A shift someone forgot to end shouldn't stay open past closing time.
+  useEffect(() => {
+    if (now) closeStaleShifts(now);
+  }, [now, closeStaleShifts]);
 
   const [chairModalOpen, setChairModalOpen] = useState(false);
   const [selectedChairId, setSelectedChairId] = useState<string | null>(
@@ -51,10 +66,18 @@ export default function StaffDashboardPage() {
     : 0;
 
   const availableChairs = chairs.filter(
-    (c) => c.staffId === null || c.staffId === staffId,
+    (c) =>
+      c.branchId === staff?.branchId &&
+      (c.staffId === null || c.staffId === staffId),
   );
 
   function handleStartShift() {
+    const today = localIso(now ?? new Date());
+    if (!isRosteredOn(roster, leaves, staffId, today)) {
+      toast.warning("You're not rostered today", {
+        description: "Your owner will see this as an unscheduled shift",
+      });
+    }
     setChairModalOpen(true);
   }
 
@@ -64,8 +87,11 @@ export default function StaffDashboardPage() {
       return;
     }
     const picked = chairs.find((c) => c.id === selectedChairId);
-    assignChair(selectedChairId, staffId);
-    updateStaffStatus(staffId, "available");
+    const res = startShift(staffId, { chairId: selectedChairId });
+    if (!res.ok) {
+      toast.error("Couldn't start your shift", { description: res.error });
+      return;
+    }
     setChairModalOpen(false);
     toast.success("Shift started", {
       description: `You're available at ${picked?.label ?? "your chair"}`,
@@ -123,12 +149,14 @@ export default function StaffDashboardPage() {
   }
 
   function handleEndShift() {
-    if (currentTicket) {
-      toast.error("Complete your current service before ending shift");
+    const res = endShift(staffId);
+    if (!res.ok) {
+      toast.error("Can't end your shift yet", { description: res.error });
       return;
     }
-    updateStaffStatus(staffId, "off-duty");
-    toast.success("Shift ended", { description: "See you next time" });
+    toast.success("Shift ended", {
+      description: "Your chair is free for the next barber",
+    });
   }
 
   const isOffDuty = status === "off-duty";
@@ -221,6 +249,8 @@ export default function StaffDashboardPage() {
           <span>Goal {formatCurrency(staff.monthlyTarget)}</span>
         </div>
       </Card>
+
+      <MyShiftCard staffId={staffId} />
 
       <section className="space-y-3">
         <h2 className="font-display text-sm font-semibold uppercase tracking-wide text-[var(--text-faint)]">

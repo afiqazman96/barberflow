@@ -14,6 +14,7 @@ import {
   Settings,
   Menu,
   Building2,
+  CalendarClock,
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -55,6 +56,7 @@ const navItems = [
   { href: "/owner/pos", label: "Point of Sale", icon: ShoppingCart },
   { href: "/owner/customer", label: "Customer", icon: UserCircle },
   { href: "/owner/staff", label: "Staff", icon: Users },
+  { href: "/owner/roster", label: "Roster", icon: CalendarClock },
   { href: "/owner/commission", label: "Commission", icon: Percent },
   { href: "/owner/inventory", label: "Inventory", icon: Package },
   { href: "/owner/reports", label: "Reports", icon: BarChart3 },

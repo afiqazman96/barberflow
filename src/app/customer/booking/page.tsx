@@ -19,6 +19,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { BRANCHES, SERVICES, STAFF, TIME_SLOTS, findCustomerByPhone } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
+import { isRosteredOn } from "@/lib/roster";
 import type { Booking } from "@/lib/types";
 import { cn, formatCurrency, formatDate, initials } from "@/lib/utils";
 import { toast } from "sonner";
@@ -55,9 +56,11 @@ function BookingWizard() {
     paramBranchId ?? BRANCHES[0]?.id ?? "b1",
   );
   const branch = BRANCHES.find((b) => b.id === branchId) ?? BRANCHES[0];
-  const barbers = STAFF.filter(
+  const branchBarbers = STAFF.filter(
     (s) => s.role === "barber" && s.branchId === branch.id && s.active,
   );
+  const roster = useAppStore((s) => s.roster);
+  const leaves = useAppStore((s) => s.leaves);
   const days = useMemo(() => getNextDays(7), []);
 
   const [step, setStep] = useState(0);
@@ -65,6 +68,10 @@ function BookingWizard() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [date, setDate] = useState(days[0]?.iso ?? "");
+  // Only barbers actually working that day (not on rest day or leave).
+  const barbers = branchBarbers.filter((b) =>
+    isRosteredOn(roster, leaves, b.id, date),
+  );
   const [time, setTime] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [barberMode, setBarberMode] = useState<"any" | "preferred">("any");
@@ -93,7 +100,7 @@ function BookingWizard() {
     if (step === 2) return !!serviceId;
     if (step === 3) {
       if (barberMode === "preferred" && barbers.length > 0) {
-        return preferredStaffId !== null;
+        return barbers.some((b) => b.id === preferredStaffId);
       }
       return true;
     }

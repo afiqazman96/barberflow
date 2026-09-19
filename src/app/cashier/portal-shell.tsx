@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { CashierShiftBanner } from "@/components/domain/cashier-shift";
 import { useAppStore } from "@/lib/store/app-store";
 
 const navItems = [
@@ -52,6 +53,7 @@ export function PortalShell({
       }
       bottomNav={<BottomNav items={bottomNavItems} />}
     >
+      <CashierShiftBanner />
       {children}
     </AppShell>
   );

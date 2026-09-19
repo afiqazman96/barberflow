@@ -59,9 +59,11 @@ function QueueWizard() {
   const setBranchId = useAppStore((s) => s.setBranchId);
 
   const branch = branches.find((b) => b.id === branchIdParam) ?? branches[0];
-  const barbers = staff.filter(
+  const branchBarbers = staff.filter(
     (s) => s.role === "barber" && s.branchId === branch.id && s.active,
   );
+  // Only barbers who've clocked in can be picked for a walk-in.
+  const barbers = branchBarbers.filter((s) => s.status !== "off-duty");
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -83,7 +85,14 @@ function QueueWizard() {
   );
   // One estimate, used in the summary and written onto the ticket, so the
   // number the customer sees here matches the one on the tracking screen.
-  const estWaitMins = branch.avgWaitMins + Math.min(serviceIds.length * 4, 16);
+  // Fewer barbers on shift than the shop normally runs means a longer line.
+  const staffingFactor =
+    barbers.length > 0 && barbers.length < branchBarbers.length
+      ? branchBarbers.length / barbers.length
+      : 1;
+  const estWaitMins =
+    Math.round(branch.avgWaitMins * staffingFactor) +
+    Math.min(serviceIds.length * 4, 16);
 
   // Email is mandatory — we no longer print receipts, so it's the only way
   // to get the customer their receipt. Phone stays optional, for the shop to
@@ -361,6 +370,13 @@ function QueueWizard() {
                     </button>
                   ))}
                 </div>
+              )}
+
+              {barbers.length === 0 && (
+                <p className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--warning)]">
+                  No barber is on shift right now. You can still join the line —
+                  you&apos;ll be seated when one starts.
+                </p>
               )}
 
               <Card className="space-y-2 p-4 text-sm">

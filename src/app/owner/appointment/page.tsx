@@ -22,6 +22,7 @@ import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useAppStore } from "@/lib/store/app-store";
+import { isRosteredOn } from "@/lib/roster";
 import type { Booking } from "@/lib/types";
 import { formatDate, todayIso } from "@/lib/utils";
 
@@ -50,6 +51,8 @@ export default function OwnerAppointmentPage() {
   const barbers = staffList.filter(
     (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
+  const roster = useAppStore((s) => s.roster);
+  const leaves = useAppStore((s) => s.leaves);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -58,6 +61,10 @@ export default function OwnerAppointmentPage() {
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [createOpen, setCreateOpen] = useState(false);
   const [newBooking, setNewBooking] = useState(emptyNewBooking);
+  // Only barbers actually working on the chosen date can be booked.
+  const bookableBarbers = barbers.filter((b) =>
+    isRosteredOn(roster, leaves, b.id, newBooking.date),
+  );
 
   const dates = useMemo(() => {
     const set = new Set(bookings.map((b) => b.date));
@@ -144,7 +151,7 @@ export default function OwnerAppointmentPage() {
       toast.error("Pick a service");
       return;
     }
-    const staffMember = barbers.find((b) => b.id === newBooking.staffId);
+    const staffMember = bookableBarbers.find((b) => b.id === newBooking.staffId);
     addBooking({
       id: `bk-${Date.now()}`,
       branchId,
@@ -467,7 +474,7 @@ export default function OwnerAppointmentPage() {
               }
             >
               <option value="">Any Barber</option>
-              {barbers.map((b) => (
+              {bookableBarbers.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
                 </option>

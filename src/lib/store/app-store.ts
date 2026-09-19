@@ -715,6 +715,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       branchId: state.branchId,
       customerId: state.posCustomerId ?? "walk-in",
       customerName,
+      customerEmail: ticket?.customerEmail ?? crmCustomer?.email,
       queueTicketId: state.posTicketId ?? undefined,
       staffId: staff?.id ?? "",
       staffName: staff?.name ?? "Retail",

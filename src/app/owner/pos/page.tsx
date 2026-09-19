@@ -13,7 +13,7 @@ import {
   CreditCard,
   QrCode,
   CheckCircle2,
-  Printer,
+  Mail,
   Ticket,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -229,9 +229,15 @@ export default function OwnerPosPage() {
     }
   }
 
-  function handlePrint() {
-    toast.success("Receipt sent to printer", {
-      description: "Mock print — Fade House KL",
+  function handleEmailReceipt() {
+    if (!lastReceipt?.customerEmail) {
+      toast.error("No email on file", {
+        description: "This customer didn't provide one",
+      });
+      return;
+    }
+    toast.success("Receipt emailed", {
+      description: `Sent to ${lastReceipt.customerEmail}`,
     });
   }
 
@@ -668,15 +674,20 @@ export default function OwnerPosPage() {
                   <p className="text-xs text-[var(--text-faint)]">
                     {formatDateTime(receipt.createdAt)}
                   </p>
+                  <p className="text-xs text-[var(--text-faint)]">
+                    {receipt.customerEmail
+                      ? `Receipt to: ${receipt.customerEmail}`
+                      : "No email on file"}
+                  </p>
                   <p className="mt-3 font-display text-xl font-semibold text-[var(--gold-soft)]">
                     {formatCurrency(receipt.total)}
                   </p>
                 </div>
               )}
               <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1" onClick={handlePrint}>
-                  <Printer className="h-4 w-4" />
-                  Print
+                <Button variant="secondary" className="flex-1" onClick={handleEmailReceipt}>
+                  <Mail className="h-4 w-4" />
+                  Email
                 </Button>
                 <Button className="flex-1" onClick={handleClosePayment}>
                   Done

@@ -142,7 +142,8 @@ export default function CashierCustomerPage() {
               <div>
                 <StatusBadge status={selected.membership} />
                 <p className="mt-1 text-sm text-[var(--text-muted)]">
-                  Member since {formatDate(selected.lastVisit)}
+                  Member since{" "}
+                  {selected.lastVisit ? formatDate(selected.lastVisit) : "—"}
                 </p>
               </div>
             </div>
@@ -175,7 +176,8 @@ export default function CashierCustomerPage() {
               )}
               <p className="flex items-center gap-2 text-[var(--text-muted)]">
                 <Calendar className="h-4 w-4" />
-                Last visit {formatDate(selected.lastVisit)}
+                Last visit{" "}
+                {selected.lastVisit ? formatDate(selected.lastVisit) : "No visits yet"}
               </p>
               {selected.preferredStaffId && (
                 <p className="flex items-center gap-2 text-[var(--text-muted)]">

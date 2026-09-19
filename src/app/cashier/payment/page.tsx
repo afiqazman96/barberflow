@@ -8,7 +8,7 @@ import {
   Banknote,
   CreditCard,
   QrCode,
-  Printer,
+  Mail,
   CheckCircle2,
   ShoppingCart,
   ArrowLeft,
@@ -126,9 +126,15 @@ export default function CashierPaymentPage() {
     }, 800);
   }
 
-  function handlePrint() {
-    toast.success("Receipt sent to printer", {
-      description: "Mock print — Fade House KL receipt",
+  function handleEmailReceipt() {
+    if (!lastReceipt?.customerEmail) {
+      toast.error("No email on file", {
+        description: "This customer didn't provide one",
+      });
+      return;
+    }
+    toast.success("Receipt emailed", {
+      description: `Sent to ${lastReceipt.customerEmail}`,
     });
   }
 
@@ -454,6 +460,11 @@ export default function CashierPaymentPage() {
                               : "Retail sale"}
                           </p>
                           <p>{formatDateTime(receipt.createdAt)}</p>
+                          <p>
+                            {receipt.customerEmail
+                              ? `Receipt to: ${receipt.customerEmail}`
+                              : "No email on file"}
+                          </p>
                         </div>
                         <div className="space-y-2 border-y border-dashed border-[var(--border)] py-4">
                           {receipt.items.map((item) => (
@@ -550,10 +561,10 @@ export default function CashierPaymentPage() {
                   <Button
                     variant="secondary"
                     className="flex-1"
-                    onClick={handlePrint}
+                    onClick={handleEmailReceipt}
                   >
-                    <Printer className="h-4 w-4" />
-                    Print Receipt
+                    <Mail className="h-4 w-4" />
+                    Email Receipt
                   </Button>
                   <Button className="flex-1" size="lg" onClick={handleNewSale}>
                     <ShoppingCart className="h-4 w-4" />

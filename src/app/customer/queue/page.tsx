@@ -65,7 +65,6 @@ function QueueWizard() {
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
-  const [contactMode, setContactMode] = useState<"phone" | "email">("phone");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [serviceIds, setServiceIds] = useState<string[]>([]);
@@ -86,8 +85,11 @@ function QueueWizard() {
   // number the customer sees here matches the one on the tracking screen.
   const estWaitMins = branch.avgWaitMins + Math.min(serviceIds.length * 4, 16);
 
+  // Email is mandatory — we no longer print receipts, so it's the only way
+  // to get the customer their receipt. Phone stays optional, for the shop to
+  // reach them about their spot in the queue.
   const contactOk =
-    contactMode === "phone" ? isValidPhone(phone) : isValidEmail(email);
+    isValidEmail(email) && (phone.trim().length === 0 || isValidPhone(phone));
 
   function toggleService(id: string) {
     setServiceIds((prev) =>
@@ -109,23 +111,24 @@ function QueueWizard() {
 
   function handleSubmit() {
     if (!contactOk) {
-      toast.error("Phone number or email is required");
+      toast.error("A valid email is required for your receipt");
       return;
     }
 
     const number = nextQueueNumber(queue);
     // A returning customer who joins on their own phone should still be
     // recognised — matched by phone number, not asked to "log in".
-    const matched =
-      contactMode === "phone" ? findCustomerByPhone(customers, phone) : undefined;
+    const matched = phone.trim()
+      ? findCustomerByPhone(customers, phone)
+      : undefined;
     const ticket: QueueTicket = {
       id: `q-${Date.now()}`,
       number,
       branchId: branch.id,
       customerId: matched?.id ?? "guest",
       customerName: name.trim(),
-      customerPhone: contactMode === "phone" ? phone.trim() : "",
-      customerEmail: contactMode === "email" ? email.trim() : undefined,
+      customerPhone: phone.trim(),
+      customerEmail: email.trim(),
       serviceIds,
       serviceNames: selectedServices.map((s) => s.name),
       preferredStaffId: barberMode === "preferred" ? preferredStaffId : null,
@@ -207,54 +210,37 @@ function QueueWizard() {
               </div>
 
               <div>
-                <Label>Contact (required)</Label>
-                <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl bg-[var(--bg-muted)] p-1">
-                  <button
-                    type="button"
-                    onClick={() => setContactMode("phone")}
-                    className={cn(
-                      "flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition",
-                      contactMode === "phone"
-                        ? "bg-[var(--bg-card)] text-[var(--gold-soft)]"
-                        : "text-[var(--text-faint)]",
-                    )}
-                  >
-                    <Phone className="h-3.5 w-3.5" />
-                    Phone
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setContactMode("email")}
-                    className={cn(
-                      "flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-medium transition",
-                      contactMode === "email"
-                        ? "bg-[var(--bg-card)] text-[var(--gold-soft)]"
-                        : "text-[var(--text-faint)]",
-                    )}
-                  >
-                    <Mail className="h-3.5 w-3.5" />
-                    Email
-                  </button>
-                </div>
-                {contactMode === "phone" ? (
-                  <Input
-                    id="phone"
-                    type="tel"
-                    placeholder="+60 12-345 6789"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                ) : (
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                )}
-                <p className="mt-2 text-xs text-[var(--text-faint)]">
-                  A phone number or email is required so the shop can reach you.
+                <Label htmlFor="email">
+                  <Mail className="mr-1 inline h-3.5 w-3.5" />
+                  Email (required)
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                  We&apos;ll email your receipt here — we don&apos;t print at
+                  the counter.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="phone">
+                  <Phone className="mr-1 inline h-3.5 w-3.5" />
+                  Phone (optional)
+                </Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+60 12-345 6789"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                  So the shop can reach you about your spot in line.
                 </p>
               </div>
             </div>
@@ -383,10 +369,8 @@ function QueueWizard() {
                   <span className="text-right">{name}</span>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <span className="text-[var(--text-muted)]">Contact</span>
-                  <span className="text-right">
-                    {contactMode === "phone" ? phone : email}
-                  </span>
+                  <span className="text-[var(--text-muted)]">Receipt to</span>
+                  <span className="text-right">{email}</span>
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--text-muted)]">Services</span>

@@ -240,6 +240,8 @@ export interface Sale {
   branchId: string;
   customerId: string;
   customerName: string;
+  /** Where the receipt gets emailed — from the queue ticket or CRM record, when known. */
+  customerEmail?: string;
   /** The walk-in/booking ticket this sale settled, when it came from the queue. */
   queueTicketId?: string;
   staffId: string;

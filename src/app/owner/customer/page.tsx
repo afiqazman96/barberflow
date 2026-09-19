@@ -319,7 +319,7 @@ export default function OwnerCustomerPage() {
                       {formatCurrency(customer.totalSpent)}
                     </span>
                     <span className="hidden w-28 text-right text-xs text-[var(--text-faint)] lg:block">
-                      {formatDate(customer.lastVisit)}
+                      {customer.lastVisit ? formatDate(customer.lastVisit) : "—"}
                     </span>
                     <div className="flex flex-col items-end gap-1 lg:hidden">
                       <StatusBadge status={customer.membership} />

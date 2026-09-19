@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Receipt as ReceiptIcon, Printer, Ban } from "lucide-react";
+import { Search, Receipt as ReceiptIcon, Mail, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -72,9 +72,15 @@ export function SalesHistory() {
     .filter((s) => !s.voided)
     .reduce((sum, s) => sum + s.total, 0);
 
-  function handlePrint(sale: Sale) {
-    toast.success("Receipt sent to printer", {
-      description: `${sale.receiptNo} — mock print`,
+  function handleEmailReceipt(sale: Sale) {
+    if (!sale.customerEmail) {
+      toast.error("No email on file", {
+        description: `${sale.receiptNo} — this customer didn't provide one`,
+      });
+      return;
+    }
+    toast.success("Receipt emailed", {
+      description: `${sale.receiptNo} → ${sale.customerEmail}`,
     });
   }
 
@@ -210,6 +216,11 @@ export function SalesHistory() {
                     : "Retail sale"}
                 </p>
                 <p>{formatDateTime(selected.createdAt)}</p>
+                <p>
+                  {selected.customerEmail
+                    ? `Receipt to: ${selected.customerEmail}`
+                    : "No email on file"}
+                </p>
               </div>
               <div className="space-y-2 border-y border-dashed border-[var(--border)] py-4">
                 {selected.items.map((item) => (
@@ -302,10 +313,10 @@ export function SalesHistory() {
                 <Button
                   variant="secondary"
                   className="flex-1"
-                  onClick={() => handlePrint(selected)}
+                  onClick={() => handleEmailReceipt(selected)}
                 >
-                  <Printer className="h-4 w-4" />
-                  Print
+                  <Mail className="h-4 w-4" />
+                  Email receipt
                 </Button>
                 {isOwner && !selected.voided && (
                   <Button

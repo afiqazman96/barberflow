@@ -303,7 +303,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addStaff: (input) => {
     const member: StaffMember = {
-      id: `s-${Date.now()}`,
+      id: input.id ?? `s-${Date.now()}`,
       branchId: input.branchId,
       name: input.name,
       role: input.role,

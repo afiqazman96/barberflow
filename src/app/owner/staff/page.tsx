@@ -26,6 +26,8 @@ import { Modal } from "@/components/ui/modal";
 import { useAppStore } from "@/lib/store/app-store";
 import type { StaffMember, StaffStatus } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
+import { createStaff, resetStaffPassword, setStaffActive } from "@/lib/auth/actions";
+import type { StaffRole } from "@/generated/prisma/enums";
 
 const STATUSES: StaffStatus[] = ["available", "busy", "break", "off-duty"];
 
@@ -76,6 +78,7 @@ export default function OwnerStaffPage() {
   const [form, setForm] = useState<AddStaffForm>(emptyForm);
   const [resetPassword, setResetPassword] = useState("");
   const [resetConfirm, setResetConfirm] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selected = useMemo(
     () => (selectedId ? staff.find((s) => s.id === selectedId) ?? null : null),
@@ -160,7 +163,7 @@ export default function OwnerStaffPage() {
     });
   }
 
-  function handleAddStaff(e: React.FormEvent) {
+  async function handleAddStaff(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim() || !form.branchId) {
       toast.error("Name and branch are required");
@@ -182,7 +185,37 @@ export default function OwnerStaffPage() {
     const tempPassword = form.password;
     const loginEmail = form.email.trim();
 
+    setIsSubmitting(true);
+    let realStaffId: string | undefined;
+    try {
+      const result = await createStaff({
+        name: form.name.trim(),
+        email: loginEmail,
+        phone: form.phone.trim() || undefined,
+        role: form.role.toUpperCase() as StaffRole,
+        branchId: form.branchId,
+        temporaryPassword: tempPassword,
+        mustChangePassword: form.mustChangePassword,
+      });
+      if (!result.ok) {
+        toast.error("Could not create the real login", {
+          description: result.error,
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      realStaffId = result.data.staffId;
+    } catch {
+      toast.error("Could not reach the server", {
+        description: "Staff was not created — check your connection and try again.",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+    setIsSubmitting(false);
+
     const member = addStaff({
+      id: realStaffId,
       name: form.name.trim(),
       phone: form.phone.trim(),
       email: loginEmail,
@@ -208,9 +241,29 @@ export default function OwnerStaffPage() {
     setForm(emptyForm());
   }
 
-  function handleToggleActive() {
+  async function handleToggleActive() {
     if (!selected) return;
     const next = !(selected.active ?? true);
+
+    setIsSubmitting(true);
+    try {
+      const result = await setStaffActive(selected.id, next);
+      if (!result.ok) {
+        toast.error("Could not update the real login", {
+          description: result.error,
+        });
+        setIsSubmitting(false);
+        return;
+      }
+    } catch {
+      toast.error("Could not reach the server", {
+        description: "Account status was not changed — check your connection and try again.",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+    setIsSubmitting(false);
+
     updateStaff(selected.id, { active: next });
     toast.success(next ? "Account enabled" : "Account disabled", {
       description: next
@@ -219,7 +272,7 @@ export default function OwnerStaffPage() {
     });
   }
 
-  function handleResetPassword(e: React.FormEvent) {
+  async function handleResetPassword(e: React.FormEvent) {
     e.preventDefault();
     if (!selected) return;
     if (resetPassword.length < 6) {
@@ -230,6 +283,25 @@ export default function OwnerStaffPage() {
       toast.error("Passwords do not match");
       return;
     }
+
+    setIsSubmitting(true);
+    try {
+      const result = await resetStaffPassword(selected.id, resetPassword);
+      if (!result.ok) {
+        toast.error("Could not reset the real login", {
+          description: result.error,
+        });
+        setIsSubmitting(false);
+        return;
+      }
+    } catch {
+      toast.error("Could not reach the server", {
+        description: "Password was not reset — check your connection and try again.",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+    setIsSubmitting(false);
 
     setStaffPassword(selected.id, resetPassword, { mustChangePassword: true });
     toast.success("Password reset", {
@@ -645,7 +717,9 @@ export default function OwnerStaffPage() {
             <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit">Add Staff</Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Creating…" : "Add Staff"}
+            </Button>
           </div>
         </form>
       </Modal>
@@ -739,6 +813,7 @@ export default function OwnerStaffPage() {
                 type="button"
                 variant={(selected.active ?? true) ? "outline" : "default"}
                 size="sm"
+                disabled={isSubmitting}
                 onClick={handleToggleActive}
               >
                 {(selected.active ?? true) ? (
@@ -784,7 +859,7 @@ export default function OwnerStaffPage() {
                     required
                   />
                 </div>
-                <Button type="submit" size="sm" className="w-full">
+                <Button type="submit" size="sm" className="w-full" disabled={isSubmitting}>
                   Reset & require change on login
                 </Button>
               </form>

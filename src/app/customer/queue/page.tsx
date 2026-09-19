@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store/app-store";
+import { findCustomerByPhone } from "@/lib/mock/data";
 import type { QueueTicket } from "@/lib/types";
 import { cn, formatCurrency, initials } from "@/lib/utils";
 import { toast } from "sonner";
@@ -58,7 +59,7 @@ function QueueWizard() {
 
   const branch = branches.find((b) => b.id === branchIdParam) ?? branches[0];
   const barbers = staff.filter(
-    (s) => s.role === "barber" && s.branchId === branch.id,
+    (s) => s.role === "barber" && s.branchId === branch.id && s.active,
   );
 
   const [step, setStep] = useState(0);
@@ -112,11 +113,15 @@ function QueueWizard() {
     }
 
     const number = nextQueueNumber(queue);
+    // A returning customer who joins on their own phone should still be
+    // recognised — matched by phone number, not asked to "log in".
+    const matched =
+      contactMode === "phone" ? findCustomerByPhone(phone) : undefined;
     const ticket: QueueTicket = {
       id: `q-${Date.now()}`,
       number,
       branchId: branch.id,
-      customerId: "guest",
+      customerId: matched?.id ?? "guest",
       customerName: name.trim(),
       customerPhone: contactMode === "phone" ? phone.trim() : "",
       customerEmail: contactMode === "email" ? email.trim() : undefined,
@@ -134,6 +139,11 @@ function QueueWizard() {
     addQueueTicket(ticket);
     setTrackingTicketId(ticket.id);
     setBranchId(branch.id);
+    if (matched && matched.membership !== "none") {
+      toast.success(`Welcome back, ${matched.name.split(" ")[0]}!`, {
+        description: `${matched.membership} member pricing applied`,
+      });
+    }
     toast.success("You're in the queue!", {
       description: `Ticket ${number} · ~${ticket.estimatedWaitMins} min wait`,
     });

@@ -416,6 +416,21 @@ function makeCustomers(): Customer[] {
 
 export const CUSTOMERS = makeCustomers();
 
+/**
+ * Matches a self-service join (QR walk-in, online booking, or a cashier
+ * typing in a walk-in) against the CRM by phone number, digits-only so
+ * formatting differences ("+60 12-345 6789" vs "0123456789") don't matter.
+ * Without this, every self-served customer would be written as a fresh
+ * "guest" record and a returning member would get no membership pricing or
+ * visit history until a staff member manually re-attached them.
+ */
+export function findCustomerByPhone(phone: string): Customer | undefined {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7) return undefined;
+  const tail = digits.slice(-9);
+  return CUSTOMERS.find((c) => c.phone.replace(/\D/g, "").endsWith(tail));
+}
+
 export const QUEUE: QueueTicket[] = [
   {
     id: "q1",

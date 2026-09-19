@@ -45,7 +45,7 @@ export default function ShopDetailPage({
   }
 
   const barbers = staff.filter(
-    (s) => s.role === "barber" && s.branchId === branch.id,
+    (s) => s.role === "barber" && s.branchId === branch.id && s.active,
   );
   const availableBarbers = barbers.filter(
     (b) => staffStatuses[b.id] === "available",

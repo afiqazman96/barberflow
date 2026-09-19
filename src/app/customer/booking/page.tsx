@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
-import { BRANCHES, SERVICES, STAFF, TIME_SLOTS } from "@/lib/mock/data";
+import { BRANCHES, SERVICES, STAFF, TIME_SLOTS, findCustomerByPhone } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Booking } from "@/lib/types";
 import { cn, formatCurrency, formatDate, initials } from "@/lib/utils";
@@ -55,7 +55,7 @@ function BookingWizard() {
   );
   const branch = BRANCHES.find((b) => b.id === branchId) ?? BRANCHES[0];
   const barbers = STAFF.filter(
-    (s) => s.role === "barber" && s.branchId === branch.id,
+    (s) => s.role === "barber" && s.branchId === branch.id && s.active,
   );
   const days = useMemo(() => getNextDays(7), []);
 
@@ -96,10 +96,14 @@ function BookingWizard() {
   function handleConfirm() {
     if (!service) return;
 
+    // A returning customer booking on their own should still be recognised
+    // by phone, so their membership pricing carries through to checkout.
+    const matched = findCustomerByPhone(phone);
+
     const booking: Booking = {
       id: `bk-${Date.now()}`,
       branchId: branch.id,
-      customerId: "guest",
+      customerId: matched?.id ?? "guest",
       customerName: name.trim(),
       customerPhone: phone.trim(),
       serviceIds: [service.id],
@@ -125,7 +129,7 @@ function BookingWizard() {
       id: ticketId,
       number,
       branchId: branch.id,
-      customerId: "guest",
+      customerId: matched?.id ?? "guest",
       customerName: name.trim(),
       customerPhone: phone.trim(),
       serviceIds: [service.id],
@@ -140,6 +144,11 @@ function BookingWizard() {
     });
     setTrackingTicketId(ticketId);
 
+    if (matched && matched.membership !== "none") {
+      toast.success(`Welcome back, ${matched.name.split(" ")[0]}!`, {
+        description: `${matched.membership} member pricing applied`,
+      });
+    }
     toast.success("Booking confirmed!", {
       description: `${formatDate(date)} at ${time} · ${branch.name}`,
     });

@@ -81,7 +81,7 @@ export default function OwnerPosPage() {
   const customerName = customer?.name ?? null;
   const membership = customer?.membership ?? "none";
   const barbers = staff.filter(
-    (s) => s.role === "barber" && s.branchId === branchId,
+    (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
   const awaitingPayment = queue.filter((q) => q.status === "awaiting-payment");
 

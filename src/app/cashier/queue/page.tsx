@@ -76,7 +76,7 @@ function QueuePageContent() {
   );
 
   const barbers = staff.filter(
-    (s) => s.role === "barber" && s.branchId === branchId,
+    (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
 
   function handleRegister(e: React.FormEvent) {

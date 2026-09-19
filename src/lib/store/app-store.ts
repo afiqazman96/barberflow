@@ -312,9 +312,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateStaff: (id, patch) =>
-    set((s) => ({
-      staff: s.staff.map((m) => (m.id === id ? { ...m, ...patch } : m)),
-    })),
+    set((s) => {
+      // A disabled staff member can't be mid-shift: free their chair and
+      // clear their live status so they drop out of every barber picker
+      // (POS, queue, chair assignment) rather than just showing a badge.
+      const deactivating = patch.active === false;
+      return {
+        staff: s.staff.map((m) =>
+          m.id === id
+            ? {
+                ...m,
+                ...patch,
+                status: deactivating ? "off-duty" : (patch.status ?? m.status),
+                chairId: deactivating ? null : (patch.chairId ?? m.chairId),
+              }
+            : m,
+        ),
+        chairs: deactivating
+          ? s.chairs.map((c) => (c.staffId === id ? { ...c, staffId: null } : c))
+          : s.chairs,
+        staffStatuses: deactivating
+          ? { ...s.staffStatuses, [id]: "off-duty" as const }
+          : s.staffStatuses,
+      };
+    }),
 
   addBranch: (input) => {
     const branch: Branch = {

@@ -62,7 +62,7 @@ export default function CashierPosPage() {
 
   const awaitingPayment = queue.filter((q) => q.status === "awaiting-payment");
   const barbers = staff.filter(
-    (s) => s.role === "barber" && s.branchId === branchId,
+    (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
 
   // One customer waiting to pay is the common case — load them so the cashier

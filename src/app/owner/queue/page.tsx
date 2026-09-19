@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Armchair, Filter, Plus, UserCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -13,6 +14,7 @@ import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
+import { CUSTOMERS, findCustomerByPhone } from "@/lib/mock/data";
 import type { QueueStatus, QueueTicket } from "@/lib/types";
 import { initials } from "@/lib/utils";
 
@@ -32,7 +34,8 @@ function nextQueueNumber(queue: QueueTicket[]) {
   return `A${String(max + 1).padStart(3, "0")}`;
 }
 
-export default function OwnerQueuePage() {
+function OwnerQueueContent() {
+  const params = useSearchParams();
   const queue = useAppStore((s) => s.queue);
   const branchId = useAppStore((s) => s.branchId);
   const chairs = useAppStore((s) => s.chairs);
@@ -48,8 +51,24 @@ export default function OwnerQueuePage() {
   const [phone, setPhone] = useState("");
   const [serviceId, setServiceId] = useState(services[0]?.id ?? "");
   const [barberPref, setBarberPref] = useState("any");
+  const [prefilledCustomerId, setPrefilledCustomerId] = useState<
+    string | null
+  >(null);
 
-  const barbers = staff.filter((s) => s.role === "barber");
+  // Coming from a customer's own CRM record ("Start a Visit") — open the
+  // walk-in form pre-filled instead of making the owner retype their details.
+  useEffect(() => {
+    const prefillName = params.get("name");
+    const prefillPhone = params.get("phone");
+    if (!prefillName && !prefillPhone) return;
+    setName(prefillName ?? "");
+    setPhone(prefillPhone ?? "");
+    setPrefilledCustomerId(params.get("customerId"));
+    setRegisterOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const barbers = staff.filter((s) => s.role === "barber" && s.active);
 
   const filtered = useMemo(
     () =>
@@ -75,11 +94,18 @@ export default function OwnerQueuePage() {
     const service = services.find((s) => s.id === serviceId);
     if (!service) return;
 
+    // Prefer the customer we already know (came from their CRM record);
+    // otherwise a walk-in typed in here can still match an existing
+    // customer by phone, so they aren't recreated as a stranger.
+    const matched = prefilledCustomerId
+      ? CUSTOMERS.find((c) => c.id === prefilledCustomerId)
+      : findCustomerByPhone(phone);
+
     const ticket: QueueTicket = {
       id: `q-${Date.now()}`,
       number: nextQueueNumber(queue),
       branchId,
-      customerId: `walk-${Date.now()}`,
+      customerId: matched?.id ?? `walk-${Date.now()}`,
       customerName: name.trim(),
       customerPhone: phone.trim(),
       serviceIds: [service.id],
@@ -95,12 +121,15 @@ export default function OwnerQueuePage() {
 
     addQueueTicket(ticket);
     toast.success("Walk-in registered", {
-      description: `Ticket ${ticket.number} · ${ticket.customerName}`,
+      description: matched
+        ? `Ticket ${ticket.number} · ${ticket.customerName} · recognised as a returning customer`
+        : `Ticket ${ticket.number} · ${ticket.customerName}`,
     });
     setRegisterOpen(false);
     setName("");
     setPhone("");
     setBarberPref("any");
+    setPrefilledCustomerId(null);
   }
 
   return (
@@ -304,5 +333,13 @@ export default function OwnerQueuePage() {
         </form>
       </Modal>
     </>
+  );
+}
+
+export default function OwnerQueuePage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-[var(--text-muted)]">Loading…</div>}>
+      <OwnerQueueContent />
+    </Suspense>
   );
 }

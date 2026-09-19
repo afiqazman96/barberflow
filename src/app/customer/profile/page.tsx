@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import { CUSTOMERS, MEMBERSHIP_PLANS } from "@/lib/mock/data";
+import type { Customer, MembershipPlan } from "@/lib/types";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -35,18 +37,30 @@ const visitHistory = [
   { date: daysAgoIso(52), service: "Classic Haircut", price: 38 },
 ];
 
+type StoredMembership = Customer["membership"];
+
 export default function ProfilePage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [membership, setMembership] = useState<StoredMembership>(
+    demoCustomer.membership,
+  );
   const [saved, setSaved] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<MembershipPlan | null>(null);
+  const [activating, setActivating] = useState(false);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const data = JSON.parse(raw) as { name: string; phone: string };
+        const data = JSON.parse(raw) as {
+          name: string;
+          phone: string;
+          membership?: StoredMembership;
+        };
         setName(data.name);
         setPhone(data.phone);
+        setMembership(data.membership ?? demoCustomer.membership);
       } else {
         setName(demoCustomer.name);
         setPhone(demoCustomer.phone);
@@ -57,12 +71,31 @@ export default function ProfilePage() {
     }
   }, []);
 
+  function persist(patch: Partial<{ name: string; phone: string; membership: StoredMembership }>) {
+    const next = { name, phone, membership, ...patch };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  }
+
   function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ name, phone }));
+    persist({ name, phone });
     setSaved(true);
     toast.success("Profile saved");
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  function handleConfirmUpgrade() {
+    if (!pendingPlan) return;
+    setActivating(true);
+    setTimeout(() => {
+      setMembership(pendingPlan.tier);
+      persist({ membership: pendingPlan.tier });
+      toast.success(`Welcome to ${pendingPlan.name}!`, {
+        description: "Member pricing applies from your next visit",
+      });
+      setActivating(false);
+      setPendingPlan(null);
+    }, 600);
   }
 
   return (
@@ -86,7 +119,7 @@ export default function ProfilePage() {
           </div>
           <div>
             <p className="font-display text-lg font-semibold">{name || "Guest"}</p>
-            <StatusBadge status={demoCustomer.membership} />
+            <StatusBadge status={membership} />
             <p className="mt-1 text-xs text-[var(--text-muted)]">
               {demoCustomer.visits} visits · {formatCurrency(demoCustomer.totalSpent)} spent
             </p>
@@ -191,18 +224,20 @@ export default function ProfilePage() {
                     </li>
                   ))}
                 </ul>
-                <Button
-                  variant={plan.tier === "gold" ? "default" : "outline"}
-                  size="sm"
-                  className="mt-4 w-full"
-                  onClick={() =>
-                    toast.info(`Upgrade to ${plan.name}`, {
-                      description: "Membership checkout coming soon",
-                    })
-                  }
-                >
-                  Upgrade to {plan.name}
-                </Button>
+                {membership === plan.tier ? (
+                  <Button variant="outline" size="sm" className="mt-4 w-full" disabled>
+                    <Check className="h-4 w-4" /> Your current plan
+                  </Button>
+                ) : (
+                  <Button
+                    variant={plan.tier === "gold" ? "default" : "outline"}
+                    size="sm"
+                    className="mt-4 w-full"
+                    onClick={() => setPendingPlan(plan)}
+                  >
+                    Upgrade to {plan.name}
+                  </Button>
+                )}
               </Card>
             </motion.div>
           ))}
@@ -240,6 +275,47 @@ export default function ProfilePage() {
         <Phone className="h-5 w-5 shrink-0 text-[var(--gold)]" />
         Need help? Call your branch or ask at the front desk.
       </Card>
+
+      <Modal
+        open={!!pendingPlan}
+        onOpenChange={(open) => !open && setPendingPlan(null)}
+        title={pendingPlan ? `Activate ${pendingPlan.name}` : ""}
+        description={
+          pendingPlan
+            ? `${formatCurrency(pendingPlan.price)}/mo · ${pendingPlan.discountPercent}% off every visit`
+            : ""
+        }
+      >
+        {pendingPlan && (
+          <div className="space-y-4">
+            <ul className="space-y-1.5">
+              {pendingPlan.benefits.map((b) => (
+                <li
+                  key={b}
+                  className="flex items-center gap-2 text-sm text-[var(--text-muted)]"
+                >
+                  <Check className="h-3.5 w-3.5 shrink-0 text-[var(--success)]" />
+                  {b}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-[var(--text-faint)]">
+              Demo checkout — no card is charged. Your membership status is
+              saved on this device and applies from your next visit.
+            </p>
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={handleConfirmUpgrade}
+              disabled={activating}
+            >
+              {activating
+                ? "Activating…"
+                : `Confirm & Activate · ${formatCurrency(pendingPlan.price)}/mo`}
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

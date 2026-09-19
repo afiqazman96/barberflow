@@ -253,7 +253,7 @@ export default function OwnerSettingsPage() {
   const branchBarbers = useMemo(
     () =>
       storeStaff.filter(
-        (s) => s.role === "barber" && s.branchId === chairFilterBranchId,
+        (s) => s.role === "barber" && s.branchId === chairFilterBranchId && s.active,
       ),
     [storeStaff, chairFilterBranchId],
   );

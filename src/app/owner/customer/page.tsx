@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   Search,
@@ -9,7 +10,7 @@ import {
   Calendar,
   Scissors,
   Download,
-  UserPlus,
+  Ticket,
 } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
@@ -20,10 +21,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CUSTOMERS, STAFF } from "@/lib/mock/data";
 import type { Customer } from "@/lib/types";
-import { formatCurrency, formatDate, initials } from "@/lib/utils";
+import { formatCurrency, formatDate, initials, todayIso } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function OwnerCustomerPage() {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [membershipFilter, setMembershipFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"name" | "visits" | "spent">("visits");
@@ -57,9 +59,56 @@ export default function OwnerCustomerPage() {
   }), []);
 
   function handleExport() {
-    toast.success("Export started", {
-      description: `${filtered.length} customer records · CSV mock`,
+    if (filtered.length === 0) {
+      toast.error("No customers to export");
+      return;
+    }
+    const headers = [
+      "Name",
+      "Phone",
+      "Email",
+      "Membership",
+      "Visits",
+      "Total Spent",
+      "Last Visit",
+      "Preferred Barber",
+    ];
+    const rows = filtered.map((c) => [
+      c.name,
+      c.phone,
+      c.email ?? "",
+      c.membership,
+      String(c.visits),
+      c.totalSpent.toFixed(2),
+      c.lastVisit,
+      STAFF.find((s) => s.id === c.preferredStaffId)?.name ?? "",
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `customers-${todayIso()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Export ready", {
+      description: `${filtered.length} customer record(s) downloaded`,
     });
+  }
+
+  function handleStartVisit(customer: Customer) {
+    const params = new URLSearchParams({
+      customerId: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+    });
+    router.push(`/owner/queue?${params.toString()}`);
   }
 
   return (
@@ -312,14 +361,10 @@ export default function OwnerCustomerPage() {
             <Button
               variant="secondary"
               className="w-full"
-              onClick={() =>
-                toast.info("Booking flow", {
-                  description: `Schedule appointment for ${selected.name}`,
-                })
-              }
+              onClick={() => handleStartVisit(selected)}
             >
-              <UserPlus className="h-4 w-4" />
-              Book Appointment
+              <Ticket className="h-4 w-4" />
+              Start a Visit
             </Button>
           </div>
         )}

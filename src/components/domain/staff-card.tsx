@@ -2,7 +2,7 @@
 
 import { Armchair } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
 import type { StaffMember, StaffStatus } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
 import { useAppStore } from "@/lib/store/app-store";
@@ -23,7 +23,7 @@ export function StaffCard({
   const branch = branches.find((b) => b.id === staff.branchId);
 
   return (
-    <Card className="p-4">
+    <Card className={`p-4 ${!staff.active ? "opacity-60" : ""}`}>
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--gold)]/20 font-display text-sm font-semibold text-[var(--gold-soft)]">
           {initials(staff.name)}
@@ -34,7 +34,11 @@ export function StaffCard({
               <p className="truncate font-medium">{staff.name}</p>
               <p className="text-xs text-[var(--text-muted)]">{staff.specialty}</p>
             </div>
-            <StatusBadge status={s} />
+            {staff.active ? (
+              <StatusBadge status={s} />
+            ) : (
+              <Badge variant="danger">Disabled</Badge>
+            )}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
             <div className="rounded-lg bg-[var(--bg-muted)] px-2.5 py-2">

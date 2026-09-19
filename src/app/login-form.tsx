@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Scissors, Tv } from "lucide-react";
+import { Tv } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -58,9 +58,12 @@ export function TeamLoginForm({ defaultEmail }: { defaultEmail: string }) {
     <div className="app-bg flex min-h-dvh items-center justify-center px-4 py-10">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl gold-gradient shadow-[0_8px_32px_rgba(201,162,39,0.35)]">
-            <Scissors className="h-7 w-7 text-[#0c0b09]" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-mark.png"
+            alt="BarberFlow"
+            className="mx-auto mb-4 h-14 w-14 object-contain"
+          />
           <p className="font-display text-xs font-semibold uppercase tracking-[0.25em] text-[var(--gold)]">
             BarberFlow
           </p>

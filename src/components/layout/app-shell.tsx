@@ -13,7 +13,6 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   LucideIcon,
-  Scissors,
   Bell,
   Menu,
   X,
@@ -89,9 +88,12 @@ function SidebarBrand({
           className="h-10 w-10 rounded-xl object-cover ring-1 ring-[var(--border)]"
         />
       ) : (
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl gold-gradient text-[var(--on-gold)]">
-          <Scissors className="h-5 w-5" />
-        </div>
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src="/logo-mark.png"
+          alt="BarberFlow"
+          className="h-10 w-10 object-contain"
+        />
       )}
       <div className="min-w-0">
         <p className="truncate font-display text-sm font-bold tracking-tight">

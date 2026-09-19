@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CalendarClock, Clock, QrCode, Scissors, Ticket, Users } from "lucide-react";
+import { CalendarClock, Clock, QrCode, Ticket, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/lib/store/app-store";
 
@@ -25,9 +25,12 @@ export default function JoinBranchPage() {
   return (
     <div className="app-bg flex min-h-dvh flex-col items-center justify-center px-6 py-10 text-center">
       <div className="w-full max-w-sm">
-        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl gold-gradient">
-          <Scissors className="h-8 w-8 text-[#0c0b09]" />
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo-mark.png"
+          alt="BarberFlow"
+          className="mx-auto mb-5 h-16 w-16 object-contain"
+        />
         <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
           BarberFlow
         </p>

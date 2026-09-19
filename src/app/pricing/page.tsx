@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Scissors, ArrowRight, Sparkles } from "lucide-react";
+import { Check, ArrowRight, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -69,7 +69,8 @@ export default function PricingPage() {
             href="/"
             className="mb-6 inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
           >
-            <Scissors className="h-4 w-4 text-[var(--gold)]" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-mark.png" alt="" className="h-4 w-4 object-contain" />
             BarberFlow
           </Link>
           <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">

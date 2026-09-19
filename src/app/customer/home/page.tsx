@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Scissors,
   MapPin,
   Clock,
   Users,
@@ -25,9 +24,12 @@ export default function CustomerHomePage() {
         animate={{ opacity: 1, y: 0 }}
         className="text-center"
       >
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl gold-gradient shadow-[0_8px_32px_rgba(201,162,39,0.3)]">
-          <Scissors className="h-7 w-7 text-[#0c0b09]" />
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo-mark.png"
+          alt="BarberFlow"
+          className="mx-auto mb-4 h-14 w-14 object-contain"
+        />
         <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
           BarberFlow
         </p>

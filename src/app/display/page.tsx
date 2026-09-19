@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Scissors, Armchair } from "lucide-react";
+import { Armchair } from "lucide-react";
 import { useAppStore } from "@/lib/store/app-store";
 import { StatusBadge } from "@/components/ui/badge";
 import { maskName } from "@/lib/utils";
@@ -46,9 +46,12 @@ export default function QueueDisplayPage() {
       <div className="mx-auto flex max-w-7xl flex-col gap-8">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl gold-gradient">
-              <Scissors className="h-7 w-7 text-[#0c0b09]" />
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-mark.png"
+              alt="BarberFlow"
+              className="h-14 w-14 object-contain"
+            />
             <div>
               <p className="font-display text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
                 BarberFlow

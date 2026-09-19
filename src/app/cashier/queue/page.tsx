@@ -54,8 +54,7 @@ function QueuePageContent() {
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
   const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
-  const setPosCustomerId = useAppStore((s) => s.setPosCustomerId);
-  const addPosItem = useAppStore((s) => s.addPosItem);
+  const loadPosTicket = useAppStore((s) => s.loadPosTicket);
   const clearPos = useAppStore((s) => s.clearPos);
 
   const [filter, setFilter] = useState<QueueStatus | "all">("all");
@@ -64,6 +63,7 @@ function QueuePageContent() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [serviceId, setServiceId] = useState(services[0]?.id ?? "");
   const [barberPref, setBarberPref] = useState("any");
 
@@ -97,6 +97,7 @@ function QueuePageContent() {
       customerId: `walk-${Date.now()}`,
       customerName: name.trim(),
       customerPhone: phone.trim(),
+      customerEmail: email.trim() || undefined,
       serviceIds: [service.id],
       serviceNames: [service.name],
       preferredStaffId: barberPref === "any" ? null : barberPref,
@@ -115,6 +116,7 @@ function QueuePageContent() {
     setRegisterOpen(false);
     setName("");
     setPhone("");
+    setEmail("");
     setBarberPref("any");
   }
 
@@ -157,20 +159,10 @@ function QueuePageContent() {
 
   function handleSendToPos(ticket: QueueTicket) {
     clearPos();
-    setPosCustomerId(ticket.customerId);
-    ticket.serviceIds.forEach((sid) => {
-      const svc = services.find((s) => s.id === sid);
-      if (svc) {
-        addPosItem({
-          id: svc.id,
-          type: "service",
-          name: svc.name,
-          quantity: 1,
-          unitPrice: svc.price,
-        });
-      }
-    });
     updateQueueTicket(ticket.id, { status: "awaiting-payment" });
+    // Links the sale to this ticket so its customer, email, barber and
+    // member pricing carry through to checkout.
+    loadPosTicket(ticket.id);
     toast.success("Sent to POS", { description: ticket.customerName });
     setDetailTicket(null);
     router.push("/cashier/pos");
@@ -266,6 +258,15 @@ function QueuePageContent() {
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+60 12-345 6789"
               required
+            />
+          </div>
+          <div>
+            <Label>Email (for the receipt)</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Ask the customer — optional"
             />
           </div>
           <div>

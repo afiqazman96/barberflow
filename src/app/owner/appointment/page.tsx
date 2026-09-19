@@ -28,6 +28,7 @@ import { formatDate, todayIso } from "@/lib/utils";
 const emptyNewBooking = () => ({
   customerName: "",
   customerPhone: "",
+  customerEmail: "",
   serviceId: "",
   staffId: "",
   date: todayIso(),
@@ -150,6 +151,7 @@ export default function OwnerAppointmentPage() {
       customerId: "guest",
       customerName: newBooking.customerName.trim(),
       customerPhone: newBooking.customerPhone.trim(),
+      customerEmail: newBooking.customerEmail.trim() || undefined,
       serviceIds: [service.id],
       serviceNames: [service.name],
       staffId: staffMember?.id ?? null,
@@ -424,6 +426,18 @@ export default function OwnerAppointmentPage() {
                 required
               />
             </div>
+          </div>
+          <div>
+            <Label htmlFor="bk-email">Email (for the receipt)</Label>
+            <Input
+              id="bk-email"
+              type="email"
+              value={newBooking.customerEmail}
+              onChange={(e) =>
+                setNewBooking((f) => ({ ...f, customerEmail: e.target.value }))
+              }
+              placeholder="Ask the customer — optional"
+            />
           </div>
           <div>
             <Label htmlFor="bk-service">Service</Label>

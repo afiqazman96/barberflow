@@ -62,6 +62,7 @@ export default function CashierAppointmentPage() {
       customerId: booking.customerId,
       customerName: booking.customerName,
       customerPhone: booking.customerPhone,
+      customerEmail: booking.customerEmail,
       serviceIds: booking.serviceIds,
       serviceNames: booking.serviceNames,
       preferredStaffId: booking.staffId,

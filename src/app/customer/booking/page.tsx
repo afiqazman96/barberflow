@@ -63,6 +63,7 @@ function BookingWizard() {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [date, setDate] = useState(days[0]?.iso ?? "");
   const [time, setTime] = useState("");
   const [serviceId, setServiceId] = useState("");
@@ -82,7 +83,12 @@ function BookingWizard() {
   }, [date]);
 
   function canProceed() {
-    if (step === 0) return name.trim().length >= 2 && phone.trim().length >= 8;
+    if (step === 0)
+      return (
+        name.trim().length >= 2 &&
+        phone.trim().length >= 8 &&
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+      );
     if (step === 1) return date && time;
     if (step === 2) return !!serviceId;
     if (step === 3) {
@@ -107,6 +113,7 @@ function BookingWizard() {
       customerId: matched?.id ?? "guest",
       customerName: name.trim(),
       customerPhone: phone.trim(),
+      customerEmail: email.trim(),
       serviceIds: [service.id],
       serviceNames: [service.name],
       staffId: staff?.id ?? null,
@@ -133,6 +140,7 @@ function BookingWizard() {
       customerId: matched?.id ?? "guest",
       customerName: name.trim(),
       customerPhone: phone.trim(),
+      customerEmail: email.trim(),
       serviceIds: [service.id],
       serviceNames: [service.name],
       preferredStaffId: staff?.id ?? null,
@@ -277,6 +285,20 @@ function BookingWizard() {
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+60 12-345 6789"
                 />
+              </div>
+              <div>
+                <Label htmlFor="bk-email">Email (for your receipt)</Label>
+                <Input
+                  id="bk-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@email.com"
+                />
+                <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                  We email your receipt after your visit — we don&apos;t print at
+                  the counter.
+                </p>
               </div>
             </div>
           )}

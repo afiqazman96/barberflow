@@ -223,6 +223,8 @@ export interface Booking {
   customerId: string;
   customerName: string;
   customerPhone: string;
+  /** Where the receipt goes once this booking is checked in and paid. */
+  customerEmail?: string;
   serviceIds: string[];
   serviceNames: string[];
   staffId: string | null;

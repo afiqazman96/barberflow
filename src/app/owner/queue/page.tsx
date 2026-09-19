@@ -50,6 +50,7 @@ function OwnerQueueContent() {
   const [registerOpen, setRegisterOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [serviceId, setServiceId] = useState(services[0]?.id ?? "");
   const [barberPref, setBarberPref] = useState("any");
   const [prefilledCustomerId, setPrefilledCustomerId] = useState<
@@ -115,6 +116,7 @@ function OwnerQueueContent() {
       customerId: matched?.id ?? `walk-${Date.now()}`,
       customerName: name.trim(),
       customerPhone: phone.trim(),
+      customerEmail: email.trim() || undefined,
       serviceIds: [service.id],
       serviceNames: [service.name],
       preferredStaffId: barberPref === "any" ? null : barberPref,
@@ -135,6 +137,7 @@ function OwnerQueueContent() {
     setRegisterOpen(false);
     setName("");
     setPhone("");
+    setEmail("");
     setBarberPref("any");
     setPrefilledCustomerId(null);
   }
@@ -305,6 +308,15 @@ function OwnerQueueContent() {
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+60 12-345 6789"
               required
+            />
+          </div>
+          <div>
+            <Label>Email (for the receipt)</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Ask the customer — optional"
             />
           </div>
           <div>

@@ -82,8 +82,8 @@ export default function OwnerInventoryPage() {
     addProduct({
       name: form.name.trim(),
       category: form.category,
-      price: Number(form.price) || 0,
-      stock: Number(form.stock) || 0,
+      price: Math.max(0, Number(form.price) || 0),
+      stock: Math.max(0, Math.floor(Number(form.stock) || 0)),
       sku,
       imageUrl: form.imageUrl,
     });
@@ -366,7 +366,7 @@ export default function OwnerInventoryPage() {
                 step={0.01}
                 value={form.price}
                 onChange={(e) =>
-                  setForm({ ...form, price: Number(e.target.value) })
+                  setForm({ ...form, price: Math.max(0, Number(e.target.value) || 0) })
                 }
               />
             </div>
@@ -377,7 +377,7 @@ export default function OwnerInventoryPage() {
                 min={0}
                 value={form.stock}
                 onChange={(e) =>
-                  setForm({ ...form, stock: Number(e.target.value) })
+                  setForm({ ...form, stock: Math.max(0, Number(e.target.value) || 0) })
                 }
               />
             </div>

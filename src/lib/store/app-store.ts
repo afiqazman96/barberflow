@@ -10,6 +10,7 @@ import type {
   CashMovement,
   Chair,
   CommissionRule,
+  Customer,
   DrawerSession,
   MembershipPlan,
   PaymentMethod,
@@ -71,6 +72,10 @@ interface AppState {
   services: Service[];
   products: Product[];
   membershipPlans: MembershipPlan[];
+  /** CRM customers. Owned by the store (not the static mock import) so the
+   * owner's Customer page can actually add/edit records, and every POS/queue
+   * screen that resolves a customer sees the same edits. */
+  customers: Customer[];
   staffStatuses: Record<string, StaffStatus>;
   posItems: PosItem[];
   posDiscount: number;
@@ -115,6 +120,8 @@ interface AppState {
   addMembershipPlan: (plan: Omit<MembershipPlan, "id">) => MembershipPlan;
   updateMembershipPlan: (id: string, patch: Partial<MembershipPlan>) => void;
   deleteMembershipPlan: (id: string) => void;
+  addCustomer: (customer: Omit<Customer, "id" | "visits" | "totalSpent"> & Partial<Customer>) => Customer;
+  updateCustomer: (id: string, patch: Partial<Customer>) => void;
   addProduct: (product: Omit<Product, "id">) => Product;
   updateProduct: (id: string, patch: Partial<Product>) => void;
   addQueueTicket: (ticket: QueueTicket) => void;
@@ -168,11 +175,22 @@ export function calcCommission(
   rules: CommissionRule[],
 ): number {
   const active = rules.filter((r) => r.active);
+  // A staff-specific Percentage or Fixed rule scoped to "all" replaces this
+  // barber's default rate entirely, matching what the Commission page tells
+  // the owner an override does. A staff-specific Service/Product rule is a
+  // narrower bonus instead — it stacks on top in the per-item loop below,
+  // since "extra on this one service" isn't meant to wipe out their normal
+  // rate on everything else they sell.
   const staffOverride = active.find(
-    (r) => r.staffId === staffId && r.type === "percentage" && r.appliesTo === "all",
+    (r) =>
+      r.staffId === staffId &&
+      r.appliesTo === "all" &&
+      (r.type === "percentage" || r.type === "fixed"),
   );
   if (staffOverride) {
-    return Math.round(total * (staffOverride.value / 100) * 100) / 100;
+    return staffOverride.type === "percentage"
+      ? Math.round(total * (staffOverride.value / 100) * 100) / 100
+      : Math.round(staffOverride.value * 100) / 100;
   }
 
   let commission = 0;
@@ -230,6 +248,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   services: SERVICES.map((s) => ({ ...s })),
   membershipPlans: MEMBERSHIP_PLANS.map((p) => ({ ...p })),
   products: PRODUCTS.map((p) => ({ ...p })),
+  customers: CUSTOMERS.map((c) => ({ ...c })),
   staffStatuses: initialStatuses,
   posItems: [],
   posDiscount: 0,
@@ -440,6 +459,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       membershipPlans: s.membershipPlans.filter((p) => p.id !== id),
     })),
 
+  addCustomer: (customer) => {
+    const created: Customer = {
+      id: `cust-${Date.now()}`,
+      visits: 0,
+      totalSpent: 0,
+      ...customer,
+    };
+    set((s) => ({ customers: [created, ...s.customers] }));
+    return created;
+  },
+
+  updateCustomer: (id, patch) =>
+    set((s) => ({
+      customers: s.customers.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    })),
+
   addProduct: (product) => {
     const created: Product = { ...product, id: `p-${Date.now()}` };
     set((s) => ({ products: [...s.products, created] }));
@@ -541,7 +576,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const ticket = s.queue.find((q) => q.id === ticketId);
       if (!ticket) return {};
-      const cust = CUSTOMERS.find((c) => c.id === ticket.customerId);
+      const cust = s.customers.find((c) => c.id === ticket.customerId);
       const items: PosItem[] =
         s.posItems.length > 0
           ? s.posItems
@@ -608,7 +643,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         : null);
 
     const crmCustomer = state.posCustomerId
-      ? CUSTOMERS.find((c) => c.id === state.posCustomerId)
+      ? state.customers.find((c) => c.id === state.posCustomerId)
       : undefined;
     const customerName =
       ticket?.customerName ?? crmCustomer?.name ?? "Walk-in Customer";
@@ -680,6 +715,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       branchId: state.branchId,
       customerId: state.posCustomerId ?? "walk-in",
       customerName,
+      queueTicketId: state.posTicketId ?? undefined,
       staffId: staff?.id ?? "",
       staffName: staff?.name ?? "Retail",
       items,

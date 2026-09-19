@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store/app-store";
-import { SALES_TREND, PEAK_HOURS, TOP_SERVICES, CUSTOMERS } from "@/lib/mock/data";
+import { SALES_TREND, PEAK_HOURS, TOP_SERVICES } from "@/lib/mock/data";
 import { formatCurrency, initials, todayIso } from "@/lib/utils";
 import {
   buildBookingReport,
@@ -82,6 +82,7 @@ export default function OwnerReportsPage() {
 
   const allSales = useAppStore((s) => s.sales);
   const staff = useAppStore((s) => s.staff);
+  const CUSTOMERS = useAppStore((s) => s.customers);
   const services = useAppStore((s) => s.services);
   const products = useAppStore((s) => s.products);
   const queue = useAppStore((s) => s.queue);
@@ -135,6 +136,7 @@ export default function OwnerReportsPage() {
   }, [
     sales,
     staff,
+    CUSTOMERS,
     services,
     products,
     rangedQueue,
@@ -166,7 +168,7 @@ export default function OwnerReportsPage() {
   const returningRate = useMemo(() => {
     const repeat = CUSTOMERS.filter((c) => c.visits >= 3).length;
     return Math.round((repeat / CUSTOMERS.length) * 100);
-  }, []);
+  }, [CUSTOMERS]);
 
   const retentionStats = {
     returning: returningRate,

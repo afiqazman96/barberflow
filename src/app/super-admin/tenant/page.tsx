@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Building2, Plus, Search } from "lucide-react";
+import { Archive, Building2, Plus, RotateCcw, Search } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import type { Tenant } from "@/lib/types";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
 import { toast } from "sonner";
 
 type StatusFilter = "all" | Tenant["status"];
@@ -21,6 +22,19 @@ function planVariant(plan: string): "gold" | "info" | "default" {
   if (plan === "Enterprise") return "gold";
   if (plan === "Growth") return "info";
   return "default";
+}
+
+function trialUrgency(
+  trialEndsAt?: string,
+): { label: string; variant: "danger" | "warning" } | null {
+  if (!trialEndsAt) return null;
+  const days = Math.ceil(
+    (new Date(trialEndsAt).getTime() - new Date(todayIso()).getTime()) /
+      86400000,
+  );
+  if (days < 0) return { label: "Expired", variant: "danger" };
+  if (days <= 3) return { label: `${days}d left`, variant: "warning" };
+  return null;
 }
 
 const emptyAddForm = {
@@ -43,10 +57,15 @@ export default function SuperAdminTenantPage() {
   const convertTrialToActive = usePlatformStore((s) => s.convertTrialToActive);
   const suspendTenant = usePlatformStore((s) => s.suspendTenant);
   const activateTenant = usePlatformStore((s) => s.activateTenant);
+  const archiveTenant = usePlatformStore((s) => s.archiveTenant);
+  const restoreTenant = usePlatformStore((s) => s.restoreTenant);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [showArchived, setShowArchived] = useState(false);
   const [selected, setSelected] = useState<Tenant | null>(null);
+  const [suspendTarget, setSuspendTarget] = useState<Tenant | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<Tenant | null>(null);
   const [editForm, setEditForm] = useState<{
     name: string;
     ownerEmail: string;
@@ -61,8 +80,14 @@ export default function SuperAdminTenantPage() {
     billing: "monthly" as "monthly" | "yearly",
   });
 
+  const archivedCount = useMemo(
+    () => tenants.filter((t) => t.archived).length,
+    [tenants],
+  );
+
   const filtered = useMemo(() => {
     return tenants.filter((t) => {
+      if (!showArchived && t.archived) return false;
       const q = search.toLowerCase();
       const matchesSearch =
         t.name.toLowerCase().includes(q) ||
@@ -73,7 +98,7 @@ export default function SuperAdminTenantPage() {
         statusFilter === "all" || t.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [tenants, search, statusFilter]);
+  }, [tenants, search, statusFilter, showArchived]);
 
   function openTenant(tenant: Tenant) {
     setSelected(tenant);
@@ -87,6 +112,19 @@ export default function SuperAdminTenantPage() {
 
   function saveTenant() {
     if (!selected || !editForm) return;
+    const pkg = packages.find((p) => p.id === selected.packageId);
+    if (pkg && editForm.branches > pkg.maxBranches) {
+      toast.error("Branch count exceeds plan limit", {
+        description: `${pkg.name} allows up to ${pkg.maxBranches} branches — change plan first.`,
+      });
+      return;
+    }
+    if (pkg && editForm.staff > pkg.maxStaff) {
+      toast.error("Staff count exceeds plan limit", {
+        description: `${pkg.name} allows up to ${pkg.maxStaff} staff — change plan first.`,
+      });
+      return;
+    }
     updateTenant(selected.id, editForm);
     const updated = { ...selected, ...editForm };
     setSelected(updated);
@@ -100,6 +138,19 @@ export default function SuperAdminTenantPage() {
     }
     const pkgId = addForm.packageId || packages[0]?.id;
     if (!pkgId) return;
+    const pkg = packages.find((p) => p.id === pkgId);
+    if (pkg && addForm.branches > pkg.maxBranches) {
+      toast.error("Branch count exceeds plan limit", {
+        description: `${pkg.name} allows up to ${pkg.maxBranches} branches.`,
+      });
+      return;
+    }
+    if (pkg && addForm.staff > pkg.maxStaff) {
+      toast.error("Staff count exceeds plan limit", {
+        description: `${pkg.name} allows up to ${pkg.maxStaff} staff.`,
+      });
+      return;
+    }
     const tenant = addTenant({ ...addForm, packageId: pkgId });
     toast.success("Tenant onboarded", {
       description: `${tenant.name} · ${tenant.status === "trial" ? "Trial" : "Active"}`,
@@ -115,6 +166,19 @@ export default function SuperAdminTenantPage() {
 
   function handleChangePlan() {
     if (!planModal) return;
+    const newPkg = packages.find((p) => p.id === planForm.packageId);
+    if (newPkg && planModal.branches > newPkg.maxBranches) {
+      toast.error("Cannot switch plan", {
+        description: `${planModal.name} has ${planModal.branches} branches — ${newPkg.name} allows only ${newPkg.maxBranches}.`,
+      });
+      return;
+    }
+    if (newPkg && planModal.staff > newPkg.maxStaff) {
+      toast.error("Cannot switch plan", {
+        description: `${planModal.name} has ${planModal.staff} staff — ${newPkg.name} allows only ${newPkg.maxStaff}.`,
+      });
+      return;
+    }
     changeTenantPlan(planModal.id, planForm.packageId, planForm.billing);
     toast.success("Plan updated", { description: planModal.name });
     setPlanModal(null);
@@ -148,6 +212,26 @@ export default function SuperAdminTenantPage() {
     }
   }
 
+  function handleArchive(tenant: Tenant) {
+    archiveTenant(tenant.id);
+    toast.success("Tenant archived", {
+      description: `${tenant.name} moved out of the active list`,
+    });
+    setSelected(null);
+    setEditForm(null);
+  }
+
+  function handleRestore(tenant: Tenant) {
+    restoreTenant(tenant.id);
+    toast.success("Tenant restored", { description: tenant.name });
+    if (selected?.id === tenant.id) {
+      const fresh = usePlatformStore
+        .getState()
+        .tenants.find((t) => t.id === tenant.id);
+      if (fresh) openTenant(fresh);
+    }
+  }
+
   function handleActivate(tenant: Tenant) {
     activateTenant(tenant.id);
     toast.success("Tenant activated", { description: tenant.name });
@@ -166,8 +250,18 @@ export default function SuperAdminTenantPage() {
         actions={
           <div className="flex items-center gap-3">
             <span className="text-xs text-[var(--text-faint)]">
-              {filtered.length} of {tenants.length}
+              {filtered.length} of {tenants.length - archivedCount}
             </span>
+            {archivedCount > 0 && (
+              <Button
+                variant={showArchived ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setShowArchived((v) => !v)}
+              >
+                <Archive className="h-4 w-4" />
+                {showArchived ? "Hide" : "Show"} archived ({archivedCount})
+              </Button>
+            )}
             <Button size="sm" onClick={() => setAddOpen(true)}>
               <Plus className="h-4 w-4" />
               Add Tenant
@@ -258,9 +352,19 @@ export default function SuperAdminTenantPage() {
                         {tenant.mrr > 0 ? formatCurrency(tenant.mrr) : "—"}
                       </td>
                       <td className="py-3.5 pr-4 text-[var(--text-muted)]">
-                        {tenant.trialEndsAt
-                          ? formatDate(tenant.trialEndsAt)
-                          : "—"}
+                        <div className="flex items-center gap-2">
+                          {tenant.trialEndsAt
+                            ? formatDate(tenant.trialEndsAt)
+                            : "—"}
+                          {(() => {
+                            const urgency = trialUrgency(tenant.trialEndsAt);
+                            return urgency ? (
+                              <Badge variant={urgency.variant}>
+                                {urgency.label}
+                              </Badge>
+                            ) : null;
+                          })()}
+                        </div>
                       </td>
                       <td className="py-3.5">
                         <div className="flex flex-wrap items-center gap-1">
@@ -271,38 +375,58 @@ export default function SuperAdminTenantPage() {
                           >
                             View
                           </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => openChangePlan(tenant)}
-                          >
-                            Plan
-                          </Button>
-                          {tenant.status === "trial" && (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => handleConvertTrial(tenant)}
-                            >
-                              Convert
-                            </Button>
-                          )}
-                          {tenant.status === "suspended" ? (
+                          {tenant.archived ? (
                             <Button
                               variant="success"
                               size="sm"
-                              onClick={() => handleActivate(tenant)}
+                              onClick={() => handleRestore(tenant)}
                             >
-                              Activate
+                              <RotateCcw className="h-4 w-4" />
+                              Restore
                             </Button>
                           ) : (
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={() => handleSuspend(tenant)}
-                            >
-                              Suspend
-                            </Button>
+                            <>
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => openChangePlan(tenant)}
+                              >
+                                Plan
+                              </Button>
+                              {tenant.status === "trial" && (
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  onClick={() => handleConvertTrial(tenant)}
+                                >
+                                  Convert
+                                </Button>
+                              )}
+                              {tenant.status === "suspended" ? (
+                                <Button
+                                  variant="success"
+                                  size="sm"
+                                  onClick={() => handleActivate(tenant)}
+                                >
+                                  Activate
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => setSuspendTarget(tenant)}
+                                >
+                                  Suspend
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setArchiveTarget(tenant)}
+                              >
+                                <Archive className="h-4 w-4" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -441,6 +565,17 @@ export default function SuperAdminTenantPage() {
               />
             </div>
           </div>
+          {(() => {
+            const pkg = packages.find(
+              (p) => p.id === (addForm.packageId || packages[0]?.id),
+            );
+            return pkg ? (
+              <p className="text-xs text-[var(--text-faint)]">
+                {pkg.name} allows up to {pkg.maxBranches} branches and{" "}
+                {pkg.maxStaff} staff.
+              </p>
+            ) : null;
+          })()}
           <Button className="w-full" onClick={handleAddTenant}>
             Onboard Tenant
           </Button>
@@ -512,12 +647,22 @@ export default function SuperAdminTenantPage() {
                 />
               </div>
             </div>
+            {(() => {
+              const pkg = packages.find((p) => p.id === selected.packageId);
+              return pkg ? (
+                <p className="-mt-2 text-xs text-[var(--text-faint)]">
+                  {pkg.name} allows up to {pkg.maxBranches} branches and{" "}
+                  {pkg.maxStaff} staff.
+                </p>
+              ) : null;
+            })()}
 
             <div className="rounded-xl bg-[var(--bg-muted)] px-4 py-3 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={selected.status} />
                 <Badge variant={planVariant(selected.plan)}>{selected.plan}</Badge>
                 <Badge variant="default">{selected.billing}</Badge>
+                {selected.archived && <Badge variant="danger">Archived</Badge>}
               </div>
               <div className="mt-2 grid gap-1 text-[var(--text-muted)]">
                 <p>
@@ -529,10 +674,32 @@ export default function SuperAdminTenantPage() {
                   </span>
                 </p>
                 {selected.trialEndsAt && (
-                  <p>
+                  <p className="flex items-center gap-2">
                     Trial ends:{" "}
                     <span className="font-medium text-[var(--text)]">
                       {formatDate(selected.trialEndsAt)}
+                    </span>
+                    {(() => {
+                      const urgency = trialUrgency(selected.trialEndsAt);
+                      return urgency ? (
+                        <Badge variant={urgency.variant}>{urgency.label}</Badge>
+                      ) : null;
+                    })()}
+                  </p>
+                )}
+                {selected.updatedAt && (
+                  <p>
+                    Last updated:{" "}
+                    <span className="font-medium text-[var(--text)]">
+                      {new Date(selected.updatedAt).toLocaleString()}
+                    </span>
+                  </p>
+                )}
+                {selected.archivedAt && (
+                  <p>
+                    Archived on:{" "}
+                    <span className="font-medium text-[var(--text)]">
+                      {formatDate(selected.archivedAt)}
                     </span>
                   </p>
                 )}
@@ -540,42 +707,90 @@ export default function SuperAdminTenantPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 pt-2">
-              <Button className="flex-1" onClick={saveTenant}>
-                Save Changes
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => openChangePlan(selected)}
-              >
-                Change Plan
-              </Button>
-              {selected.status === "trial" && (
+              {selected.archived ? (
                 <Button
-                  variant="secondary"
-                  onClick={() => handleConvertTrial(selected)}
-                >
-                  Convert Trial
-                </Button>
-              )}
-              {selected.status === "suspended" ? (
-                <Button
+                  className="flex-1"
                   variant="success"
-                  onClick={() => handleActivate(selected)}
+                  onClick={() => handleRestore(selected)}
                 >
-                  Activate
+                  <RotateCcw className="h-4 w-4" />
+                  Restore Tenant
                 </Button>
               ) : (
-                <Button
-                  variant="danger"
-                  onClick={() => handleSuspend(selected)}
-                >
-                  Suspend
-                </Button>
+                <>
+                  <Button className="flex-1" onClick={saveTenant}>
+                    Save Changes
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => openChangePlan(selected)}
+                  >
+                    Change Plan
+                  </Button>
+                  {selected.status === "trial" && (
+                    <Button
+                      variant="secondary"
+                      onClick={() => handleConvertTrial(selected)}
+                    >
+                      Convert Trial
+                    </Button>
+                  )}
+                  {selected.status === "suspended" ? (
+                    <Button
+                      variant="success"
+                      onClick={() => handleActivate(selected)}
+                    >
+                      Activate
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="danger"
+                      onClick={() => setSuspendTarget(selected)}
+                    >
+                      Suspend
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    onClick={() => setArchiveTarget(selected)}
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </Button>
+                </>
               )}
             </div>
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title="Suspend this tenant?"
+        description={
+          suspendTarget
+            ? `${suspendTarget.name} will lose access immediately and its MRR will drop to zero. You can reactivate them any time.`
+            : undefined
+        }
+        confirmLabel="Suspend"
+        confirmVariant="danger"
+        onConfirm={() => suspendTarget && handleSuspend(suspendTarget)}
+      />
+
+      <ConfirmDialog
+        open={!!archiveTarget}
+        onOpenChange={(open) => !open && setArchiveTarget(null)}
+        title="Archive this tenant?"
+        description={
+          archiveTarget
+            ? `${archiveTarget.name} will be offboarded and hidden from the active tenant list. Their record is kept and can be restored later.`
+            : undefined
+        }
+        confirmLabel="Archive"
+        confirmVariant="danger"
+        onConfirm={() => archiveTarget && handleArchive(archiveTarget)}
+      />
 
       <Modal
         open={!!planModal}

@@ -27,7 +27,6 @@ import { Modal } from "@/components/ui/modal";
 import { PosSubnav } from "@/components/domain/pos-subnav";
 import { useAppStore } from "@/lib/store/app-store";
 import { computeCharges } from "@/lib/pos-pricing";
-import { CUSTOMERS } from "@/lib/mock/data";
 import type { PaymentMethod } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -63,6 +62,7 @@ export default function OwnerPosPage() {
   const staff = useAppStore((s) => s.staff);
   const branchId = useAppStore((s) => s.branchId);
   const queue = useAppStore((s) => s.queue);
+  const CUSTOMERS = useAppStore((s) => s.customers);
   const taxConfig = useAppStore((s) => s.taxConfig);
   const clearPos = useAppStore((s) => s.clearPos);
   const completePayment = useAppStore((s) => s.completePayment);

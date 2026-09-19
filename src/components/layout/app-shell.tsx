@@ -132,12 +132,15 @@ export function Sidebar({
   logoUrl,
   items,
   footerLabel = "Sign out",
+  beforeNav,
 }: {
   title: string;
   subtitle?: string;
   logoUrl?: string;
   items: { href: string; label: string; icon: LucideIcon }[];
   footerLabel?: string;
+  /** Rendered between the brand header and the nav links — e.g. a branch switcher. */
+  beforeNav?: React.ReactNode;
 }) {
   const mobileNav = useMobileNav();
   const setOpen = mobileNav?.setOpen;
@@ -162,6 +165,7 @@ export function Sidebar({
     <>
       <aside className="hidden h-dvh w-64 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-elevated)] lg:flex">
         <SidebarBrand title={title} subtitle={subtitle} logoUrl={logoUrl} />
+        {beforeNav}
         <NavLinks items={items} />
         <SidebarFooter footerLabel={footerLabel} />
       </aside>
@@ -196,6 +200,7 @@ export function Sidebar({
                   <X className="h-5 w-5" />
                 </button>
               </div>
+              {beforeNav}
               <NavLinks items={items} onNavigate={close} />
               <SidebarFooter footerLabel={footerLabel} onNavigate={close} />
             </motion.aside>

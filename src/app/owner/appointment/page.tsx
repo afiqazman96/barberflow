@@ -9,13 +9,15 @@ import {
   XCircle,
   ChevronLeft,
   ChevronRight,
+  Plus,
+  Ban,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { BookingCard } from "@/components/domain/booking-card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -23,15 +25,38 @@ import { useAppStore } from "@/lib/store/app-store";
 import type { Booking } from "@/lib/types";
 import { formatDate, todayIso } from "@/lib/utils";
 
+const emptyNewBooking = () => ({
+  customerName: "",
+  customerPhone: "",
+  serviceId: "",
+  staffId: "",
+  date: todayIso(),
+  time: "10:00",
+});
+
 export default function OwnerAppointmentPage() {
-  const bookings = useAppStore((s) => s.bookings);
+  const branchId = useAppStore((s) => s.branchId);
+  const allBookings = useAppStore((s) => s.bookings);
+  const services = useAppStore((s) => s.services);
+  const staffList = useAppStore((s) => s.staff);
+  const addBooking = useAppStore((s) => s.addBooking);
   const updateBooking = useAppStore((s) => s.updateBooking);
+
+  const bookings = useMemo(
+    () => allBookings.filter((b) => b.branchId === branchId),
+    [allBookings, branchId],
+  );
+  const barbers = staffList.filter(
+    (s) => s.role === "barber" && s.branchId === branchId && s.active,
+  );
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState(todayIso);
   const [selected, setSelected] = useState<Booking | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newBooking, setNewBooking] = useState(emptyNewBooking);
 
   const dates = useMemo(() => {
     const set = new Set(bookings.map((b) => b.date));
@@ -83,15 +108,76 @@ export default function OwnerAppointmentPage() {
     setSelected({ ...booking, status: "no-show" });
   }
 
+  function handleCancelBooking(booking: Booking) {
+    updateBooking(booking.id, { status: "cancelled" });
+    toast.success("Appointment cancelled", { description: booking.customerName });
+    setSelected({ ...booking, status: "cancelled" });
+  }
+
   function shiftDate(dir: -1 | 1) {
+    if (dates.length === 0) return;
     const idx = dates.indexOf(dateFilter);
+    if (idx === -1) {
+      // The active date (usually "today") has no bookings, so it isn't in
+      // `dates` at all — jump to the nearest date that does instead of
+      // silently doing nothing.
+      const candidates =
+        dir === 1
+          ? dates.filter((d) => d > dateFilter)
+          : [...dates].filter((d) => d < dateFilter).reverse();
+      if (candidates[0]) setDateFilter(candidates[0]);
+      return;
+    }
     const next = dates[idx + dir];
     if (next) setDateFilter(next);
   }
 
+  function handleCreateBooking(e: React.FormEvent) {
+    e.preventDefault();
+    const service = services.find((s) => s.id === newBooking.serviceId);
+    if (!newBooking.customerName.trim() || !newBooking.customerPhone.trim()) {
+      toast.error("Customer name and phone are required");
+      return;
+    }
+    if (!service) {
+      toast.error("Pick a service");
+      return;
+    }
+    const staffMember = barbers.find((b) => b.id === newBooking.staffId);
+    addBooking({
+      id: `bk-${Date.now()}`,
+      branchId,
+      customerId: "guest",
+      customerName: newBooking.customerName.trim(),
+      customerPhone: newBooking.customerPhone.trim(),
+      serviceIds: [service.id],
+      serviceNames: [service.name],
+      staffId: staffMember?.id ?? null,
+      staffName: staffMember?.name ?? "Any Barber",
+      date: newBooking.date,
+      time: newBooking.time,
+      durationMins: service.durationMins,
+      gracePeriodMins: 10,
+      status: "confirmed",
+    });
+    toast.success("Appointment booked", {
+      description: `${newBooking.customerName} · ${formatDate(newBooking.date)} at ${newBooking.time}`,
+    });
+    setCreateOpen(false);
+    setNewBooking(emptyNewBooking());
+  }
+
   return (
     <>
-      <Topbar title="Appointments" />
+      <Topbar
+        title="Appointments"
+        actions={
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+            New Appointment
+          </Button>
+        }
+      />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -137,6 +223,7 @@ export default function OwnerAppointmentPage() {
               <option value="checked-in">Checked In</option>
               <option value="completed">Completed</option>
               <option value="no-show">No Show</option>
+              <option value="cancelled">Cancelled</option>
             </select>
             <div className="flex gap-2">
               <button
@@ -261,18 +348,28 @@ export default function OwnerAppointmentPage() {
               </p>
             </div>
             {!["completed", "no-show", "cancelled"].includes(selected.status) && (
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Button onClick={() => handleMarkComplete(selected)}>
-                  <CheckCircle className="h-4 w-4" />
-                  Mark Complete
-                </Button>
+              <div className="space-y-2">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Button onClick={() => handleMarkComplete(selected)}>
+                    <CheckCircle className="h-4 w-4" />
+                    Mark Complete
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleMarkNoShow(selected)}
+                    className="border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Mark No-Show
+                  </Button>
+                </div>
                 <Button
-                  variant="outline"
-                  onClick={() => handleMarkNoShow(selected)}
-                  className="border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                  variant="ghost"
+                  className="w-full text-[var(--text-muted)]"
+                  onClick={() => handleCancelBooking(selected)}
                 >
-                  <XCircle className="h-4 w-4" />
-                  Mark No-Show
+                  <Ban className="h-4 w-4" />
+                  Cancel Appointment
                 </Button>
               </div>
             )}
@@ -286,8 +383,114 @@ export default function OwnerAppointmentPage() {
                 Customer marked as no-show.
               </p>
             )}
+            {selected.status === "cancelled" && (
+              <p className="text-center text-sm text-[var(--text-muted)]">
+                This appointment was cancelled.
+              </p>
+            )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="New Appointment"
+        description="Book a slot for a phone-in or walk-up customer."
+      >
+        <form onSubmit={handleCreateBooking} className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="bk-name">Customer Name</Label>
+              <Input
+                id="bk-name"
+                value={newBooking.customerName}
+                onChange={(e) =>
+                  setNewBooking((f) => ({ ...f, customerName: e.target.value }))
+                }
+                placeholder="Full name"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="bk-phone">Phone</Label>
+              <Input
+                id="bk-phone"
+                value={newBooking.customerPhone}
+                onChange={(e) =>
+                  setNewBooking((f) => ({ ...f, customerPhone: e.target.value }))
+                }
+                placeholder="+60 12-345 6789"
+                required
+              />
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="bk-service">Service</Label>
+            <Select
+              id="bk-service"
+              value={newBooking.serviceId}
+              onChange={(e) =>
+                setNewBooking((f) => ({ ...f, serviceId: e.target.value }))
+              }
+              required
+            >
+              <option value="">Select a service…</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} · {s.durationMins} min
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="bk-staff">Barber</Label>
+            <Select
+              id="bk-staff"
+              value={newBooking.staffId}
+              onChange={(e) =>
+                setNewBooking((f) => ({ ...f, staffId: e.target.value }))
+              }
+            >
+              <option value="">Any Barber</option>
+              {barbers.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="bk-date">Date</Label>
+              <Input
+                id="bk-date"
+                type="date"
+                min={todayIso()}
+                value={newBooking.date}
+                onChange={(e) =>
+                  setNewBooking((f) => ({ ...f, date: e.target.value }))
+                }
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="bk-time">Time</Label>
+              <Input
+                id="bk-time"
+                type="time"
+                value={newBooking.time}
+                onChange={(e) =>
+                  setNewBooking((f) => ({ ...f, time: e.target.value }))
+                }
+                required
+              />
+            </div>
+          </div>
+          <Button type="submit" className="w-full" size="lg">
+            Book Appointment
+          </Button>
+        </form>
       </Modal>
     </>
   );

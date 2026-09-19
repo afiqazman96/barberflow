@@ -424,11 +424,14 @@ export const CUSTOMERS = makeCustomers();
  * "guest" record and a returning member would get no membership pricing or
  * visit history until a staff member manually re-attached them.
  */
-export function findCustomerByPhone(phone: string): Customer | undefined {
+export function findCustomerByPhone(
+  customers: Customer[],
+  phone: string,
+): Customer | undefined {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 7) return undefined;
   const tail = digits.slice(-9);
-  return CUSTOMERS.find((c) => c.phone.replace(/\D/g, "").endsWith(tail));
+  return customers.find((c) => c.phone.replace(/\D/g, "").endsWith(tail));
 }
 
 export const QUEUE: QueueTicket[] = [

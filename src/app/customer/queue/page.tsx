@@ -53,6 +53,7 @@ function QueueWizard() {
   const branches = useAppStore((s) => s.branches);
   const services = useAppStore((s) => s.services);
   const staff = useAppStore((s) => s.staff);
+  const customers = useAppStore((s) => s.customers);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
   const setBranchId = useAppStore((s) => s.setBranchId);
@@ -116,7 +117,7 @@ function QueueWizard() {
     // A returning customer who joins on their own phone should still be
     // recognised — matched by phone number, not asked to "log in".
     const matched =
-      contactMode === "phone" ? findCustomerByPhone(phone) : undefined;
+      contactMode === "phone" ? findCustomerByPhone(customers, phone) : undefined;
     const ticket: QueueTicket = {
       id: `q-${Date.now()}`,
       number,

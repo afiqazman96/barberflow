@@ -20,6 +20,7 @@ import { Input, Label } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/badge";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
+import { useAppStore } from "@/lib/store/app-store";
 import { changePassword } from "@/lib/auth/actions";
 import { formatCurrency, initials } from "@/lib/utils";
 
@@ -132,7 +133,9 @@ function ChangePasswordSection() {
 }
 
 function StaffProfileContent() {
-  const { staff, status, chair } = useStaffPortal();
+  const { staff, status, chair, currentTicket } = useStaffPortal();
+  const branches = useAppStore((s) => s.branches);
+  const branchName = branches.find((b) => b.id === staff?.branchId)?.name;
 
   return (
     <div className="space-y-6">
@@ -173,7 +176,9 @@ function StaffProfileContent() {
           <div>
             <p className="font-medium">{chair?.label ?? "Unassigned"}</p>
             <p className="text-xs text-[var(--text-muted)]">
-              {chair ? `Chair ${chair.number} · Fade House KL` : "Pick a chair when you start shift"}
+              {chair
+                ? `Chair ${chair.number}${branchName ? ` · ${branchName}` : ""}`
+                : "Pick a chair when you start shift"}
             </p>
           </div>
         </div>
@@ -249,6 +254,15 @@ function StaffProfileContent() {
         variant="outline"
         size="lg"
         className="w-full"
+        onBeforeSignOut={() => {
+          if (currentTicket) {
+            toast.error("Complete your current service before signing out", {
+              description: `${currentTicket.customerName} is still in your chair`,
+            });
+            return false;
+          }
+          return true;
+        }}
       />
     </div>
   );

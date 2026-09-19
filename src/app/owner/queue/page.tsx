@@ -14,7 +14,7 @@ import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
-import { CUSTOMERS, findCustomerByPhone } from "@/lib/mock/data";
+import { findCustomerByPhone } from "@/lib/mock/data";
 import type { QueueStatus, QueueTicket } from "@/lib/types";
 import { initials } from "@/lib/utils";
 
@@ -41,6 +41,7 @@ function OwnerQueueContent() {
   const chairs = useAppStore((s) => s.chairs);
   const staff = useAppStore((s) => s.staff);
   const services = useAppStore((s) => s.services);
+  const customers = useAppStore((s) => s.customers);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const assignChair = useAppStore((s) => s.assignChair);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
@@ -68,12 +69,18 @@ function OwnerQueueContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const barbers = staff.filter((s) => s.role === "barber" && s.active);
+  const barbers = staff.filter(
+    (s) => s.role === "barber" && s.branchId === branchId && s.active,
+  );
+  const branchChairs = chairs.filter((c) => c.branchId === branchId);
+  const branchQueue = queue.filter((q) => q.branchId === branchId);
 
   const filtered = useMemo(
     () =>
-      filter === "all" ? queue : queue.filter((q) => q.status === filter),
-    [queue, filter],
+      filter === "all"
+        ? branchQueue
+        : branchQueue.filter((q) => q.status === filter),
+    [branchQueue, filter],
   );
 
   function handleReassign(chairId: string, staffId: string) {
@@ -98,12 +105,12 @@ function OwnerQueueContent() {
     // otherwise a walk-in typed in here can still match an existing
     // customer by phone, so they aren't recreated as a stranger.
     const matched = prefilledCustomerId
-      ? CUSTOMERS.find((c) => c.id === prefilledCustomerId)
-      : findCustomerByPhone(phone);
+      ? customers.find((c) => c.id === prefilledCustomerId)
+      : findCustomerByPhone(customers, phone);
 
     const ticket: QueueTicket = {
       id: `q-${Date.now()}`,
-      number: nextQueueNumber(queue),
+      number: nextQueueNumber(branchQueue),
       branchId,
       customerId: matched?.id ?? `walk-${Date.now()}`,
       customerName: name.trim(),
@@ -139,7 +146,7 @@ function OwnerQueueContent() {
         actions={
           <div className="flex items-center gap-2">
             <span className="hidden text-xs text-[var(--text-faint)] sm:inline">
-              {queue.filter((q) => q.status === "waiting").length} waiting
+              {branchQueue.filter((q) => q.status === "waiting").length} waiting
             </span>
             <Button size="sm" onClick={() => setRegisterOpen(true)}>
               <Plus className="h-4 w-4" />
@@ -156,12 +163,12 @@ function OwnerQueueContent() {
               <h2 className="font-display text-lg font-semibold">Chair Management</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {chairs.map((chair, i) => {
+              {branchChairs.map((chair, i) => {
                 const assigned = staff.find((s) => s.id === chair.staffId);
                 const status = assigned
                   ? staffStatuses[assigned.id]
                   : undefined;
-                const activeTicket = queue.find(
+                const activeTicket = branchQueue.find(
                   (q) =>
                     q.chairId === chair.id && q.status === "in-service",
                 );
@@ -239,7 +246,7 @@ function OwnerQueueContent() {
                   {f.label}
                   {f.value !== "all" && (
                     <span className="ml-1 opacity-60">
-                      ({queue.filter((q) => q.status === f.value).length})
+                      ({branchQueue.filter((q) => q.status === f.value).length})
                     </span>
                   )}
                 </button>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Wallet, TrendingUp, Info, Receipt } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,15 +8,23 @@ import { Badge } from "@/components/ui/badge";
 import { StatCard } from "@/components/domain/stat-card";
 import { COMMISSION_RULES } from "@/lib/mock/data";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
-import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { formatCurrency, formatDateTime, todayIso } from "@/lib/utils";
 
 export default function StaffCommissionPage() {
   const { staff, staffSales } = useStaffPortal();
 
-  const todaySalesTotal = staffSales.reduce((sum, s) => sum + s.total, 0);
-  const todayCommissionTotal = staffSales.reduce((sum, s) => sum + s.commission, 0);
+  // staffSales is every sale ever attributed to this barber (History wants
+  // that). This page is titled "Today's breakdown", so it needs its own
+  // date-scoped, non-voided slice rather than reusing the raw list.
+  const today = todayIso();
+  const todaySales = staffSales.filter(
+    (s) => !s.voided && s.createdAt.slice(0, 10) === today,
+  );
+  const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
+  const todayCommissionTotal = todaySales.reduce((sum, s) => sum + s.commission, 0);
 
   const activeRules = COMMISSION_RULES.filter((r) => r.active);
+  const hasOverride = activeRules.some((r) => r.staffId === staff.id);
 
   return (
     <div className="space-y-6">
@@ -57,16 +66,16 @@ export default function StaffCommissionPage() {
         <CardHeader>
           <CardTitle>Today&apos;s breakdown</CardTitle>
           <span className="text-sm text-[var(--text-muted)]">
-            {staffSales.length} transactions
+            {todaySales.length} transactions
           </span>
         </CardHeader>
-        {staffSales.length === 0 ? (
+        {todaySales.length === 0 ? (
           <p className="py-6 text-center text-sm text-[var(--text-muted)]">
             No sales recorded yet today
           </p>
         ) : (
           <div className="space-y-2">
-            {staffSales.slice(0, 8).map((sale, i) => (
+            {todaySales.slice(0, 8).map((sale, i) => (
               <motion.div
                 key={sale.id}
                 initial={{ opacity: 0, y: 8 }}
@@ -94,9 +103,17 @@ export default function StaffCommissionPage() {
                 </div>
               </motion.div>
             ))}
+            {todaySales.length > 8 && (
+              <Link
+                href="/staff/history"
+                className="block pt-1 text-center text-xs text-[var(--gold-soft)] underline-offset-4 hover:underline"
+              >
+                +{todaySales.length - 8} more today · view in History
+              </Link>
+            )}
           </div>
         )}
-        {staffSales.length > 0 && (
+        {todaySales.length > 0 && (
           <div className="mt-4 flex justify-between border-t border-[var(--border)] pt-4 text-sm">
             <span className="text-[var(--text-muted)]">Session total</span>
             <span className="font-display font-semibold">
@@ -139,8 +156,10 @@ export default function StaffCommissionPage() {
           ))}
         </div>
         <p className="mt-4 text-xs leading-relaxed text-[var(--text-faint)]">
-          Commissions are calculated at checkout. Your personal override ({staff.name}) applies
-          a boosted rate on all eligible sales. Campaign bonuses stack on top.
+          Commissions are calculated at checkout.{" "}
+          {hasOverride
+            ? "You have a personal override in effect — it's marked above. Other bonuses stack on top."
+            : "You're on the standard rate for each rule above — ask your owner if you think you're due an override."}
         </p>
       </Card>
     </div>

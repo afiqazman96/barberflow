@@ -49,6 +49,7 @@ function BookingWizard() {
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
   const queue = useAppStore((s) => s.queue);
+  const customers = useAppStore((s) => s.customers);
 
   const [branchId, setBranchId] = useState(
     paramBranchId ?? BRANCHES[0]?.id ?? "b1",
@@ -98,7 +99,7 @@ function BookingWizard() {
 
     // A returning customer booking on their own should still be recognised
     // by phone, so their membership pricing carries through to checkout.
-    const matched = findCustomerByPhone(phone);
+    const matched = findCustomerByPhone(customers, phone);
 
     const booking: Booking = {
       id: `bk-${Date.now()}`,

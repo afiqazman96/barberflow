@@ -132,10 +132,19 @@ export default function OwnerCommissionPage() {
       return;
     }
 
+    const rawValue = Number(form.value) || 0;
+    // Percentage-flavoured rules pay out as a share of the sale, so a value
+    // over 100% would hand the barber more than the sale is worth. A flat
+    // Fixed bonus has no such ceiling.
+    const value =
+      form.type === "fixed"
+        ? Math.max(0, rawValue)
+        : Math.min(100, Math.max(0, rawValue));
+
     const rule = addCommissionRule({
       name: form.name.trim(),
       type: form.type,
-      value: Number(form.value) || 0,
+      value,
       appliesTo: form.appliesTo,
       serviceId: form.serviceId || undefined,
       staffId: form.staffId || undefined,
@@ -265,7 +274,14 @@ export default function OwnerCommissionPage() {
                     <strong>Service / Product</strong> — boosted rate on specific items
                   </li>
                   <li>
-                    <strong>Override</strong> — per-staff rate replaces default for that barber
+                    <strong>Override</strong> — a Percentage or Fixed rule with
+                    a staff override and &ldquo;Applies To: All&rdquo; replaces
+                    that barber&apos;s default rate entirely
+                  </li>
+                  <li>
+                    A staff override on a <strong>Service / Product</strong>{" "}
+                    rule instead adds on top as a bonus for that item, on top
+                    of their normal rate on everything else
                   </li>
                 </ul>
               </div>
@@ -364,6 +380,7 @@ export default function OwnerCommissionPage() {
                 id="rule-value"
                 type="number"
                 min={0}
+                max={form.type === "fixed" ? undefined : 100}
                 step={form.type === "fixed" ? "1" : "0.1"}
                 value={form.value}
                 onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))}

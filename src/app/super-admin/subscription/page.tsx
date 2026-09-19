@@ -17,15 +17,29 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import type { Tenant } from "@/lib/types";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
 import { toast } from "sonner";
 
 function planVariant(plan: string): "gold" | "info" | "default" {
   if (plan === "Enterprise") return "gold";
   if (plan === "Growth") return "info";
   return "default";
+}
+
+function trialUrgency(
+  trialEndsAt?: string,
+): { label: string; variant: "danger" | "warning" } | null {
+  if (!trialEndsAt) return null;
+  const days = Math.ceil(
+    (new Date(trialEndsAt).getTime() - new Date(todayIso()).getTime()) /
+      86400000,
+  );
+  if (days < 0) return { label: "Expired", variant: "danger" };
+  if (days <= 3) return { label: `${days}d left`, variant: "warning" };
+  return null;
 }
 
 export default function SuperAdminSubscriptionPage() {
@@ -42,6 +56,7 @@ export default function SuperAdminSubscriptionPage() {
     packageId: "",
     billing: "monthly" as "monthly" | "yearly",
   });
+  const [suspendTarget, setSuspendTarget] = useState<Tenant | null>(null);
 
   const mrr = totalMrr();
   const trials = trialCount();
@@ -78,6 +93,19 @@ export default function SuperAdminSubscriptionPage() {
 
   function handleChangePlan() {
     if (!planModal) return;
+    const newPkg = packages.find((p) => p.id === planForm.packageId);
+    if (newPkg && planModal.branches > newPkg.maxBranches) {
+      toast.error("Cannot switch plan", {
+        description: `${planModal.name} has ${planModal.branches} branches — ${newPkg.name} allows only ${newPkg.maxBranches}.`,
+      });
+      return;
+    }
+    if (newPkg && planModal.staff > newPkg.maxStaff) {
+      toast.error("Cannot switch plan", {
+        description: `${planModal.name} has ${planModal.staff} staff — ${newPkg.name} allows only ${newPkg.maxStaff}.`,
+      });
+      return;
+    }
     changeTenantPlan(planModal.id, planForm.packageId, planForm.billing);
     toast.success("Plan updated", { description: planModal.name });
     setPlanModal(null);
@@ -247,9 +275,19 @@ export default function SuperAdminSubscriptionPage() {
                             : "—"}
                         </td>
                         <td className="py-3.5 pr-4 text-[var(--text-muted)]">
-                          {tenant.trialEndsAt
-                            ? formatDate(tenant.trialEndsAt)
-                            : "—"}
+                          <div className="flex items-center gap-2">
+                            {tenant.trialEndsAt
+                              ? formatDate(tenant.trialEndsAt)
+                              : "—"}
+                            {(() => {
+                              const urgency = trialUrgency(tenant.trialEndsAt);
+                              return urgency ? (
+                                <Badge variant={urgency.variant}>
+                                  {urgency.label}
+                                </Badge>
+                              ) : null;
+                            })()}
+                          </div>
                         </td>
                         <td className="py-3.5">
                           <div className="flex flex-wrap gap-1">
@@ -273,7 +311,7 @@ export default function SuperAdminSubscriptionPage() {
                               <Button
                                 variant="danger"
                                 size="sm"
-                                onClick={() => handleSuspend(tenant)}
+                                onClick={() => setSuspendTarget(tenant)}
                               >
                                 Suspend
                               </Button>
@@ -333,6 +371,20 @@ export default function SuperAdminSubscriptionPage() {
           </Button>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={!!suspendTarget}
+        onOpenChange={(open) => !open && setSuspendTarget(null)}
+        title="Suspend this subscription?"
+        description={
+          suspendTarget
+            ? `${suspendTarget.name} will lose access immediately and its MRR will drop to zero. You can reactivate them any time.`
+            : undefined
+        }
+        confirmLabel="Suspend"
+        confirmVariant="danger"
+        onConfirm={() => suspendTarget && handleSuspend(suspendTarget)}
+      />
     </>
   );
 }

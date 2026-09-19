@@ -195,11 +195,14 @@ export default function SuperAdminSupportPage() {
           <div>
             <Label>Tenant</Label>
             <Select
-              value={ticketForm.tenantId || tenants[0]?.id || ""}
+              value={ticketForm.tenantId}
               onChange={(e) =>
                 setTicketForm({ ...ticketForm, tenantId: e.target.value })
               }
             >
+              <option value="" disabled>
+                Select a tenant…
+              </option>
               {tenants.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}

@@ -66,6 +66,8 @@ interface PlatformState {
   convertTrialToActive: (tenantId: string) => void;
   suspendTenant: (tenantId: string) => void;
   activateTenant: (tenantId: string) => void;
+  archiveTenant: (tenantId: string) => void;
+  restoreTenant: (tenantId: string) => void;
 
   addPackage: (pkg: Omit<Package, "id">) => Package;
   updatePackage: (id: string, patch: Partial<Package>) => void;
@@ -119,7 +121,9 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
 
   updateTenant: (id, patch) =>
     set((s) => ({
-      tenants: s.tenants.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+      tenants: s.tenants.map((t) =>
+        t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t,
+      ),
     })),
 
   changeTenantPlan: (tenantId, packageId, billing) => {
@@ -135,6 +139,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
           plan: pkg.name,
           billing: nextBilling,
           mrr: mrrFor(pkg, nextBilling, t.status),
+          updatedAt: new Date().toISOString(),
         };
       }),
     }));
@@ -152,6 +157,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
               status: "active" as const,
               trialEndsAt: undefined,
               mrr: mrrFor(pkg, t.billing, "active"),
+              updatedAt: new Date().toISOString(),
             }
           : t,
       ),
@@ -162,7 +168,12 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
     set((s) => ({
       tenants: s.tenants.map((t) =>
         t.id === tenantId
-          ? { ...t, status: "suspended" as const, mrr: 0 }
+          ? {
+              ...t,
+              status: "suspended" as const,
+              mrr: 0,
+              updatedAt: new Date().toISOString(),
+            }
           : t,
       ),
     })),
@@ -178,11 +189,42 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
               ...t,
               status: "active" as const,
               mrr: mrrFor(pkg, t.billing, "active"),
+              updatedAt: new Date().toISOString(),
             }
           : t,
       ),
     }));
   },
+
+  archiveTenant: (tenantId) =>
+    set((s) => ({
+      tenants: s.tenants.map((t) =>
+        t.id === tenantId
+          ? {
+              ...t,
+              status: "suspended" as const,
+              mrr: 0,
+              archived: true,
+              archivedAt: new Date().toISOString().slice(0, 10),
+              updatedAt: new Date().toISOString(),
+            }
+          : t,
+      ),
+    })),
+
+  restoreTenant: (tenantId) =>
+    set((s) => ({
+      tenants: s.tenants.map((t) =>
+        t.id === tenantId
+          ? {
+              ...t,
+              archived: false,
+              archivedAt: undefined,
+              updatedAt: new Date().toISOString(),
+            }
+          : t,
+      ),
+    })),
 
   addPackage: (pkg) => {
     const created: Package = { ...pkg, id: `pkg-${Date.now()}` };

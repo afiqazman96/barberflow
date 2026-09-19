@@ -11,6 +11,7 @@ import {
   Filter,
   User,
   Clock,
+  UserX,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -32,6 +33,7 @@ const STATUS_FILTERS: { value: QueueStatus | "all"; label: string }[] = [
   { value: "in-service", label: "In Service" },
   { value: "awaiting-payment", label: "Awaiting Pay" },
   { value: "completed", label: "Completed" },
+  { value: "no-show", label: "No Show" },
 ];
 
 function nextQueueNumber(queue: QueueTicket[]) {
@@ -144,6 +146,12 @@ function QueuePageContent() {
     toast.success("Service started", {
       description: `${ticket.customerName} assigned to ${staff.name}`,
     });
+    setDetailTicket(null);
+  }
+
+  function handleNoShow(ticket: QueueTicket) {
+    updateQueueTicket(ticket.id, { status: "no-show" });
+    toast.error("Marked as no-show", { description: ticket.customerName });
     setDetailTicket(null);
   }
 
@@ -346,6 +354,16 @@ function QueuePageContent() {
                 >
                   <ShoppingCart className="h-4 w-4" />
                   Send to POS
+                </Button>
+              )}
+              {detailTicket.status === "called" && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleNoShow(detailTicket)}
+                  className="border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                >
+                  <UserX className="h-4 w-4" />
+                  No-Show
                 </Button>
               )}
             </div>

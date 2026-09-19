@@ -11,26 +11,50 @@ import {
   Scissors,
   Download,
   Ticket,
+  UserPlus,
+  Pencil,
+  StickyNote,
 } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
-import { Input } from "@/components/ui/input";
+import { Input, Label, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CUSTOMERS, STAFF } from "@/lib/mock/data";
+import { STAFF } from "@/lib/mock/data";
+import { useAppStore } from "@/lib/store/app-store";
 import type { Customer } from "@/lib/types";
 import { formatCurrency, formatDate, initials, todayIso } from "@/lib/utils";
 import { toast } from "sonner";
 
+const emptyNewCustomer = () => ({
+  name: "",
+  phone: "",
+  email: "",
+  membership: "none" as Customer["membership"],
+  notes: "",
+});
+
 export default function OwnerCustomerPage() {
   const router = useRouter();
+  const CUSTOMERS = useAppStore((s) => s.customers);
+  const addCustomer = useAppStore((s) => s.addCustomer);
+  const updateCustomer = useAppStore((s) => s.updateCustomer);
+
   const [search, setSearch] = useState("");
   const [membershipFilter, setMembershipFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"name" | "visits" | "spent">("visits");
-  const [selected, setSelected] = useState<Customer | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"table" | "cards">("table");
+  const [addOpen, setAddOpen] = useState(false);
+  const [newCustomer, setNewCustomer] = useState(emptyNewCustomer);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState(emptyNewCustomer);
+
+  const selected = selectedId
+    ? (CUSTOMERS.find((c) => c.id === selectedId) ?? null)
+    : null;
 
   const filtered = useMemo(() => {
     const list = CUSTOMERS.filter((c) => {
@@ -48,15 +72,15 @@ export default function OwnerCustomerPage() {
       if (sortBy === "visits") return b.visits - a.visits;
       return b.totalSpent - a.totalSpent;
     });
-  }, [search, membershipFilter, sortBy]);
+  }, [CUSTOMERS, search, membershipFilter, sortBy]);
 
   const stats = useMemo(() => ({
     total: CUSTOMERS.length,
     members: CUSTOMERS.filter((c) => c.membership !== "none").length,
     platinum: CUSTOMERS.filter((c) => c.membership === "platinum").length,
     avgSpend:
-      CUSTOMERS.reduce((s, c) => s + c.totalSpent, 0) / CUSTOMERS.length,
-  }), []);
+      CUSTOMERS.reduce((s, c) => s + c.totalSpent, 0) / Math.max(CUSTOMERS.length, 1),
+  }), [CUSTOMERS]);
 
   function handleExport() {
     if (filtered.length === 0) {
@@ -111,15 +135,69 @@ export default function OwnerCustomerPage() {
     router.push(`/owner/queue?${params.toString()}`);
   }
 
+  function handleAddCustomer(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCustomer.name.trim() || !newCustomer.phone.trim()) {
+      toast.error("Name and phone are required");
+      return;
+    }
+    const created = addCustomer({
+      name: newCustomer.name.trim(),
+      phone: newCustomer.phone.trim(),
+      email: newCustomer.email.trim() || undefined,
+      membership: newCustomer.membership,
+      lastVisit: "",
+      notes: newCustomer.notes.trim() || undefined,
+    });
+    toast.success("Customer added", { description: created.name });
+    setAddOpen(false);
+    setNewCustomer(emptyNewCustomer());
+  }
+
+  function handleStartEdit(customer: Customer) {
+    setEditForm({
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email ?? "",
+      membership: customer.membership,
+      notes: customer.notes ?? "",
+    });
+    setEditing(true);
+  }
+
+  function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected) return;
+    if (!editForm.name.trim() || !editForm.phone.trim()) {
+      toast.error("Name and phone are required");
+      return;
+    }
+    updateCustomer(selected.id, {
+      name: editForm.name.trim(),
+      phone: editForm.phone.trim(),
+      email: editForm.email.trim() || undefined,
+      membership: editForm.membership,
+      notes: editForm.notes.trim() || undefined,
+    });
+    toast.success("Customer updated", { description: editForm.name.trim() });
+    setEditing(false);
+  }
+
   return (
     <>
       <Topbar
         title="Customer CRM"
         actions={
-          <Button variant="ghost" size="sm" onClick={handleExport}>
-            <Download className="h-4 w-4" />
-            <span className="hidden sm:inline">Export</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={handleExport}>
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">Add Customer</span>
+            </Button>
+          </div>
         }
       />
       <PageTransition>
@@ -217,7 +295,7 @@ export default function OwnerCustomerPage() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: Math.min(i * 0.015, 0.4) }}
-                    onClick={() => setSelected(customer)}
+                    onClick={() => setSelectedId(customer.id)}
                     className="flex w-full items-center gap-4 px-4 py-3 text-left transition hover:bg-[var(--bg-muted)]"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -261,7 +339,7 @@ export default function OwnerCustomerPage() {
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: i * 0.02 }}
-                  onClick={() => setSelected(customer)}
+                  onClick={() => setSelectedId(customer.id)}
                   className="card-surface p-4 text-left transition hover:border-[var(--gold)]/30"
                 >
                   <div className="mb-3 flex items-center gap-3">
@@ -304,21 +382,35 @@ export default function OwnerCustomerPage() {
 
       <Modal
         open={!!selected}
-        onOpenChange={(open) => !open && setSelected(null)}
-        title={selected?.name}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedId(null);
+            setEditing(false);
+          }
+        }}
+        title={editing ? `Edit ${selected?.name ?? ""}` : selected?.name}
       >
-        {selected && (
+        {selected && !editing && (
           <div className="space-y-5">
             <div className="flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--gold)]/15 font-display text-lg font-bold text-[var(--gold-soft)]">
                 {initials(selected.name)}
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <StatusBadge status={selected.membership} />
                 <p className="mt-1 text-sm text-[var(--text-muted)]">
-                  Last visit {formatDate(selected.lastVisit)}
+                  Last visit{" "}
+                  {selected.lastVisit ? formatDate(selected.lastVisit) : "—"}
                 </p>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleStartEdit(selected)}
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -347,7 +439,8 @@ export default function OwnerCustomerPage() {
               )}
               <p className="flex items-center gap-2 text-[var(--text-muted)]">
                 <Calendar className="h-4 w-4" />
-                Last visit {formatDate(selected.lastVisit)}
+                Last visit{" "}
+                {selected.lastVisit ? formatDate(selected.lastVisit) : "No visits yet"}
               </p>
               {selected.preferredStaffId && (
                 <p className="flex items-center gap-2 text-[var(--text-muted)]">
@@ -357,6 +450,18 @@ export default function OwnerCustomerPage() {
                 </p>
               )}
             </div>
+
+            {selected.notes && (
+              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/60 p-3">
+                <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-[var(--text-faint)]">
+                  <StickyNote className="h-3.5 w-3.5" />
+                  Notes
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-[var(--text-muted)]">
+                  {selected.notes}
+                </p>
+              </div>
+            )}
 
             <Button
               variant="secondary"
@@ -368,6 +473,156 @@ export default function OwnerCustomerPage() {
             </Button>
           </div>
         )}
+
+        {selected && editing && (
+          <form onSubmit={handleSaveEdit} className="space-y-4">
+            <div>
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-phone">Phone</Label>
+              <Input
+                id="edit-phone"
+                value={editForm.phone}
+                onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-email">Email (optional)</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-membership">Membership</Label>
+              <Select
+                id="edit-membership"
+                value={editForm.membership}
+                onChange={(e) =>
+                  setEditForm((f) => ({
+                    ...f,
+                    membership: e.target.value as Customer["membership"],
+                  }))
+                }
+              >
+                <option value="none">Walk-in</option>
+                <option value="silver">Silver</option>
+                <option value="gold">Gold</option>
+                <option value="platinum">Platinum</option>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="edit-notes">Notes (optional)</Label>
+              <Textarea
+                id="edit-notes"
+                rows={3}
+                value={editForm.notes}
+                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="e.g. Allergic to certain products, prefers quiet chair, regular Friday 5pm…"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="flex-1"
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1">
+                Save Changes
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      <Modal
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        title="Add Customer"
+        description="Create a CRM record for a customer directly."
+      >
+        <form onSubmit={handleAddCustomer} className="space-y-4">
+          <div>
+            <Label htmlFor="new-name">Name</Label>
+            <Input
+              id="new-name"
+              value={newCustomer.name}
+              onChange={(e) =>
+                setNewCustomer((f) => ({ ...f, name: e.target.value }))
+              }
+              placeholder="Full name"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="new-phone">Phone</Label>
+            <Input
+              id="new-phone"
+              value={newCustomer.phone}
+              onChange={(e) =>
+                setNewCustomer((f) => ({ ...f, phone: e.target.value }))
+              }
+              placeholder="+60 12-345 6789"
+              required
+            />
+          </div>
+          <div>
+            <Label htmlFor="new-email">Email (optional)</Label>
+            <Input
+              id="new-email"
+              type="email"
+              value={newCustomer.email}
+              onChange={(e) =>
+                setNewCustomer((f) => ({ ...f, email: e.target.value }))
+              }
+            />
+          </div>
+          <div>
+            <Label htmlFor="new-membership">Membership</Label>
+            <Select
+              id="new-membership"
+              value={newCustomer.membership}
+              onChange={(e) =>
+                setNewCustomer((f) => ({
+                  ...f,
+                  membership: e.target.value as Customer["membership"],
+                }))
+              }
+            >
+              <option value="none">Walk-in</option>
+              <option value="silver">Silver</option>
+              <option value="gold">Gold</option>
+              <option value="platinum">Platinum</option>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="new-notes">Notes (optional)</Label>
+            <Textarea
+              id="new-notes"
+              rows={3}
+              value={newCustomer.notes}
+              onChange={(e) =>
+                setNewCustomer((f) => ({ ...f, notes: e.target.value }))
+              }
+            />
+          </div>
+          <Button type="submit" className="w-full" size="lg">
+            Add Customer
+          </Button>
+        </form>
       </Modal>
     </>
   );

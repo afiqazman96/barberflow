@@ -13,7 +13,29 @@ type HistoryEntry =
   | { kind: "queue"; id: string; at: string; node: React.ReactNode };
 
 export default function StaffHistoryPage() {
-  const { staff, staffSales, historyTickets } = useStaffPortal();
+  const { staff, staffSales: allStaffSales, historyTickets: allHistoryTickets } =
+    useStaffPortal();
+
+  // A voided sale isn't work that happened — drop it (and the queue ticket
+  // it settled, if we can trace it) rather than leaving a stale entry that
+  // never reflects the reversal.
+  const staffSales = useMemo(
+    () => allStaffSales.filter((s) => !s.voided),
+    [allStaffSales],
+  );
+  const voidedTicketIds = useMemo(
+    () =>
+      new Set(
+        allStaffSales
+          .filter((s) => s.voided && s.queueTicketId)
+          .map((s) => s.queueTicketId as string),
+      ),
+    [allStaffSales],
+  );
+  const historyTickets = useMemo(
+    () => allHistoryTickets.filter((t) => !voidedTicketIds.has(t.id)),
+    [allHistoryTickets, voidedTicketIds],
+  );
 
   const timeline = useMemo(() => {
     const entries: HistoryEntry[] = [

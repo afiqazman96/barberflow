@@ -51,6 +51,11 @@ export interface Tenant {
   billing: "monthly" | "yearly";
   trialEndsAt?: string;
   createdAt: string;
+  /** Offboarded tenant — hidden from the active list, MRR excluded. */
+  archived?: boolean;
+  archivedAt?: string;
+  /** Timestamp of the last administrative change (suspend, plan change, archive, ...). */
+  updatedAt?: string;
 }
 
 export type FeatureKey =
@@ -235,6 +240,8 @@ export interface Sale {
   branchId: string;
   customerId: string;
   customerName: string;
+  /** The walk-in/booking ticket this sale settled, when it came from the queue. */
+  queueTicketId?: string;
   staffId: string;
   staffName: string;
   items: SaleItem[];

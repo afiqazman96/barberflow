@@ -23,7 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import { PosSubnav } from "@/components/domain/pos-subnav";
 import { useAppStore, calcCommission } from "@/lib/store/app-store";
 import { computeCharges } from "@/lib/pos-pricing";
-import { CUSTOMERS } from "@/lib/mock/data";
 import { formatCurrency } from "@/lib/utils";
 
 type Tab = "services" | "products";
@@ -37,6 +36,7 @@ export default function CashierPosPage() {
   const SERVICES = useAppStore((s) => s.services);
   const commissionRules = useAppStore((s) => s.commissionRules);
   const membershipPlans = useAppStore((s) => s.membershipPlans);
+  const CUSTOMERS = useAppStore((s) => s.customers);
   const taxConfig = useAppStore((s) => s.taxConfig);
   const posItems = useAppStore((s) => s.posItems);
   const posDiscount = useAppStore((s) => s.posDiscount);

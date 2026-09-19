@@ -126,10 +126,15 @@ export default function CurrentServicePage() {
           <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
             {currentTicket.customerName}
           </h1>
-          <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--text-muted)]">
-            <Phone className="h-3.5 w-3.5" />
-            {currentTicket.customerPhone}
-          </p>
+          {currentTicket.customerPhone && (
+            <a
+              href={`tel:${currentTicket.customerPhone}`}
+              className="mt-1 flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--gold-soft)]"
+            >
+              <Phone className="h-3.5 w-3.5" />
+              {currentTicket.customerPhone}
+            </a>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2">
           <StatusBadge status="in-service" />

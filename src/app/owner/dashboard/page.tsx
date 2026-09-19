@@ -17,14 +17,23 @@ import { SalesChart } from "@/components/domain/charts";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
-import { STAFF, SALES_TREND, TOP_SERVICES, CUSTOMERS } from "@/lib/mock/data";
+import { SALES_TREND, TOP_SERVICES } from "@/lib/mock/data";
 import { formatCurrency, todayIso } from "@/lib/utils";
 
 export default function OwnerDashboardPage() {
-  const queue = useAppStore((s) => s.queue);
-  const sales = useAppStore((s) => s.sales);
-  const bookings = useAppStore((s) => s.bookings);
+  const branchId = useAppStore((s) => s.branchId);
+  const branches = useAppStore((s) => s.branches);
+  const staffList = useAppStore((s) => s.staff);
+  const CUSTOMERS = useAppStore((s) => s.customers);
+  const allQueue = useAppStore((s) => s.queue);
+  const allSales = useAppStore((s) => s.sales);
+  const allBookings = useAppStore((s) => s.bookings);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
+
+  const branch = branches.find((b) => b.id === branchId);
+  const queue = allQueue.filter((q) => q.branchId === branchId);
+  const sales = allSales.filter((s) => s.branchId === branchId);
+  const bookings = allBookings.filter((b) => b.branchId === branchId);
 
   const today = todayIso();
   const todaySalesList = sales.filter(
@@ -37,7 +46,9 @@ export default function OwnerDashboardPage() {
     queue.filter((q) => q.status === "waiting").reduce((sum, q) => sum + q.estimatedWaitMins, 0) /
       Math.max(waiting, 1);
   const uniqueCustomers = new Set(todaySalesList.map((s) => s.customerId)).size;
-  const barbers = STAFF.filter((s) => s.role === "barber");
+  const barbers = staffList.filter(
+    (s) => s.role === "barber" && s.branchId === branchId && s.active,
+  );
   const maxServiceCount = TOP_SERVICES[0]?.count ?? 1;
 
   return (
@@ -46,7 +57,7 @@ export default function OwnerDashboardPage() {
         title="Dashboard"
         actions={
           <span className="hidden text-xs text-[var(--text-faint)] sm:block">
-            Fade House · Owner Portal
+            {branch?.name ?? "Owner Portal"}
           </span>
         }
       />

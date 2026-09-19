@@ -9,11 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { CUSTOMERS, STAFF } from "@/lib/mock/data";
+import { STAFF } from "@/lib/mock/data";
+import { useAppStore } from "@/lib/store/app-store";
 import type { Customer } from "@/lib/types";
 import { formatCurrency, formatDate, initials } from "@/lib/utils";
 
 export default function CashierCustomerPage() {
+  const CUSTOMERS = useAppStore((s) => s.customers);
   const [search, setSearch] = useState("");
   const [membershipFilter, setMembershipFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Customer | null>(null);
@@ -29,7 +31,7 @@ export default function CashierCustomerPage() {
         membershipFilter === "all" || c.membership === membershipFilter;
       return matchSearch && matchMembership;
     });
-  }, [search, membershipFilter]);
+  }, [CUSTOMERS, search, membershipFilter]);
 
   return (
     <>

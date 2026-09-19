@@ -22,18 +22,25 @@ export function SignOutButton({
   variant = "ghost",
   size = "sm",
   className = "w-full justify-start",
+  onBeforeSignOut,
 }: {
   label?: string;
   onNavigate?: () => void;
   variant?: React.ComponentProps<typeof Button>["variant"];
   size?: React.ComponentProps<typeof Button>["size"];
   className?: string;
+  /**
+   * Return false to block the sign-out (e.g. a barber mid-service) — show
+   * the user why before returning, since nothing else will.
+   */
+  onBeforeSignOut?: () => boolean;
 }) {
   const router = useRouter();
   const setSession = useAppStore((s) => s.setSession);
   const [pending, startTransition] = useTransition();
 
   function handleSignOut() {
+    if (onBeforeSignOut && !onBeforeSignOut()) return;
     onNavigate?.();
     startTransition(async () => {
       await signOut();

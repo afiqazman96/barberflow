@@ -19,7 +19,8 @@ export function QueueCard({
     <Card
       onClick={onClick}
       className={cn(
-        "cursor-pointer p-4 transition-all",
+        "p-4 transition-all",
+        onClick && "cursor-pointer",
         active && "border-[var(--gold)]/50 ring-1 ring-[var(--gold)]/30",
         ticket.status === "in-service" && "pulse-gold",
       )}

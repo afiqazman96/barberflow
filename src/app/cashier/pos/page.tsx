@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -55,6 +55,7 @@ export default function CashierPosPage() {
   const setPosStaffId = useAppStore((s) => s.setPosStaffId);
   const setPosMembershipPlan = useAppStore((s) => s.setPosMembershipPlan);
   const loadPosTicket = useAppStore((s) => s.loadPosTicket);
+  const selectPosCustomer = useAppStore((s) => s.selectPosCustomer);
   const clearPos = useAppStore((s) => s.clearPos);
 
   const [tab, setTab] = useState<Tab>("services");
@@ -64,14 +65,6 @@ export default function CashierPosPage() {
   const barbers = staff.filter(
     (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
-
-  // One customer waiting to pay is the common case — load them so the cashier
-  // isn't retyping a service the barber already recorded.
-  useEffect(() => {
-    if (!posTicketId && posItems.length === 0 && awaitingPayment.length === 1) {
-      loadPosTicket(awaitingPayment[0].id);
-    }
-  }, [posTicketId, posItems.length, awaitingPayment, loadPosTicket]);
 
   const ticket = posTicketId
     ? queue.find((q) => q.id === posTicketId)
@@ -167,7 +160,7 @@ export default function CashierPosPage() {
         i.name.toLowerCase().includes(q) ||
         i.category.toLowerCase().includes(q),
     );
-  }, [tab, catalogSearch]);
+  }, [tab, catalogSearch, PRODUCTS, SERVICES]);
 
   function getPrice(item: (typeof catalog)[0]) {
     if (
@@ -190,6 +183,28 @@ export default function CashierPosPage() {
       unitPrice: price,
     });
     toast.success("Added to cart", { description: item.name });
+  }
+
+  function handleSelectCustomer(id: string) {
+    const customerId = id || null;
+    // A customer waiting to pay just had a service done — carry the barber
+    // who served them over instead of making the cashier pick again.
+    const waiting = customerId
+      ? queue.find(
+          (q) => q.customerId === customerId && q.status === "awaiting-payment",
+        )
+      : null;
+    selectPosCustomer(customerId);
+    if (waiting) {
+      const servedBy = barbers.find(
+        (b) => b.id === (waiting.assignedStaffId ?? waiting.preferredStaffId),
+      )?.name;
+      toast.success("Barber auto-selected", {
+        description: servedBy
+          ? `${waiting.customerName} was just served by ${servedBy}`
+          : `${waiting.customerName} is awaiting payment`,
+      });
+    }
   }
 
   function handleSelectTicket(ticketId: string, ticketName: string) {
@@ -352,6 +367,27 @@ export default function CashierPosPage() {
               <CardHeader className="mb-3">
                 <CardTitle>Cart</CardTitle>
               </CardHeader>
+
+              <div className="mb-3">
+                <Label className="flex items-center gap-1.5 text-xs">
+                  <User className="h-3.5 w-3.5 text-[var(--gold)]" />
+                  Customer
+                  <span className="font-normal text-[var(--text-faint)]">
+                    · optional
+                  </span>
+                </Label>
+                <Select
+                  value={posCustomerId ?? ""}
+                  onChange={(e) => handleSelectCustomer(e.target.value)}
+                >
+                  <option value="">Walk-in</option>
+                  {CUSTOMERS.slice(0, 20).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
 
               {customerName && (
                 <div className="mb-3 flex items-center gap-2 rounded-xl bg-[var(--bg-muted)] px-3 py-2 text-sm">

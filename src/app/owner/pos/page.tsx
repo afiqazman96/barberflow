@@ -130,7 +130,7 @@ export default function OwnerPosPage() {
         i.name.toLowerCase().includes(q) ||
         i.category.toLowerCase().includes(q),
     );
-  }, [tab, catalogSearch]);
+  }, [tab, catalogSearch, PRODUCTS, SERVICES]);
 
   function getPrice(item: (typeof catalog)[0]) {
     if (

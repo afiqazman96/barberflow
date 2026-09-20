@@ -74,7 +74,21 @@ function BookingWizard() {
   );
   const roster = useAppStore((s) => s.roster);
   const leaves = useAppStore((s) => s.leaves);
-  const days = useMemo(() => getNextDays(7), []);
+  const opsRules = useAppStore((s) => s.opsRules);
+  const days = useMemo(
+    () => getNextDays(opsRules.advanceDays),
+    [opsRules.advanceDays],
+  );
+  const step_ = opsRules.slotInterval;
+  const slots = useMemo(() => {
+    const first = hhmmToMins(TIME_SLOTS[0]);
+    const last = hhmmToMins(TIME_SLOTS[TIME_SLOTS.length - 1]);
+    const out: string[] = [];
+    for (let m = first; m <= last; m += step_) {
+      out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+    }
+    return out;
+  }, [step_]);
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -105,12 +119,12 @@ function BookingWizard() {
     const today = now ? localIso(now) : "";
     const nowMins = now ? minsOfDay(now) : -1;
     const blocked = new Set<string>();
-    for (const slot of TIME_SLOTS) {
+    for (const slot of slots) {
       const start = hhmmToMins(slot);
       const working = branchBarbers.filter((b) => {
         if (!isRosteredOn(roster, leaves, b.id, date)) return false;
         const day = rosterFor(roster, b.id, date);
-        return !!day && start >= hhmmToMins(day.start) && start + 30 <= hhmmToMins(day.end);
+        return !!day && start >= hhmmToMins(day.start) && start + step_ <= hhmmToMins(day.end);
       });
       const booked = bookings.filter(
         (b) =>
@@ -120,7 +134,7 @@ function BookingWizard() {
           (b.status === "confirmed" || b.status === "checked-in"),
       ).length;
       const past = date === today && start <= nowMins;
-      if (start < open || start + 30 > close || past || working.length === 0 || booked >= working.length) {
+      if (start < open || start + step_ > close || past || working.length === 0 || booked >= working.length) {
         blocked.add(slot);
       }
     }
@@ -184,7 +198,7 @@ function BookingWizard() {
       date,
       time,
       durationMins: service.durationMins,
-      gracePeriodMins: 10,
+      gracePeriodMins: opsRules.gracePeriodMins,
       status: "confirmed",
     };
 
@@ -195,9 +209,11 @@ function BookingWizard() {
     setTrackingTicketId(null);
     setTrackingBookingId(booking.id);
 
+    // Deliberately generic: a phone number isn't proof of identity, so the
+    // name and tier of whoever it matches must not be read back to a stranger.
     if (matched && matched.membership !== "none") {
-      toast.success(`Welcome back, ${matched.name.split(" ")[0]}!`, {
-        description: `${matched.membership} member pricing applied`,
+      toast.success("Member pricing applied", {
+        description: "The counter will confirm your membership",
       });
     }
     toast.success("Booking confirmed!", {
@@ -264,7 +280,7 @@ function BookingWizard() {
       <div>
         <h1 className="font-display text-xl font-bold">Book Appointment</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">
-          Reserve your slot · 10 min grace period
+          Reserve your slot · {opsRules.gracePeriodMins} min grace period
         </p>
       </div>
 
@@ -377,7 +393,7 @@ function BookingWizard() {
               <div>
                 <Label>Time</Label>
                 <div className="grid grid-cols-4 gap-2">
-                  {TIME_SLOTS.map((slot) => {
+                  {slots.map((slot) => {
                     const taken = takenSlots.has(slot);
                     return (
                       <button

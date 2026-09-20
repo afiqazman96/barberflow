@@ -300,6 +300,20 @@ export interface TaxConfig {
 }
 
 /** One line in the cash drawer log for a shift. */
+/** Owner-tunable rules the customer and counter screens actually read. */
+export interface OpsRules {
+  /** Minutes a booked customer may be late before the slot is released. */
+  gracePeriodMins: number;
+  /** Waiting longer than this is flagged on the counter's queue screen. */
+  maxWaitMins: number;
+  /** How many days ahead customers can book. */
+  advanceDays: number;
+  /** Customers can't cancel their own booking inside this many hours. */
+  cancelHours: number;
+  /** Gap between bookable time slots. */
+  slotInterval: number;
+}
+
 export interface CashMovement {
   id: string;
   type: "sale" | "refund" | "pay-in" | "pay-out";

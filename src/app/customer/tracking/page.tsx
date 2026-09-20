@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 export default function TrackingPage() {
   const queue = useAppStore((s) => s.queue);
+  const opsRules = useAppStore((s) => s.opsRules);
   const bookings = useAppStore((s) => s.bookings);
   const branches = useAppStore((s) => s.branches);
   const staffList = useAppStore((s) => s.staff);
@@ -111,6 +112,13 @@ export default function TrackingPage() {
 
   function handleCancelBooking() {
     if (!booking) return;
+    const startsAt = new Date(`${booking.date}T${booking.time}:00`).getTime();
+    if (startsAt - Date.now() < opsRules.cancelHours * 3600_000) {
+      toast.error(`Too late to cancel online`, {
+        description: `Cancellations close ${opsRules.cancelHours}h before the appointment — please call ${branch?.phone ?? "the shop"}`,
+      });
+      return;
+    }
     updateBooking(booking.id, { status: "cancelled" });
     toast.success("Appointment cancelled", {
       description: `${formatDate(booking.date)} at ${booking.time}`,

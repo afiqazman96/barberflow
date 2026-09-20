@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect } from "react";
 
 import type { SessionUser } from "@/lib/auth/dto";
+import { ForcePasswordChange } from "@/components/auth/force-password-change";
 import { useAppStore } from "@/lib/store/app-store";
 
 const SessionContext = createContext<SessionUser | null>(null);
@@ -44,7 +45,7 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider value={session}>
-      {children}
+      {session.mustChangePassword ? <ForcePasswordChange /> : children}
     </SessionContext.Provider>
   );
 }

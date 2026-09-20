@@ -16,6 +16,7 @@ export default function JoinBranchPage() {
   const params = useParams<{ branchId: string }>();
   const branches = useAppStore((s) => s.branches);
   const setBranchId = useAppStore((s) => s.setBranchId);
+  const graceMins = useAppStore((s) => s.opsRules.gracePeriodMins);
   const branch = branches.find((b) => b.id === params.branchId) ?? branches[0];
 
   useEffect(() => {
@@ -70,7 +71,7 @@ export default function JoinBranchPage() {
 
         <p className="mt-6 text-xs text-[var(--text-faint)]">
           Walk-in keeps your spot in today&apos;s line. Booking reserves a set
-          time with a 10-minute grace period.
+          time with a {graceMins}-minute grace period.
         </p>
       </div>
     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -61,6 +62,7 @@ const emptyForm = (): AddStaffForm => ({
 });
 
 export default function OwnerStaffPage() {
+  const confirm = useConfirm();
   const staff = useAppStore((s) => s.staff);
   const chairs = useAppStore((s) => s.chairs);
   const branches = useAppStore((s) => s.branches);
@@ -246,7 +248,21 @@ export default function OwnerStaffPage() {
     setForm(emptyForm());
   }
 
-  async function handleToggleActive() {
+  function handleToggleActive() {
+    if (!selected) return;
+    if (selected.active ?? true) {
+      confirm.ask({
+        title: `Disable ${selected.name}?`,
+        description: "They will be signed out and blocked from signing in until you re-enable them.",
+        confirmLabel: "Disable",
+        run: () => void applyToggleActive(),
+      });
+      return;
+    }
+    void applyToggleActive();
+  }
+
+  async function applyToggleActive() {
     if (!selected) return;
     const next = !(selected.active ?? true);
 
@@ -318,6 +334,7 @@ export default function OwnerStaffPage() {
 
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Staff Management"
         actions={

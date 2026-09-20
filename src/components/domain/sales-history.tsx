@@ -61,7 +61,9 @@ export function SalesHistory() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return [...sales]
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      )
       .filter((s) => {
         const matchMethod = method === "all" || s.paymentMethod === method;
         const matchSearch =
@@ -301,8 +303,9 @@ export function SalesHistory() {
                   </span>
                   {selected.staffId && (
                     <span>
-                      Barber got:{" "}
-                      {formatCurrency(selected.commission + selected.tip)}
+                      {selected.voided
+                        ? "Barber's earnings reversed"
+                        : `Barber got: ${formatCurrency(selected.commission + selected.tip)}`}
                     </span>
                   )}
                 </div>
@@ -349,7 +352,11 @@ export function SalesHistory() {
         title="Void this sale?"
         description={
           selected
-            ? `${selected.receiptNo} · ${formatCurrency(selected.total)}. This reverses the barber's takings, restocks products, and logs a cash refund.`
+            ? `${selected.receiptNo} · ${formatCurrency(selected.total)}. This reverses the barber's takings and restocks products${
+              selected.paymentMethod === "cash"
+                ? ", and logs a cash refund from the drawer."
+                : ". The refund goes back to the customer's card or wallet outside BarberFlow."
+            }`
             : ""
         }
       >

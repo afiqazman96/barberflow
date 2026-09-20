@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -29,6 +30,7 @@ import { formatCurrency } from "@/lib/utils";
 type Tab = "services" | "products";
 
 export default function CashierPosPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const session = useSession();
   const allQueue = useAppStore((s) => s.queue);
@@ -249,11 +251,21 @@ export default function CashierPosPage() {
 
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Point of Sale"
         actions={
           posItems.length > 0 ? (
-            <Button variant="ghost" size="sm" onClick={clearPos}>
+            <Button variant="ghost" size="sm" onClick={() =>
+                posItems.length === 0
+                  ? clearPos()
+                  : confirm.ask({
+                      title: "Clear this sale?",
+                      description: "The cart, customer and discount are reset.",
+                      confirmLabel: "Clear sale",
+                      run: clearPos,
+                    })
+              }>
               Clear
             </Button>
           ) : null

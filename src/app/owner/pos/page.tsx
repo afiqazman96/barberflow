@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -45,6 +46,7 @@ const METHODS: {
 ];
 
 export default function OwnerPosPage() {
+  const confirm = useConfirm();
   const PRODUCTS = useAppStore((s) => s.products);
   const SERVICES = useAppStore((s) => s.services);
   const posItems = useAppStore((s) => s.posItems);
@@ -261,11 +263,21 @@ export default function OwnerPosPage() {
 
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Point of Sale"
         actions={
           posItems.length > 0 ? (
-            <Button variant="ghost" size="sm" onClick={clearPos}>
+            <Button variant="ghost" size="sm" onClick={() =>
+                posItems.length === 0
+                  ? clearPos()
+                  : confirm.ask({
+                      title: "Clear this sale?",
+                      description: "The cart, customer and discount are reset.",
+                      confirmLabel: "Clear sale",
+                      run: clearPos,
+                    })
+              }>
               Clear
             </Button>
           ) : null

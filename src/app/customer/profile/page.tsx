@@ -15,36 +15,19 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { CUSTOMERS, MEMBERSHIP_PLANS } from "@/lib/mock/data";
+import { MEMBERSHIP_PLANS } from "@/lib/mock/data";
 import type { Customer, MembershipPlan } from "@/lib/types";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 
 const STORAGE_KEY = "barberflow-guest-profile";
-
-const demoCustomer = CUSTOMERS[0];
-
-function daysAgoIso(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-const visitHistory = [
-  { date: demoCustomer.lastVisit, service: "Signature Fade", price: 45 },
-  { date: daysAgoIso(24), service: "Beard Trim & Shape", price: 28 },
-  { date: daysAgoIso(52), service: "Classic Haircut", price: 38 },
-];
 
 type StoredMembership = Customer["membership"];
 
 export default function ProfilePage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [membership, setMembership] = useState<StoredMembership>(
-    demoCustomer.membership,
-  );
+  const [membership, setMembership] = useState<StoredMembership>("none");
   const [saved, setSaved] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<MembershipPlan | null>(null);
   const [activating, setActivating] = useState(false);
@@ -60,14 +43,10 @@ export default function ProfilePage() {
         };
         setName(data.name);
         setPhone(data.phone);
-        setMembership(data.membership ?? demoCustomer.membership);
-      } else {
-        setName(demoCustomer.name);
-        setPhone(demoCustomer.phone);
+        setMembership(data.membership ?? "none");
       }
     } catch {
-      setName(demoCustomer.name);
-      setPhone(demoCustomer.phone);
+      // No saved profile on this device — start as a blank guest.
     }
   }, []);
 
@@ -120,9 +99,7 @@ export default function ProfilePage() {
           <div>
             <p className="font-display text-lg font-semibold">{name || "Guest"}</p>
             <StatusBadge status={membership} />
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              {demoCustomer.visits} visits · {formatCurrency(demoCustomer.totalSpent)} spent
-            </p>
+
           </div>
         </div>
       </Card>
@@ -251,24 +228,10 @@ export default function ProfilePage() {
             Recent Visits
           </h2>
         </div>
-        <Card className="divide-y divide-[var(--border)] p-0">
-          {visitHistory.map((visit, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-sm font-medium">{visit.service}</p>
-                <p className="text-xs text-[var(--text-faint)]">
-                  {formatDate(visit.date)}
-                </p>
-              </div>
-              <span className="text-sm font-semibold text-[var(--gold-soft)]">
-                {formatCurrency(visit.price)}
-              </span>
-            </div>
-          ))}
+        <Card className="p-4 text-sm text-[var(--text-muted)]">
+          Your visit history will show here once you can sign in with your
+          phone number. Until then, ask at the front desk for past receipts.
         </Card>
-        <p className="mt-2 text-center text-xs text-[var(--text-faint)]">
-          Showing history for {demoCustomer.name}
-        </p>
       </section>
 
       <Card className="flex items-center gap-3 p-4 text-sm text-[var(--text-muted)]">

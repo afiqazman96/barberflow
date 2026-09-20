@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -9,7 +10,6 @@ import {
   ListOrdered,
   CalendarDays,
   Crown,
-  Clock,
   Bell,
   Save,
   Plus,
@@ -45,7 +45,6 @@ const TABS = [
   { id: "queue", label: "Queue Rules", icon: ListOrdered },
   { id: "booking", label: "Booking", icon: CalendarDays },
   { id: "membership", label: "Membership", icon: Crown },
-  { id: "hours", label: "Hours", icon: Clock },
   { id: "notifications", label: "Alerts", icon: Bell },
 ] as const;
 
@@ -98,6 +97,7 @@ const emptyPlanForm: PlanForm = {
 };
 
 export default function OwnerSettingsPage() {
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
   const storeBranches = useAppStore((s) => s.branches);
@@ -154,39 +154,9 @@ export default function OwnerSettingsPage() {
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [planForm, setPlanForm] = useState<PlanForm>(emptyPlanForm);
 
-  const [queueRules, setQueueRules] = useState({
-    gracePeriodMins: 10,
-    maxWaitMins: 45,
-    autoCall: true,
-    smsNotify: true,
-    priorityMembers: true,
-  });
-
-  const [bookingRules, setBookingRules] = useState({
-    advanceDays: 14,
-    cancelHours: 4,
-    slotInterval: 30,
-    requireDeposit: false,
-    depositAmount: 20,
-    allowWalkInOverlap: true,
-  });
-
-  const [hours, setHours] = useState({
-    weekdayOpen: "10:00",
-    weekdayClose: "22:00",
-    weekendOpen: "10:00",
-    weekendClose: "22:00",
-    closedDays: "None",
-  });
-
-  const [notifications, setNotifications] = useState({
-    lowStock: true,
-    dailyReport: true,
-    noShowAlert: true,
-    commissionSummary: true,
-    queueThreshold: 8,
-    email: "rizal@fadehouse.my",
-  });
+  const opsRules = useAppStore((s) => s.opsRules);
+  const updateOpsRules = useAppStore((s) => s.updateOpsRules);
+  const [rules, setRules] = useState(opsRules);
 
   useEffect(() => {
     if (!chairBranchId && storeBranches[0]) {
@@ -258,9 +228,16 @@ export default function OwnerSettingsPage() {
     [storeStaff, chairFilterBranchId],
   );
 
-  function handleSave(section: string) {
+  function handleSaveRules(section: string, keys: (keyof typeof rules)[]) {
+    for (const k of keys) {
+      if (!Number.isFinite(rules[k]) || rules[k] <= 0) {
+        toast.error("Enter a number above zero", { description: section });
+        return;
+      }
+    }
+    updateOpsRules(rules);
     toast.success("Settings saved", {
-      description: `${section} updated successfully`,
+      description: `${section} updated — customers see it straight away`,
     });
   }
 
@@ -398,8 +375,15 @@ export default function OwnerSettingsPage() {
   }
 
   function handleDeletePlan(plan: MembershipPlan) {
-    deleteMembershipPlan(plan.id);
-    toast.success("Plan removed", { description: plan.name });
+    confirm.ask({
+      title: `Remove the ${plan.name} plan?`,
+      description: "Existing members keep their tier, but the plan can no longer be sold.",
+      confirmLabel: "Remove plan",
+      run: () => {
+        deleteMembershipPlan(plan.id);
+        toast.success("Plan removed", { description: plan.name });
+      },
+    });
   }
 
   function handleAddChair(e: React.FormEvent) {
@@ -419,6 +403,7 @@ export default function OwnerSettingsPage() {
 
   return (
     <>
+      {confirm.node}
       <Topbar title="Settings" />
       <PageTransition>
         <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
@@ -960,59 +945,32 @@ export default function OwnerSettingsPage() {
                           <Label>Grace Period (minutes)</Label>
                           <Input
                             type="number"
-                            value={queueRules.gracePeriodMins}
+                            min={1}
+                            value={rules.gracePeriodMins}
                             onChange={(e) =>
-                              setQueueRules({
-                                ...queueRules,
-                                gracePeriodMins: Number(e.target.value),
-                              })
+                              setRules({ ...rules, gracePeriodMins: Number(e.target.value) })
                             }
                           />
+                          <p className="mt-1 text-xs text-[var(--text-faint)]">Shown on bookings and QR pages; how late a booked customer can arrive.</p>
                         </div>
                         <div>
-                          <Label>Max Wait Alert (minutes)</Label>
+                          <Label>Long Wait Alert (minutes)</Label>
                           <Input
                             type="number"
-                            value={queueRules.maxWaitMins}
+                            min={1}
+                            value={rules.maxWaitMins}
                             onChange={(e) =>
-                              setQueueRules({
-                                ...queueRules,
-                                maxWaitMins: Number(e.target.value),
-                              })
+                              setRules({ ...rules, maxWaitMins: Number(e.target.value) })
                             }
                           />
+                          <p className="mt-1 text-xs text-[var(--text-faint)]">The counter&apos;s queue screen flags anyone waiting longer than this, and customers see a long-wait notice when they join.</p>
                         </div>
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        {(
-                          [
-                            ["autoCall", "Auto-call next ticket"],
-                            ["smsNotify", "SMS wait-time updates"],
-                            ["priorityMembers", "Priority queue for members"],
-                          ] as const
-                        ).map(([key, label]) => (
-                          <label
-                            key={key}
-                            className="flex cursor-pointer items-center justify-between rounded-xl bg-[var(--bg-muted)] px-4 py-3"
-                          >
-                            <span className="text-sm">{label}</span>
-                            <input
-                              type="checkbox"
-                              checked={queueRules[key]}
-                              onChange={(e) =>
-                                setQueueRules({
-                                  ...queueRules,
-                                  [key]: e.target.checked,
-                                })
-                              }
-                              className="h-4 w-4 accent-[var(--gold)]"
-                            />
-                          </label>
-                        ))}
                       </div>
                       <Button
                         className="mt-6"
-                        onClick={() => handleSave("Queue rules")}
+                        onClick={() =>
+                          handleSaveRules("Queue rules", ["gracePeriodMins", "maxWaitMins"])
+                        }
                       >
                         <Save className="h-4 w-4" />
                         Save Queue Rules
@@ -1030,76 +988,46 @@ export default function OwnerSettingsPage() {
                           <Label>Advance Booking (days)</Label>
                           <Input
                             type="number"
-                            value={bookingRules.advanceDays}
+                            min={1}
+                            value={rules.advanceDays}
                             onChange={(e) =>
-                              setBookingRules({
-                                ...bookingRules,
-                                advanceDays: Number(e.target.value),
-                              })
+                              setRules({ ...rules, advanceDays: Number(e.target.value) })
                             }
                           />
+                          <p className="mt-1 text-xs text-[var(--text-faint)]">How many days ahead a customer can book.</p>
                         </div>
                         <div>
                           <Label>Cancel Window (hours)</Label>
                           <Input
                             type="number"
-                            value={bookingRules.cancelHours}
+                            min={1}
+                            value={rules.cancelHours}
                             onChange={(e) =>
-                              setBookingRules({
-                                ...bookingRules,
-                                cancelHours: Number(e.target.value),
-                              })
+                              setRules({ ...rules, cancelHours: Number(e.target.value) })
                             }
                           />
+                          <p className="mt-1 text-xs text-[var(--text-faint)]">Customers can&apos;t cancel on their own inside this window; the counter still can.</p>
                         </div>
                         <div>
                           <Label>Slot Interval (minutes)</Label>
                           <Select
-                            value={String(bookingRules.slotInterval)}
+                            value={String(rules.slotInterval)}
                             onChange={(e) =>
-                              setBookingRules({
-                                ...bookingRules,
-                                slotInterval: Number(e.target.value),
-                              })
+                              setRules({ ...rules, slotInterval: Number(e.target.value) })
                             }
                           >
                             <option value="15">15 min</option>
                             <option value="30">30 min</option>
                             <option value="45">45 min</option>
                           </Select>
-                        </div>
-                        <div>
-                          <Label>Deposit (RM)</Label>
-                          <Input
-                            type="number"
-                            value={bookingRules.depositAmount}
-                            disabled={!bookingRules.requireDeposit}
-                            onChange={(e) =>
-                              setBookingRules({
-                                ...bookingRules,
-                                depositAmount: Number(e.target.value),
-                              })
-                            }
-                          />
+                          <p className="mt-1 text-xs text-[var(--text-faint)]">Gap between bookable times.</p>
                         </div>
                       </div>
-                      <label className="mt-4 flex cursor-pointer items-center justify-between rounded-xl bg-[var(--bg-muted)] px-4 py-3">
-                        <span className="text-sm">Require deposit for bookings</span>
-                        <input
-                          type="checkbox"
-                          checked={bookingRules.requireDeposit}
-                          onChange={(e) =>
-                            setBookingRules({
-                              ...bookingRules,
-                              requireDeposit: e.target.checked,
-                            })
-                          }
-                          className="h-4 w-4 accent-[var(--gold)]"
-                        />
-                      </label>
                       <Button
                         className="mt-6"
-                        onClick={() => handleSave("Booking rules")}
+                        onClick={() =>
+                          handleSaveRules("Booking rules", ["advanceDays", "cancelHours"])
+                        }
                       >
                         <Save className="h-4 w-4" />
                         Save Booking Rules
@@ -1172,129 +1100,16 @@ export default function OwnerSettingsPage() {
                     </div>
                   )}
 
-                  {activeTab === "hours" && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Business Hours</CardTitle>
-                      </CardHeader>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <Label>Weekday Open</Label>
-                          <Input
-                            type="time"
-                            value={hours.weekdayOpen}
-                            onChange={(e) =>
-                              setHours({ ...hours, weekdayOpen: e.target.value })
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label>Weekday Close</Label>
-                          <Input
-                            type="time"
-                            value={hours.weekdayClose}
-                            onChange={(e) =>
-                              setHours({ ...hours, weekdayClose: e.target.value })
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label>Weekend Open</Label>
-                          <Input
-                            type="time"
-                            value={hours.weekendOpen}
-                            onChange={(e) =>
-                              setHours({ ...hours, weekendOpen: e.target.value })
-                            }
-                          />
-                        </div>
-                        <div>
-                          <Label>Weekend Close</Label>
-                          <Input
-                            type="time"
-                            value={hours.weekendClose}
-                            onChange={(e) =>
-                              setHours({ ...hours, weekendClose: e.target.value })
-                            }
-                          />
-                        </div>
-                      </div>
-                      <Button
-                        className="mt-6"
-                        onClick={() => handleSave("Business hours")}
-                      >
-                        <Save className="h-4 w-4" />
-                        Save Hours
-                      </Button>
-                    </Card>
-                  )}
-
                   {activeTab === "notifications" && (
                     <Card>
                       <CardHeader>
-                        <CardTitle>Notification Preferences</CardTitle>
+                        <CardTitle>Alerts</CardTitle>
                       </CardHeader>
-                      <div className="mb-4">
-                        <Label>Alert Email</Label>
-                        <Input
-                          type="email"
-                          value={notifications.email}
-                          onChange={(e) =>
-                            setNotifications({
-                              ...notifications,
-                              email: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <Label>Queue Alert Threshold</Label>
-                        <Input
-                          type="number"
-                          value={notifications.queueThreshold}
-                          onChange={(e) =>
-                            setNotifications({
-                              ...notifications,
-                              queueThreshold: Number(e.target.value),
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="mt-4 space-y-3">
-                        {(
-                          [
-                            ["lowStock", "Low stock alerts"],
-                            ["dailyReport", "Daily sales report"],
-                            ["noShowAlert", "No-show notifications"],
-                            ["commissionSummary", "Weekly commission summary"],
-                          ] as const
-                        ).map(([key, label]) => (
-                          <label
-                            key={key}
-                            className="flex cursor-pointer items-center justify-between rounded-xl bg-[var(--bg-muted)] px-4 py-3"
-                          >
-                            <span className="text-sm">{label}</span>
-                            <input
-                              type="checkbox"
-                              checked={notifications[key]}
-                              onChange={(e) =>
-                                setNotifications({
-                                  ...notifications,
-                                  [key]: e.target.checked,
-                                })
-                              }
-                              className="h-4 w-4 accent-[var(--gold)]"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                      <Button
-                        className="mt-6"
-                        onClick={() => handleSave("Notifications")}
-                      >
-                        <Save className="h-4 w-4" />
-                        Save Notifications
-                      </Button>
+                      <p className="text-sm text-[var(--text-muted)]">
+                        Email and SMS alerts aren&apos;t connected yet, so there is
+                        nothing to configure here. Opening hours are set per
+                        branch under Branches.
+                      </p>
                     </Card>
                   )}
             </motion.div>

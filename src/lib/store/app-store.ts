@@ -14,6 +14,7 @@ import type {
   DrawerSession,
   LeaveEntry,
   MembershipPlan,
+  OpsRules,
   PaymentMethod,
   Product,
   QueueTicket,
@@ -79,6 +80,8 @@ interface AppState {
   staffId: string | null;
   branchId: string;
   businessProfile: BusinessProfile;
+  opsRules: OpsRules;
+  updateOpsRules: (patch: Partial<OpsRules>) => void;
   /** Owner-configured service charge / SST, applied across every POS screen. */
   taxConfig: TaxConfig;
   queue: QueueTicket[];
@@ -388,6 +391,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     taxId: "W10-1808-32000123",
   },
   taxConfig: { ...DEFAULT_TAX_CONFIG },
+  opsRules: {
+    gracePeriodMins: 10,
+    maxWaitMins: 45,
+    advanceDays: 7,
+    cancelHours: 4,
+    slotInterval: 30,
+  },
   queue: QUEUE,
   bookings: BOOKINGS,
   sales: SALES,
@@ -456,6 +466,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   updateTaxConfig: (patch) =>
     set((s) => ({ taxConfig: { ...s.taxConfig, ...patch } })),
+  updateOpsRules: (patch) =>
+    set((s) => ({ opsRules: { ...s.opsRules, ...patch } })),
 
   updateStaffStatus: (staffId, status) =>
     set((s) => {

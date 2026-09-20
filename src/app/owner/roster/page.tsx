@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarClock,
@@ -63,6 +64,7 @@ const OVERRIDE_REASONS = [
 const LEAVE_REASONS = ["Annual leave", "Sick (MC)", "Emergency", "Unpaid leave", "Other"];
 
 export default function OwnerRosterPage() {
+  const confirm = useConfirm();
   const now = useNow();
   const branchId = useAppStore((s) => s.branchId);
   const branches = useAppStore((s) => s.branches);
@@ -197,6 +199,7 @@ export default function OwnerRosterPage() {
 
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Roster & Attendance"
         actions={
@@ -490,7 +493,14 @@ export default function OwnerRosterPage() {
                           variant="ghost"
                           size="sm"
                           aria-label="Remove leave"
-                          onClick={() => removeLeave(l.id)}
+                          onClick={() =>
+                            confirm.ask({
+                              title: "Remove this leave?",
+                              description: `${l.reason} · ${formatDate(l.date)}`,
+                              confirmLabel: "Remove",
+                              run: () => removeLeave(l.id),
+                            })
+                          }
                         >
                           <Trash2 className="h-4 w-4 text-[var(--danger)]" />
                         </Button>

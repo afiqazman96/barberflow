@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store/app-store";
 import { findCustomerByPhone } from "@/lib/mock/data";
+import { closingMins, minsOfDay, openingMins } from "@/lib/roster";
 import type { QueueTicket } from "@/lib/types";
 import { cn, formatCurrency, initials } from "@/lib/utils";
 import { toast } from "sonner";
@@ -50,6 +51,7 @@ function QueueWizard() {
   const fromQr = params.get("source") === "qr";
 
   const queue = useAppStore((s) => s.queue);
+  const maxWaitMins = useAppStore((s) => s.opsRules.maxWaitMins);
   const branches = useAppStore((s) => s.branches);
   const services = useAppStore((s) => s.services);
   const staff = useAppStore((s) => s.staff);
@@ -106,6 +108,24 @@ function QueueWizard() {
     );
   }
 
+  // Walk-ins only make sense while the shop is open and there is still time to
+  // be served: a haircut started at closing time isn't a queue spot.
+  function closedReason(now: Date, needMins = 0): string | null {
+    const mins = minsOfDay(now);
+    const open = openingMins(branch);
+    const close = closingMins(branch);
+    const hhmm = (m: number) =>
+      `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    if (mins < open) return `${branch.name} opens at ${hhmm(open)}.`;
+    if (mins >= close) return `${branch.name} is closed for today (closed ${hhmm(close)}).`;
+    if (needMins > 0 && mins + needMins > close) {
+      return `There isn't enough time left before closing at ${hhmm(close)} — try tomorrow or book a slot.`;
+    }
+    return null;
+  }
+  const [loadedAt] = useState(() => new Date());
+  const closedNow = closedReason(loadedAt);
+
   function canProceed() {
     if (step === 0) return name.trim().length >= 2 && contactOk;
     if (step === 1) return serviceIds.length > 0;
@@ -121,6 +141,31 @@ function QueueWizard() {
   function handleSubmit() {
     if (!contactOk) {
       toast.error("A valid email is required for your receipt");
+      return;
+    }
+
+    const closed = closedReason(new Date(), estWaitMins + totalDuration);
+    if (closed) {
+      toast.error("We can't add you to today's queue", { description: closed });
+      return;
+    }
+
+    // One spot per person: the same email or phone already waiting here is a
+    // double-tap or a second device, not a second customer.
+    const emailKey = email.trim().toLowerCase();
+    const phoneKey = phone.replace(/D/g, "");
+    const already = queue.find(
+      (q) =>
+        q.branchId === branch.id &&
+        (q.status === "waiting" || q.status === "called" || q.status === "in-service") &&
+        ((q.customerEmail ?? "").trim().toLowerCase() === emailKey ||
+          (phoneKey.length >= 8 &&
+            (q.customerPhone ?? "").replace(/D/g, "") === phoneKey)),
+    );
+    if (already) {
+      setTrackingTicketId(already.id);
+      toast.message(`You're already in the queue — ticket ${already.number}`);
+      router.push("/customer/tracking");
       return;
     }
 
@@ -152,9 +197,11 @@ function QueueWizard() {
     addQueueTicket(ticket);
     setTrackingTicketId(ticket.id);
     setBranchId(branch.id);
+    // Deliberately generic: a phone number isn't proof of identity, so the
+    // name and tier of whoever it matches must not be read back to a stranger.
     if (matched && matched.membership !== "none") {
-      toast.success(`Welcome back, ${matched.name.split(" ")[0]}!`, {
-        description: `${matched.membership} member pricing applied`,
+      toast.success("Member pricing applied", {
+        description: "The counter will confirm your membership",
       });
     }
     toast.success("You're in the queue!", {
@@ -207,6 +254,18 @@ function QueueWizard() {
       >
         {step === 0 && (
             <div className="space-y-4">
+              {closedNow && (
+                <p className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-3 text-sm text-[var(--text-muted)]">
+                  {closedNow} You can still{" "}
+                  <Link
+                    href={`/customer/booking?branch=${branch.id}`}
+                    className="font-medium text-[var(--gold-soft)] underline"
+                  >
+                    book an appointment
+                  </Link>
+                  .
+                </p>
+              )}
               <div>
                 <Label htmlFor="name">Your Name</Label>
                 <Input
@@ -406,6 +465,12 @@ function QueueWizard() {
                     ~{estWaitMins} min
                   </span>
                 </div>
+                {estWaitMins > maxWaitMins && (
+                  <p className="text-xs text-[var(--warning)]">
+                    It&apos;s busy right now — you may prefer to book a later
+                    time instead.
+                  </p>
+                )}
               </Card>
             </div>
           )}

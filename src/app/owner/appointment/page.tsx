@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -37,6 +38,8 @@ const emptyNewBooking = () => ({
 });
 
 export default function OwnerAppointmentPage() {
+  const confirm = useConfirm();
+  const opsRules = useAppStore((s) => s.opsRules);
   const branchId = useAppStore((s) => s.branchId);
   const allBookings = useAppStore((s) => s.bookings);
   const services = useAppStore((s) => s.services);
@@ -111,15 +114,28 @@ export default function OwnerAppointmentPage() {
   }
 
   function handleMarkNoShow(booking: Booking) {
-    updateBooking(booking.id, { status: "no-show" });
-    toast.error("Marked as no-show", { description: booking.customerName });
-    setSelected({ ...booking, status: "no-show" });
+    confirm.ask({
+      title: `Mark ${booking.customerName} as no-show?`,
+      confirmLabel: "No-show",
+      run: () => {
+        updateBooking(booking.id, { status: "no-show" });
+        toast.error("Marked as no-show", { description: booking.customerName });
+        setSelected({ ...booking, status: "no-show" });
+      },
+    });
   }
 
   function handleCancelBooking(booking: Booking) {
-    updateBooking(booking.id, { status: "cancelled" });
-    toast.success("Appointment cancelled", { description: booking.customerName });
-    setSelected({ ...booking, status: "cancelled" });
+    confirm.ask({
+      title: `Cancel ${booking.customerName}'s appointment?`,
+      description: "Any queue ticket from their check-in is cancelled too.",
+      confirmLabel: "Cancel appointment",
+      run: () => {
+        updateBooking(booking.id, { status: "cancelled" });
+        toast.success("Appointment cancelled", { description: booking.customerName });
+        setSelected({ ...booking, status: "cancelled" });
+      },
+    });
   }
 
   function shiftDate(dir: -1 | 1) {
@@ -166,7 +182,7 @@ export default function OwnerAppointmentPage() {
       date: newBooking.date,
       time: newBooking.time,
       durationMins: service.durationMins,
-      gracePeriodMins: 10,
+      gracePeriodMins: opsRules.gracePeriodMins,
       status: "confirmed",
     });
     toast.success("Appointment booked", {
@@ -178,6 +194,7 @@ export default function OwnerAppointmentPage() {
 
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Appointments"
         actions={

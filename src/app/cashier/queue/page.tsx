@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -45,6 +46,13 @@ function nextQueueNumber(queue: QueueTicket[]) {
 }
 
 function QueuePageContent() {
+  const confirm = useConfirm();
+  const maxWaitMins = useAppStore((s) => s.opsRules.maxWaitMins);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   const router = useRouter();
   const searchParams = useSearchParams();
   const allQueue = useAppStore((s) => s.queue);
@@ -174,9 +182,16 @@ function QueuePageContent() {
   }
 
   function handleNoShow(ticket: QueueTicket) {
-    updateQueueTicket(ticket.id, { status: "no-show" });
-    toast.error("Marked as no-show", { description: ticket.customerName });
-    setDetailTicket(null);
+    confirm.ask({
+      title: `Mark ${ticket.customerName} as no-show?`,
+      description: "They lose their place in the queue.",
+      confirmLabel: "No-show",
+      run: () => {
+        updateQueueTicket(ticket.id, { status: "no-show" });
+        toast.error("Marked as no-show", { description: ticket.customerName });
+        setDetailTicket(null);
+      },
+    });
   }
 
   function handleSendToPos(ticket: QueueTicket) {
@@ -190,8 +205,15 @@ function QueuePageContent() {
     router.push("/cashier/pos");
   }
 
+  const overLimit = queue.filter(
+    (q) =>
+      q.status === "waiting" &&
+      (nowMs - new Date(q.createdAt).getTime()) / 60000 > maxWaitMins,
+  ).length;
+
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Queue Monitor"
         actions={
@@ -203,6 +225,12 @@ function QueuePageContent() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+          {overLimit > 0 && (
+            <p className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-2.5 text-sm text-[var(--text-muted)]">
+              {overLimit} {overLimit === 1 ? "customer has" : "customers have"} waited
+              longer than {maxWaitMins} min.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <Filter className="h-4 w-4 text-[var(--text-faint)]" />
             {STATUS_FILTERS.map((f) => (

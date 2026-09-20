@@ -6,7 +6,12 @@ import { Copy, Download, ExternalLink, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getBranchBookingUrl, getBranchJoinUrl } from "@/lib/store/app-store";
+import {
+  getBranchBookingUrl,
+  getBranchJoinUrl,
+  isPrivateOrigin,
+  publicOrigin,
+} from "@/lib/store/app-store";
 import type { Branch } from "@/lib/types";
 
 export function BranchQrPanel({
@@ -18,11 +23,14 @@ export function BranchQrPanel({
   size?: number;
   compact?: boolean;
 }) {
-  const [origin, setOrigin] = useState("https://barberflow.app");
+  const [origin, setOrigin] = useState(publicOrigin() ?? "https://barberflow.app");
 
   useEffect(() => {
-    setOrigin(window.location.origin);
+    // A configured public address wins over whatever the owner has open.
+    if (!publicOrigin()) setOrigin(window.location.origin);
   }, []);
+
+  const localOnly = isPrivateOrigin(origin);
 
   const url = getBranchJoinUrl(branch.id, origin);
   const bookingUrl = getBranchBookingUrl(branch.id, origin);
@@ -97,6 +105,13 @@ export function BranchQrPanel({
           Print &amp; place at the counter. Customers scan to join this branch queue.
         </p>
       </div>
+      {localOnly && (
+        <p className="mb-4 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--text-muted)]">
+          These links point to {origin}, which only this computer can open. Open
+          BarberFlow from your live website before printing or sharing, or set
+          NEXT_PUBLIC_APP_URL to your public address.
+        </p>
+      )}
       <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
         <div className="rounded-2xl bg-white p-4 shadow-[var(--shadow-soft)]">
           <QRCodeSVG

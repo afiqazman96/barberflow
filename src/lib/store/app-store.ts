@@ -1496,10 +1496,25 @@ export function drawerExpected(session: DrawerSession): number {
   );
 }
 
+/**
+ * The address customers should be sent to. `NEXT_PUBLIC_APP_URL` wins so a QR
+ * printed from any machine (even localhost) still points at the live site.
+ */
+export function publicOrigin(): string | undefined {
+  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+  return fromEnv || undefined;
+}
+
+/** True for addresses only this computer or its network can open. */
+export function isPrivateOrigin(origin: string): boolean {
+  return /^https?:\/\/(localhost|127\.|10\.|192\.168\.|0\.0\.0\.0)/i.test(origin);
+}
+
 /** Advance-booking page for one branch — safe to share as a link or QR. */
 export function getBranchBookingUrl(branchId: string, origin?: string) {
   const base =
     origin ??
+    publicOrigin() ??
     (typeof window !== "undefined" ? window.location.origin : "https://barberflow.app");
   return `${base}/customer/booking?branch=${branchId}`;
 }
@@ -1507,6 +1522,7 @@ export function getBranchBookingUrl(branchId: string, origin?: string) {
 export function getBranchJoinUrl(branchId: string, origin?: string) {
   const base =
     origin ??
+    publicOrigin() ??
     (typeof window !== "undefined" ? window.location.origin : "https://barberflow.app");
   return `${base}/join/${branchId}`;
 }

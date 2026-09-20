@@ -113,7 +113,7 @@ export default function StaffDashboardPage() {
       toast.error("Finish current service first");
       return;
     }
-    const next = findNextQueueTicket(queue, staffId);
+    const next = findNextQueueTicket(queue, staffId, staff?.branchId);
     if (!next) {
       toast.warning("No customers waiting", {
         description: "Check back when the queue fills up",
@@ -318,7 +318,7 @@ export default function StaffDashboardPage() {
             Up Next
           </h2>
           {(() => {
-            const next = findNextQueueTicket(queue, staffId);
+            const next = findNextQueueTicket(queue, staffId, staff?.branchId);
             return next ? (
               <QueueCard ticket={next} />
             ) : (

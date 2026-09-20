@@ -17,7 +17,8 @@ import { SalesChart } from "@/components/domain/charts";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
-import { SALES_TREND, TOP_SERVICES } from "@/lib/mock/data";
+import { topServices, weeklyTrend } from "@/lib/analytics";
+import { useNow } from "@/hooks/use-now";
 import { formatCurrency, todayIso } from "@/lib/utils";
 
 export default function OwnerDashboardPage() {
@@ -45,11 +46,22 @@ export default function OwnerDashboardPage() {
   const avgWait =
     queue.filter((q) => q.status === "waiting").reduce((sum, q) => sum + q.estimatedWaitMins, 0) /
       Math.max(waiting, 1);
-  const uniqueCustomers = new Set(todaySalesList.map((s) => s.customerId)).size;
+  // Anonymous walk-ins share one placeholder id — count each sale on its own.
+  const uniqueCustomers = new Set(
+    todaySalesList.map((s) =>
+      s.customerId === "walk-in" || s.customerId === "guest" || s.customerId.startsWith("walk-")
+        ? s.id
+        : s.customerId,
+    ),
+  ).size;
+  const now = useNow();
+  const trend = now ? weeklyTrend(sales, now) : [];
+  const monthAgo = now ? new Date(now.getTime() - 30 * 86400000).toISOString() : "";
+  const topSvc = topServices(sales.filter((s) => s.createdAt >= monthAgo));
   const barbers = staffList.filter(
     (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
-  const maxServiceCount = TOP_SERVICES[0]?.count ?? 1;
+  const maxServiceCount = topSvc[0]?.count ?? 1;
 
   return (
     <>
@@ -108,7 +120,7 @@ export default function OwnerDashboardPage() {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">
-              <SalesChart data={SALES_TREND} title="Weekly Sales Trend" />
+              <SalesChart data={trend} title="Last 7 Days" />
             </div>
             <Card>
               <CardHeader>
@@ -118,7 +130,10 @@ export default function OwnerDashboardPage() {
                 </CardTitle>
               </CardHeader>
               <div className="space-y-4">
-                {TOP_SERVICES.map((svc, i) => (
+                {topSvc.length === 0 && (
+                  <p className="text-sm text-[var(--text-muted)]">No service sales yet.</p>
+                )}
+                {topSvc.map((svc, i) => (
                   <motion.div
                     key={svc.name}
                     initial={{ opacity: 0, x: -8 }}
@@ -141,7 +156,7 @@ export default function OwnerDashboardPage() {
                 ))}
               </div>
               <p className="mt-4 text-xs text-[var(--text-faint)]">
-                Based on last 30 days · Fade House KL
+                Based on the last 30 days · {branch?.name ?? ""}
               </p>
             </Card>
           </div>

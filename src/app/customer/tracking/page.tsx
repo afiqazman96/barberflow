@@ -15,46 +15,81 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
-import { BRANCHES, STAFF } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
-import { cn } from "@/lib/utils";
+import { byQueueOrder, cn, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 export default function TrackingPage() {
   const queue = useAppStore((s) => s.queue);
+  const bookings = useAppStore((s) => s.bookings);
+  const branches = useAppStore((s) => s.branches);
+  const staffList = useAppStore((s) => s.staff);
+  const chairs = useAppStore((s) => s.chairs);
   const trackingTicketId = useAppStore((s) => s.trackingTicketId);
+  const trackingBookingId = useAppStore((s) => s.trackingBookingId);
   const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
+  const updateBooking = useAppStore((s) => s.updateBooking);
 
   const [pulse, setPulse] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [leaveOpen, setLeaveOpen] = useState(false);
 
   // Only ever show the visitor their own ticket — never fall back to some
-  // other customer's live entry.
-  const ticket = useMemo(
+  // other customer's live entry. A booked customer gets a ticket only when
+  // the counter checks them in, so follow the booking to it.
+  const booking = useMemo(
     () =>
-      trackingTicketId
-        ? (queue.find((q) => q.id === trackingTicketId) ?? null)
+      trackingBookingId
+        ? (bookings.find((b) => b.id === trackingBookingId) ?? null)
         : null,
-    [queue, trackingTicketId],
+    [bookings, trackingBookingId],
+  );
+  const ticket = useMemo(() => {
+    if (trackingTicketId) {
+      const own = queue.find((q) => q.id === trackingTicketId);
+      if (own) return own;
+    }
+    if (booking) return queue.find((q) => q.bookingId === booking.id) ?? null;
+    return null;
+  }, [queue, trackingTicketId, booking]);
+
+  const branch = branches.find(
+    (b) => b.id === (ticket?.branchId ?? booking?.branchId),
   );
 
-  const branch = ticket ? BRANCHES.find((b) => b.id === ticket.branchId) : null;
-
+  // Oldest first: position is how many people are ahead, plus you.
   const position = useMemo(() => {
     if (!ticket) return 0;
-    const waiting = queue.filter(
-      (q) =>
-        q.branchId === ticket.branchId &&
-        q.status === "waiting" &&
-        new Date(q.createdAt) <= new Date(ticket.createdAt),
-    );
-    return waiting.findIndex((q) => q.id === ticket.id) + 1;
+    const line = queue
+      .filter(
+        (q) =>
+          q.branchId === ticket.branchId &&
+          q.status === "waiting",
+      )
+      .sort(byQueueOrder);
+    return line.findIndex((q) => q.id === ticket.id) + 1;
   }, [queue, ticket]);
 
   const staffName = ticket?.preferredStaffId
-    ? STAFF.find((s) => s.id === ticket.preferredStaffId)?.name
+    ? staffList.find((s) => s.id === ticket.preferredStaffId)?.name
     : null;
+  const servedBy = ticket?.assignedStaffId
+    ? staffList.find((s) => s.id === ticket.assignedStaffId)?.name
+    : null;
+  const chairLabel = ticket?.chairId
+    ? chairs.find((c) => c.id === ticket.chairId)?.label
+    : null;
+
+  // Counts down from the estimate given when they joined — no fake ticking.
+  const waitLeft = ticket
+    ? Math.max(
+        0,
+        ticket.estimatedWaitMins -
+          Math.floor(
+            (lastUpdated.getTime() - new Date(ticket.createdAt).getTime()) / 60000,
+          ),
+      )
+    : 0;
 
   function handleLeave() {
     if (!ticket) return;
@@ -69,19 +104,74 @@ export default function TrackingPage() {
     const interval = setInterval(() => {
       setPulse((p) => !p);
       setLastUpdated(new Date());
-
-      if (ticket && ticket.status === "waiting" && ticket.estimatedWaitMins > 0) {
-        const delta = Math.random() > 0.7 ? -1 : 0;
-        if (delta !== 0) {
-          updateQueueTicket(ticket.id, {
-            estimatedWaitMins: Math.max(0, ticket.estimatedWaitMins + delta),
-          });
-        }
-      }
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [ticket, updateQueueTicket]);
+  }, []);
+
+  function handleCancelBooking() {
+    if (!booking) return;
+    updateBooking(booking.id, { status: "cancelled" });
+    toast.success("Appointment cancelled", {
+      description: `${formatDate(booking.date)} at ${booking.time}`,
+    });
+  }
+
+  if (!ticket && booking) {
+    const done = booking.status !== "confirmed";
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="font-display text-xl font-bold">Your Appointment</h1>
+          <p className="text-xs text-[var(--text-faint)]">{branch?.name}</p>
+        </div>
+        <Card className="space-y-3 p-5 text-sm">
+          <div className="flex items-center justify-between">
+            <p className="font-display text-2xl font-bold">
+              {formatDate(booking.date)}
+            </p>
+            <StatusBadge status={booking.status} />
+          </div>
+          <p className="text-lg font-semibold text-[var(--gold-soft)]">
+            {booking.time}
+          </p>
+          <div className="space-y-1 border-t border-[var(--border)] pt-3">
+            <p className="font-medium">{booking.serviceNames.join(" · ")}</p>
+            <p className="text-[var(--text-muted)]">
+              with {booking.staffName} · {booking.gracePeriodMins} min grace period
+            </p>
+          </div>
+        </Card>
+        {booking.status === "confirmed" && (
+          <>
+            <p className="text-center text-xs text-[var(--text-faint)]">
+              Arrive a few minutes early and check in at the counter — you&apos;ll
+              get your queue number then.
+            </p>
+            <Button
+              variant="outline"
+              className="w-full text-[var(--danger)]"
+              onClick={handleCancelBooking}
+            >
+              Cancel appointment
+            </Button>
+          </>
+        )}
+        {done && (
+          <p className="text-center text-sm text-[var(--text-muted)]">
+            {booking.status === "cancelled"
+              ? "This appointment was cancelled."
+              : booking.status === "no-show"
+                ? "This appointment was marked as a no-show."
+                : "This appointment is complete."}
+          </p>
+        )}
+        <Button asChild variant="outline" className="w-full">
+          <Link href="/customer/home">Back to Home</Link>
+        </Button>
+      </div>
+    );
+  }
 
   if (!ticket) {
     return (
@@ -207,15 +297,17 @@ export default function TrackingPage() {
               Est. Wait
             </p>
             <p className="font-display text-2xl font-bold text-[var(--gold-soft)]">
-              {ticket.estimatedWaitMins > 0 ? (
+              {ticket.status !== "waiting" ? (
+                "Now"
+              ) : waitLeft > 0 ? (
                 <>
-                  {ticket.estimatedWaitMins}
+                  {waitLeft}
                   <span className="text-sm font-normal text-[var(--text-muted)]">
                     m
                   </span>
                 </>
               ) : (
-                "Now"
+                "Soon"
               )}
             </p>
           </div>
@@ -274,6 +366,30 @@ export default function TrackingPage() {
           Keep this screen open — your position updates on its own.
         </p>
       )}
+      {ticket.status === "called" && (
+        <p className="rounded-xl border border-[var(--gold)]/30 bg-[var(--gold)]/10 px-4 py-3 text-center text-sm text-[var(--gold-soft)]">
+          You&apos;re being called — please head to the counter now.
+        </p>
+      )}
+      {ticket.status === "in-service" && (
+        <p className="rounded-xl border border-[var(--gold)]/30 bg-[var(--gold)]/10 px-4 py-3 text-center text-sm text-[var(--gold-soft)]">
+          {servedBy ? `${servedBy} is with you` : "You're being served"}
+          {chairLabel ? ` at ${chairLabel}` : ""}.
+        </p>
+      )}
+      {ticket.status === "awaiting-payment" && (
+        <p className="rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 py-3 text-center text-sm text-[var(--text-muted)]">
+          All done — please pay at the counter.
+          {ticket.customerEmail
+            ? ` Your receipt will be emailed to ${ticket.customerEmail}.`
+            : ""}
+        </p>
+      )}
+      {ticket.status === "no-show" && (
+        <p className="rounded-xl border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-4 py-3 text-center text-sm text-[var(--danger)]">
+          You were marked as a no-show. Rejoin the queue any time for a new number.
+        </p>
+      )}
 
       {canLeave && (
         <Button
@@ -283,6 +399,12 @@ export default function TrackingPage() {
         >
           Leave queue
         </Button>
+      )}
+
+      {ticket.status === "completed" && ticket.customerEmail && (
+        <p className="text-center text-sm text-[var(--text-muted)]">
+          Thank you! Your receipt was emailed to {ticket.customerEmail}.
+        </p>
       )}
 
       {ticket.status === "completed" && (

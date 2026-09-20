@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -26,8 +28,17 @@ import { STAFF } from "@/lib/mock/data";
 import { formatCurrency, todayIso } from "@/lib/utils";
 
 export default function CashierDashboardPage() {
-  const queue = useAppStore((s) => s.queue);
-  const sales = useAppStore((s) => s.sales);
+  const allQueue = useAppStore((s) => s.queue);
+  const activeBranchId = useAppStore((s) => s.branchId);
+  const queue = useMemo(
+    () => allQueue.filter((q) => q.branchId === activeBranchId),
+    [allQueue, activeBranchId],
+  );
+  const allSales = useAppStore((s) => s.sales);
+  const sales = useMemo(
+    () => allSales.filter((x) => x.branchId === activeBranchId),
+    [allSales, activeBranchId],
+  );
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const myStaffId = useSession().staffId ?? "";
 

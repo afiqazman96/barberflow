@@ -668,7 +668,7 @@ export const COMMISSION_RULES: CommissionRule[] = [
     id: "cr3",
     name: "Signature Fade Boost",
     type: "service-based",
-    value: 15,
+    value: 40,
     appliesTo: "service",
     serviceId: "sv1",
     active: true,

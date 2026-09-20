@@ -1,25 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
+import Link from "next/link";
 import {
   Wallet,
   ArrowDownToLine,
   ArrowUpFromLine,
   Lock,
-  Repeat,
-  CheckCircle2,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { PosSubnav } from "@/components/domain/pos-subnav";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { useSession } from "@/components/auth/session-provider";
-import { useAppStore, drawerExpected } from "@/lib/store/app-store";
+import { useAppStore } from "@/lib/store/app-store";
+import {
+  CASHIER_PAYOUT_LIMIT,
+  COINS_KEY,
+  MIN_VARIANCE_REASON,
+  NOTE_DENOMINATIONS,
+  PAYIN_CATEGORIES,
+  PAYOUT_CATEGORIES,
+  denominationTotal,
+} from "@/lib/drawer";
 import type { CashMovement } from "@/lib/types";
 import { formatCurrency, formatTime } from "@/lib/utils";
 
@@ -32,34 +40,59 @@ const MOVEMENT_LABEL: Record<CashMovement["type"], string> = {
 
 export default function CashierDrawerPage() {
   const session = useSession();
+  const myStaffId = session.staffId ?? "";
+  const status = useAppStore((s) => s.staffStatuses[myStaffId] ?? "off-duty");
   const drawerSession = useAppStore((s) => s.drawerSession);
   const drawerHistory = useAppStore((s) => s.drawerHistory);
   const openDrawer = useAppStore((s) => s.openDrawer);
   const addCashMovement = useAppStore((s) => s.addCashMovement);
   const closeDrawer = useAppStore((s) => s.closeDrawer);
 
-  const [float, setFloat] = useState("200");
+  const [float, setFloat] = useState("");
   const [moveType, setMoveType] = useState<"pay-in" | "pay-out" | null>(null);
   const [moveAmount, setMoveAmount] = useState("");
   const [moveNote, setMoveNote] = useState("");
+  const [moveCategory, setMoveCategory] = useState("");
   const [closeOpen, setCloseOpen] = useState(false);
-  const [counted, setCounted] = useState("");
+  const [counts, setCounts] = useState<Record<string, string>>({});
   const [closeNote, setCloseNote] = useState("");
-  const [changeShift, setChangeShift] = useState(false);
+  const [needReason, setNeedReason] = useState(false);
+  const [recounted, setRecounted] = useState(false);
 
-  const lastClosed = drawerHistory[0];
-  const expected = drawerSession ? drawerExpected(drawerSession) : 0;
+  const lastClosed = drawerHistory.find((d) => d.closedAt);
+  const offDuty = status === "off-duty";
+
+  const countRecord: Record<string, number> = Object.fromEntries(
+    Object.entries(counts).map(([k, v]) => [k, Number(v) || 0]),
+  );
+  const countedTotal = denominationTotal(countRecord);
 
   function handleOpen() {
-    const f = Number(float) || 0;
-    openDrawer({
-      cashierId: session.staffId ?? session.authUserId,
+    const f = Number(float);
+    if (float === "" || Number.isNaN(f) || f < 0) {
+      toast.error("Count your opening float first");
+      return;
+    }
+    const res = openDrawer({
+      cashierId: myStaffId || session.authUserId,
       cashierName: session.name,
       openingFloat: f,
     });
+    if (!res.ok) {
+      toast.error("Couldn't open the drawer", { description: res.error });
+      return;
+    }
     toast.success("Drawer open", {
       description: `Opening float ${formatCurrency(f)}`,
     });
+    setFloat("");
+  }
+
+  function resetMove() {
+    setMoveType(null);
+    setMoveAmount("");
+    setMoveNote("");
+    setMoveCategory("");
   }
 
   function handleAddMovement() {
@@ -68,46 +101,85 @@ export default function CashierDrawerPage() {
       toast.error("Enter an amount");
       return;
     }
-    if (!moveNote.trim()) {
-      toast.error("Add a note so the drawer log makes sense");
+    if (!moveCategory) {
+      toast.error("Pick a reason");
       return;
     }
-    addCashMovement({ type: moveType!, amount: amt, note: moveNote.trim() });
-    toast.success(MOVEMENT_LABEL[moveType!], {
-      description: `${formatCurrency(amt)} · ${moveNote.trim()}`,
+    if (moveCategory === "Other" && !moveNote.trim()) {
+      toast.error("Add a note for \"Other\"");
+      return;
+    }
+    const note = moveNote.trim() ? `${moveCategory} · ${moveNote.trim()}` : moveCategory;
+    const res = addCashMovement({
+      type: moveType!,
+      amount: amt,
+      note,
+      category: moveCategory,
     });
-    setMoveType(null);
-    setMoveAmount("");
-    setMoveNote("");
+    if (!res.ok) {
+      toast.error("Not recorded", { description: res.error });
+      return;
+    }
+    toast.success(MOVEMENT_LABEL[moveType!], {
+      description: `${formatCurrency(amt)} · ${note}`,
+    });
+    resetMove();
+  }
+
+  function resetClose() {
+    setCounts({});
+    setCloseNote("");
+    setNeedReason(false);
+    setRecounted(false);
   }
 
   function handleClose() {
-    const c = Number(counted) || 0;
-    closeDrawer({ countedAmount: c, closingNote: closeNote });
-    setCloseOpen(false);
-    const diff = c - expected;
-    toast.success("Drawer closed", {
-      description:
-        diff === 0
-          ? "Counted matches expected"
-          : diff > 0
-            ? `Over by ${formatCurrency(diff)}`
-            : `Short by ${formatCurrency(-diff)}`,
-    });
-    if (changeShift) {
-      setChangeShift(false);
-      // Straight into the next shift with the counted cash as the new float.
-      openDrawer({
-        cashierId: session.staffId ?? session.authUserId,
-        cashierName: session.name,
-        openingFloat: c,
-      });
-      toast.message("Next shift open", {
-        description: `Float carried over: ${formatCurrency(c)}`,
-      });
+    if (countedTotal <= 0) {
+      toast.error("Count the cash in the drawer first");
+      return;
     }
-    setCounted("");
-    setCloseNote("");
+    if (needReason && closeNote.trim().length < MIN_VARIANCE_REASON) {
+      toast.error("Explain what happened", {
+        description: `At least ${MIN_VARIANCE_REASON} characters`,
+      });
+      return;
+    }
+    const res = closeDrawer({
+      countedAmount: countedTotal,
+      denominations: countRecord,
+      closingNote: closeNote,
+    });
+    switch (res.result) {
+      case "closed":
+        toast.success("Drawer closed", {
+          description: "The next cashier opens with their own count",
+        });
+        setCloseOpen(false);
+        resetClose();
+        break;
+      case "needs-review":
+        toast.success("Drawer closed", {
+          description: "Sent to the owner for review",
+        });
+        setCloseOpen(false);
+        resetClose();
+        break;
+      case "recount":
+        toast.warning("That count doesn't match", {
+          description: "Please recount carefully — you get one more try",
+        });
+        setCounts({});
+        setRecounted(true);
+        break;
+      case "reason-required":
+        toast.warning("Still doesn't match", {
+          description: "Add a note explaining what happened, then submit again",
+        });
+        setNeedReason(true);
+        break;
+      default:
+        toast.error("Can't close the drawer", { description: res.message });
+    }
   }
 
   // ---- No open drawer ----
@@ -126,48 +198,45 @@ export default function CashierDrawerPage() {
                 Drawer is closed
               </h1>
               <p className="mt-1 text-sm text-[var(--text-muted)]">
-                Count your opening float and open the till to start taking cash.
+                Count the cash in the drawer yourself and enter it as the
+                opening float.
               </p>
+              {offDuty && (
+                <p className="mt-3 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--warning)]">
+                  You&apos;re not clocked in.{" "}
+                  <Link href="/cashier/dashboard" className="underline">
+                    Start your shift
+                  </Link>{" "}
+                  first.
+                </p>
+              )}
               <div className="mt-5 text-left">
-                <Label>Opening float (RM)</Label>
+                <Label htmlFor="float">Opening float (RM)</Label>
                 <Input
+                  id="float"
                   type="number"
                   min={0}
                   step={10}
                   value={float}
                   onChange={(e) => setFloat(e.target.value)}
+                  placeholder="What you counted"
                 />
               </div>
-              <Button className="mt-4 w-full" size="lg" onClick={handleOpen}>
+              <Button
+                className="mt-4 w-full"
+                size="lg"
+                onClick={handleOpen}
+                disabled={offDuty}
+              >
                 Open drawer
               </Button>
             </Card>
 
             {lastClosed && (
-              <Card className="p-4 text-sm">
-                <CardHeader className="mb-2">
-                  <CardTitle className="text-sm">Last shift</CardTitle>
-                </CardHeader>
-                <div className="space-y-1 text-[var(--text-muted)]">
-                  <Row
-                    label={`${lastClosed.cashierName} · closed ${formatTime(lastClosed.closedAt ?? lastClosed.openedAt)}`}
-                  />
-                  <Row
-                    label="Expected"
-                    value={formatCurrency(drawerExpected(lastClosed))}
-                  />
-                  <Row
-                    label="Counted"
-                    value={formatCurrency(lastClosed.countedAmount ?? 0)}
-                  />
-                  <Variance
-                    diff={
-                      (lastClosed.countedAmount ?? 0) -
-                      drawerExpected(lastClosed)
-                    }
-                  />
-                </div>
-              </Card>
+              <p className="text-center text-xs text-[var(--text-faint)]">
+                Last closed by {lastClosed.closedBy ?? lastClosed.cashierName} at{" "}
+                {formatTime(lastClosed.closedAt!)}
+              </p>
             )}
           </div>
         </PageTransition>
@@ -176,16 +245,9 @@ export default function CashierDrawerPage() {
   }
 
   // ---- Open drawer ----
-  const sums = drawerSession.movements.reduce(
-    (acc, m) => {
-      if (m.type === "sale") acc.sales += m.amount;
-      else if (m.type === "refund") acc.refunds += m.amount;
-      else if (m.type === "pay-in") acc.payIn += m.amount;
-      else acc.payOut += m.amount;
-      return acc;
-    },
-    { sales: 0, refunds: 0, payIn: 0, payOut: 0 },
-  );
+  const cashSaleCount = drawerSession.movements.filter((m) => m.type === "sale").length;
+  const mine = !myStaffId || drawerSession.cashierId === myStaffId;
+  const categories = moveType === "pay-in" ? PAYIN_CATEGORIES : PAYOUT_CATEGORIES;
 
   return (
     <>
@@ -200,54 +262,49 @@ export default function CashierDrawerPage() {
       <PosSubnav base="/cashier/pos" />
       <PageTransition>
         <div className="mx-auto max-w-2xl space-y-5 p-4 md:p-6">
-          <Card className="p-5 text-center">
-            <p className="text-xs uppercase tracking-wider text-[var(--text-faint)]">
-              Expected in drawer
-            </p>
-            <p className="mt-1 font-display text-4xl font-bold text-[var(--gold-soft)]">
-              {formatCurrency(expected)}
-            </p>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">
-              {drawerSession.cashierName}
+          <Card className="p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--success)]/12">
+                <ShieldCheck className="h-5 w-5 text-[var(--success)]" />
+              </div>
+              <div>
+                <p className="font-display text-lg font-semibold">Drawer open</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {drawerSession.cashierName} · since {formatTime(drawerSession.openedAt)}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl bg-[var(--bg-muted)] p-3">
+                <p className="text-xs text-[var(--text-faint)]">Opening float</p>
+                <p className="font-medium">
+                  {formatCurrency(drawerSession.openingFloat)}
+                </p>
+              </div>
+              <div className="rounded-xl bg-[var(--bg-muted)] p-3">
+                <p className="text-xs text-[var(--text-faint)]">Cash sales today</p>
+                <p className="font-medium">{cashSaleCount}</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-[var(--text-faint)]">
+              The drawer total isn&apos;t shown — you count the cash when you close, and
+              the system checks it.
             </p>
           </Card>
 
-          <Card className="p-4 text-sm">
-            <CardHeader className="mb-2">
-              <CardTitle className="text-sm">Breakdown</CardTitle>
-            </CardHeader>
-            <div className="space-y-1">
-              <Row
-                label="Opening float"
-                value={formatCurrency(drawerSession.openingFloat)}
-              />
-              <Row label="Cash sales" value={`+${formatCurrency(sums.sales)}`} />
-              {sums.refunds < 0 && (
-                <Row
-                  label="Refunds"
-                  value={formatCurrency(sums.refunds)}
-                  tone="danger"
-                />
-              )}
-              {sums.payIn > 0 && (
-                <Row label="Cash in" value={`+${formatCurrency(sums.payIn)}`} />
-              )}
-              {sums.payOut < 0 && (
-                <Row
-                  label="Cash out"
-                  value={formatCurrency(sums.payOut)}
-                  tone="danger"
-                />
-              )}
-            </div>
-          </Card>
+          {!mine && (
+            <p className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2 text-sm text-[var(--warning)]">
+              This drawer belongs to {drawerSession.cashierName}. Only they can add cash
+              or close it.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
-            <Button variant="secondary" onClick={() => setMoveType("pay-in")}>
+            <Button variant="secondary" disabled={!mine} onClick={() => setMoveType("pay-in")}>
               <ArrowDownToLine className="h-4 w-4" />
               Cash in
             </Button>
-            <Button variant="secondary" onClick={() => setMoveType("pay-out")}>
+            <Button variant="secondary" disabled={!mine} onClick={() => setMoveType("pay-out")}>
               <ArrowUpFromLine className="h-4 w-4" />
               Cash out
             </Button>
@@ -256,36 +313,54 @@ export default function CashierDrawerPage() {
           {moveType && (
             <Card className="space-y-3 p-4">
               <p className="text-sm font-medium">
-                {moveType === "pay-in" ? "Add cash to drawer" : "Remove cash"}
+                {moveType === "pay-in" ? "Add cash to the drawer" : "Take cash out"}
               </p>
+              {moveType === "pay-out" && (
+                <p className="text-xs text-[var(--text-faint)]">
+                  You can take out up to {formatCurrency(CASHIER_PAYOUT_LIMIT)} at a time.
+                  Anything larger goes through the owner.
+                </p>
+              )}
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <Label>Amount (RM)</Label>
+                  <Label htmlFor="mv-cat">Reason</Label>
+                  <Select
+                    id="mv-cat"
+                    value={moveCategory}
+                    onChange={(e) => setMoveCategory(e.target.value)}
+                  >
+                    <option value="">Select…</option>
+                    {categories.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="mv-amt">Amount (RM)</Label>
                   <Input
+                    id="mv-amt"
                     type="number"
                     min={0}
                     value={moveAmount}
                     onChange={(e) => setMoveAmount(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-                <div>
-                  <Label>Note</Label>
-                  <Input
-                    value={moveNote}
-                    onChange={(e) => setMoveNote(e.target.value)}
-                    placeholder={
-                      moveType === "pay-in" ? "e.g. change top-up" : "e.g. bank drop"
-                    }
                   />
                 </div>
               </div>
+              <div>
+                <Label htmlFor="mv-note">
+                  Note {moveCategory === "Other" ? "(required)" : "(optional)"}
+                </Label>
+                <Input
+                  id="mv-note"
+                  value={moveNote}
+                  onChange={(e) => setMoveNote(e.target.value)}
+                  placeholder="Any detail the owner should know"
+                />
+              </div>
               <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  className="flex-1"
-                  onClick={() => setMoveType(null)}
-                >
+                <Button variant="ghost" className="flex-1" onClick={resetMove}>
                   Cancel
                 </Button>
                 <Button className="flex-1" onClick={handleAddMovement}>
@@ -298,7 +373,7 @@ export default function CashierDrawerPage() {
           <Card className="p-4">
             <CardHeader className="mb-2">
               <CardTitle className="text-sm">
-                Movements ({drawerSession.movements.length})
+                Activity ({drawerSession.movements.length})
               </CardTitle>
             </CardHeader>
             {drawerSession.movements.length === 0 ? (
@@ -307,158 +382,139 @@ export default function CashierDrawerPage() {
               </p>
             ) : (
               <div className="max-h-72 space-y-1.5 overflow-y-auto">
-                {[...drawerSession.movements].reverse().map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between gap-3 rounded-lg bg-[var(--bg-muted)] px-3 py-2 text-sm"
-                  >
-                    <div className="min-w-0">
-                      <p className="font-medium">{MOVEMENT_LABEL[m.type]}</p>
-                      <p className="truncate text-xs text-[var(--text-faint)]">
-                        {formatTime(m.at)} · {m.note}
-                      </p>
-                    </div>
-                    <span
-                      className={
-                        m.amount < 0
-                          ? "shrink-0 text-[var(--danger)]"
-                          : "shrink-0 text-[var(--success)]"
-                      }
+                {[...drawerSession.movements].reverse().map((m) => {
+                  const manual = m.type === "pay-in" || m.type === "pay-out";
+                  return (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-[var(--bg-muted)] px-3 py-2 text-sm"
                     >
-                      {m.amount < 0 ? "" : "+"}
-                      {formatCurrency(m.amount)}
-                    </span>
-                  </div>
-                ))}
+                      <div className="min-w-0">
+                        <p className="font-medium">{MOVEMENT_LABEL[m.type]}</p>
+                        <p className="truncate text-xs text-[var(--text-faint)]">
+                          {formatTime(m.at)} · {m.note}
+                        </p>
+                      </div>
+                      {manual && (
+                        <span
+                          className={
+                            m.amount < 0
+                              ? "shrink-0 text-[var(--danger)]"
+                              : "shrink-0 text-[var(--success)]"
+                          }
+                        >
+                          {m.amount < 0 ? "" : "+"}
+                          {formatCurrency(m.amount)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Card>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setChangeShift(true);
-                setCloseOpen(true);
-              }}
-            >
-              <Repeat className="h-4 w-4" />
-              Change shift
-            </Button>
-            <Button
-              onClick={() => {
-                setChangeShift(false);
-                setCloseOpen(true);
-              }}
-            >
-              <Lock className="h-4 w-4" />
-              Close drawer
-            </Button>
-          </div>
+          <Button
+            className="w-full"
+            size="lg"
+            disabled={!mine}
+            onClick={() => {
+              resetClose();
+              setCloseOpen(true);
+            }}
+          >
+            <Lock className="h-4 w-4" />
+            Close drawer
+          </Button>
         </div>
       </PageTransition>
 
       <Modal
         open={closeOpen}
-        onOpenChange={setCloseOpen}
-        title={changeShift ? "Change shift" : "Close drawer"}
-        description={
-          changeShift
-            ? "Count the drawer, then the next cashier carries it as their float."
-            : "Count the cash in the drawer and enter the total."
-        }
+        onOpenChange={(o) => {
+          setCloseOpen(o);
+          if (!o) resetClose();
+        }}
+        title="Close drawer"
+        description="Count every note and coin in the drawer. The next cashier will count their own float."
       >
         <div className="space-y-4">
-          <div className="rounded-xl bg-[var(--bg-muted)] p-3 text-sm">
-            <Row label="Expected" value={formatCurrency(expected)} />
-          </div>
-          <div>
-            <Label>Counted cash (RM)</Label>
-            <Input
-              type="number"
-              min={0}
-              value={counted}
-              onChange={(e) => setCounted(e.target.value)}
-              autoFocus
-            />
-          </div>
-          {counted !== "" && (
-            <Variance diff={(Number(counted) || 0) - expected} big />
+          {recounted && (
+            <p className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--warning)]">
+              Recount from scratch. This is your last try before the owner is asked
+              to review.
+            </p>
           )}
+          <div className="grid grid-cols-2 gap-3">
+            {NOTE_DENOMINATIONS.map((n) => (
+              <div key={n.key}>
+                <Label htmlFor={`dn-${n.key}`}>
+                  {n.label} notes
+                  <span className="ml-1 text-[var(--text-faint)]">
+                    {(Number(counts[n.key]) || 0) > 0
+                      ? `= ${formatCurrency((Number(counts[n.key]) || 0) * n.value)}`
+                      : ""}
+                  </span>
+                </Label>
+                <Input
+                  id={`dn-${n.key}`}
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  value={counts[n.key] ?? ""}
+                  onChange={(e) =>
+                    setCounts((c) => ({ ...c, [n.key]: e.target.value }))
+                  }
+                  placeholder="0"
+                />
+              </div>
+            ))}
+            <div className="col-span-2">
+              <Label htmlFor="dn-coins">Coins, total value (RM)</Label>
+              <Input
+                id="dn-coins"
+                type="number"
+                min={0}
+                step={0.1}
+                value={counts[COINS_KEY] ?? ""}
+                onChange={(e) =>
+                  setCounts((c) => ({ ...c, [COINS_KEY]: e.target.value }))
+                }
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-xl bg-[var(--bg-muted)] px-4 py-3">
+            <span className="text-sm text-[var(--text-muted)]">You counted</span>
+            <span className="font-display text-xl font-semibold text-[var(--gold-soft)]">
+              {formatCurrency(countedTotal)}
+            </span>
+          </div>
+
           <div>
-            <Label>Note (optional)</Label>
+            <Label htmlFor="close-note">
+              {needReason
+                ? `What happened? (required, ${MIN_VARIANCE_REASON}+ characters)`
+                : "Note (optional)"}
+            </Label>
             <Input
+              id="close-note"
               value={closeNote}
               onChange={(e) => setCloseNote(e.target.value)}
-              placeholder="e.g. RM5 short — miscount on sale FH-KL-1203"
+              placeholder={
+                needReason
+                  ? "Explain the difference as best you can"
+                  : "Anything the owner should know"
+              }
             />
           </div>
           <Button className="w-full" size="lg" onClick={handleClose}>
-            {changeShift ? "Close & start next shift" : "Close drawer"}
+            Submit count
           </Button>
         </div>
       </Modal>
     </>
-  );
-}
-
-function Row({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value?: string;
-  tone?: "danger";
-}) {
-  return (
-    <div className="flex justify-between gap-4">
-      <span className="text-[var(--text-muted)]">{label}</span>
-      {value && (
-        <span
-          className={
-            tone === "danger" ? "text-[var(--danger)]" : "text-[var(--text)]"
-          }
-        >
-          {value}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function Variance({ diff, big }: { diff: number; big?: boolean }) {
-  const label =
-    diff === 0
-      ? "Balanced"
-      : diff > 0
-        ? `Over by ${formatCurrency(diff)}`
-        : `Short by ${formatCurrency(-diff)}`;
-  const color =
-    diff === 0
-      ? "text-[var(--success)]"
-      : diff > 0
-        ? "text-[var(--info)]"
-        : "text-[var(--danger)]";
-  return big ? (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-display text-lg font-semibold ${color} ${
-        diff === 0
-          ? "border-[var(--success)]/30 bg-[var(--success)]/8"
-          : diff > 0
-            ? "border-[var(--info)]/30 bg-[var(--info)]/8"
-            : "border-[var(--danger)]/30 bg-[var(--danger)]/8"
-      }`}
-    >
-      {diff === 0 && <CheckCircle2 className="h-5 w-5" />}
-      {label}
-    </motion.div>
-  ) : (
-    <div className={`flex justify-between gap-4 font-medium ${color}`}>
-      <span>Variance</span>
-      <span>{label}</span>
-    </div>
   );
 }

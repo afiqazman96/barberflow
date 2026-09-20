@@ -1,6 +1,9 @@
 import type { TaxConfig } from "@/lib/types";
 
 /** Sensible starting point: everything off, real Malaysian rates pre-filled. */
+/** Biggest discount (% of the bill) a cashier can give; more needs the owner. */
+export const CASHIER_DISCOUNT_CAP_PCT = 20;
+
 export const DEFAULT_TAX_CONFIG: TaxConfig = {
   serviceChargeEnabled: false,
   serviceChargeRate: 10,

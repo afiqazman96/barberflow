@@ -47,7 +47,12 @@ function nextQueueNumber(queue: QueueTicket[]) {
 function QueuePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const queue = useAppStore((s) => s.queue);
+  const allQueue = useAppStore((s) => s.queue);
+  const activeBranchId = useAppStore((s) => s.branchId);
+  const queue = useMemo(
+    () => allQueue.filter((q) => q.branchId === activeBranchId),
+    [allQueue, activeBranchId],
+  );
   const branchId = useAppStore((s) => s.branchId);
   const services = useAppStore((s) => s.services);
   const staff = useAppStore((s) => s.staff);
@@ -132,8 +137,22 @@ function QueuePageContent() {
     // Only a barber who is on shift and free can take the customer — never
     // someone off duty or on break.
     const free = barbers.filter((b) => staffStatuses[b.id] === "available");
-    const staff =
-      free.find((b) => b.id === ticket.preferredStaffId) ?? free[0];
+    const preferred = ticket.preferredStaffId
+      ? barbers.find((b) => b.id === ticket.preferredStaffId)
+      : undefined;
+    // A regular waits for their own barber while that barber is on the floor
+    // (just busy). Only if they've gone off or are on break do we hand them on.
+    if (
+      preferred &&
+      !free.includes(preferred) &&
+      staffStatuses[preferred.id] === "busy"
+    ) {
+      toast.info(`${preferred.name} is with another customer`, {
+        description: "Assign when they're free, or wait for them",
+      });
+      return;
+    }
+    const staff = free.find((b) => b.id === ticket.preferredStaffId) ?? free[0];
     if (!staff) {
       toast.error("No barber is free", {
         description: "Nobody on shift is available right now",

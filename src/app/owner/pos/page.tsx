@@ -55,13 +55,21 @@ export default function OwnerPosPage() {
   const updatePosQty = useAppStore((s) => s.updatePosQty);
   const removePosItem = useAppStore((s) => s.removePosItem);
   const setPosDiscount = useAppStore((s) => s.setPosDiscount);
+  const posDiscountReason = useAppStore((s) => s.posDiscountReason);
+  const setPosDiscountReason = useAppStore((s) => s.setPosDiscountReason);
+  const drawerSession = useAppStore((s) => s.drawerSession);
   const selectPosCustomer = useAppStore((s) => s.selectPosCustomer);
   const loadPosTicket = useAppStore((s) => s.loadPosTicket);
   const posStaffId = useAppStore((s) => s.posStaffId);
   const setPosStaffId = useAppStore((s) => s.setPosStaffId);
   const staff = useAppStore((s) => s.staff);
   const branchId = useAppStore((s) => s.branchId);
-  const queue = useAppStore((s) => s.queue);
+  const allQueue = useAppStore((s) => s.queue);
+  const activeBranchId = useAppStore((s) => s.branchId);
+  const queue = useMemo(
+    () => allQueue.filter((q) => q.branchId === activeBranchId),
+    [allQueue, activeBranchId],
+  );
   const CUSTOMERS = useAppStore((s) => s.customers);
   const taxConfig = useAppStore((s) => s.taxConfig);
   const clearPos = useAppStore((s) => s.clearPos);
@@ -190,6 +198,10 @@ export default function OwnerPosPage() {
       toast.error("Pick the barber who earns commission on this sale");
       return;
     }
+    if (posDiscount > 0 && !posDiscountReason.trim()) {
+      toast.error("Pick a reason for the discount");
+      return;
+    }
     setPaid(false);
     setMethod(null);
     setCard({ scheme: "", last4: "", approvalCode: "" });
@@ -199,6 +211,12 @@ export default function OwnerPosPage() {
   function handlePay() {
     if (!method) {
       toast.error("Select a payment method");
+      return;
+    }
+    if (method === "cash" && !drawerSession) {
+      toast.error("No cash drawer is open", {
+        description: "Ask the cashier to open one, or take card or QR",
+      });
       return;
     }
     setProcessing(true);
@@ -478,6 +496,20 @@ export default function OwnerPosPage() {
                     }
                     placeholder="0"
                   />
+                  {posDiscount > 0 && (
+                    <Select
+                      value={posDiscountReason}
+                      onChange={(e) => setPosDiscountReason(e.target.value)}
+                      className="mt-2 text-xs"
+                    >
+                      <option value="">Reason for discount…</option>
+                      <option value="Regular customer">Regular customer</option>
+                      <option value="Birthday">Birthday</option>
+                      <option value="Service issue">Service issue</option>
+                      <option value="Staff / family">Staff / family</option>
+                      <option value="Promotion">Promotion</option>
+                    </Select>
+                  )}
                 </div>
                 <div className="space-y-1 text-sm">
                   <div className="flex justify-between text-[var(--text-muted)]">

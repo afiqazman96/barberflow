@@ -1,14 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Armchair } from "lucide-react";
 import { useAppStore } from "@/lib/store/app-store";
 import { StatusBadge } from "@/components/ui/badge";
-import { maskName } from "@/lib/utils";
+import { byQueueOrder, maskName } from "@/lib/utils";
 
 export default function QueueDisplayPage() {
-  const queue = useAppStore((s) => s.queue);
+  return (
+    <Suspense fallback={null}>
+      <QueueDisplay />
+    </Suspense>
+  );
+}
+
+/** One branch's lobby screen: `/display?branch=b2`, defaulting to the first. */
+function QueueDisplay() {
+  const params = useSearchParams();
+  const allQueue = useAppStore((s) => s.queue);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const chairs = useAppStore((s) => s.chairs);
   const staffList = useAppStore((s) => s.staff);
@@ -30,16 +41,26 @@ export default function QueueDisplayPage() {
     return () => clearInterval(id);
   }, []);
 
+  const branch = branches.find((b) => b.id === params.get("branch")) ?? branches[0];
+  const queue = useMemo(
+    () => allQueue.filter((q) => q.branchId === branch.id),
+    [allQueue, branch.id],
+  );
   const nowServing = useMemo(
     () => queue.filter((q) => q.status === "in-service"),
     [queue],
   );
+  // Oldest first, so "#1" really is the next person up.
   const waiting = useMemo(
-    () => queue.filter((q) => q.status === "waiting" || q.status === "called"),
+    () =>
+      queue
+        .filter((q) => q.status === "waiting" || q.status === "called")
+        .sort(byQueueOrder),
     [queue],
   );
-  const branch = branches[0];
-  const barbers = staffList.filter((s) => s.role === "barber");
+  const barbers = staffList.filter(
+    (s) => s.role === "barber" && s.branchId === branch.id && s.active,
+  );
 
   return (
     <div className="app-bg min-h-dvh p-6 md:p-10">

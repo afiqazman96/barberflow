@@ -22,14 +22,21 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PosSubnav } from "@/components/domain/pos-subnav";
 import { useAppStore, calcCommission } from "@/lib/store/app-store";
-import { computeCharges } from "@/lib/pos-pricing";
+import { CASHIER_DISCOUNT_CAP_PCT, computeCharges } from "@/lib/pos-pricing";
+import { useSession } from "@/components/auth/session-provider";
 import { formatCurrency } from "@/lib/utils";
 
 type Tab = "services" | "products";
 
 export default function CashierPosPage() {
   const router = useRouter();
-  const queue = useAppStore((s) => s.queue);
+  const session = useSession();
+  const allQueue = useAppStore((s) => s.queue);
+  const activeBranchId = useAppStore((s) => s.branchId);
+  const queue = useMemo(
+    () => allQueue.filter((q) => q.branchId === activeBranchId),
+    [allQueue, activeBranchId],
+  );
   const staff = useAppStore((s) => s.staff);
   const branchId = useAppStore((s) => s.branchId);
   const PRODUCTS = useAppStore((s) => s.products);
@@ -86,10 +93,12 @@ export default function CashierPosPage() {
     0,
   );
   const subtotal = cartSubtotal + (upsellPlan?.price ?? 0);
-  const discountValue =
+  const discountValue = Math.min(
+    subtotal,
     posDiscountMode === "percent"
       ? Math.round(((subtotal * posDiscount) / 100) * 100) / 100
-      : posDiscount;
+      : posDiscount,
+  );
 
   const serviceSubtotal = posItems
     .filter((i) => i.type === "service")
@@ -219,6 +228,20 @@ export default function CashierPosPage() {
     }
     if (needsBarber && !posStaffId) {
       toast.error("Pick the barber who served this customer");
+      return;
+    }
+    if (discountValue > 0 && !posDiscountReason.trim()) {
+      toast.error("Pick a reason for the discount");
+      return;
+    }
+    if (
+      session.role === "cashier" &&
+      subtotal > 0 &&
+      (discountValue / subtotal) * 100 > CASHIER_DISCOUNT_CAP_PCT
+    ) {
+      toast.error(`Discounts above ${CASHIER_DISCOUNT_CAP_PCT}% need the owner`, {
+        description: "Ask the owner to ring this sale up",
+      });
       return;
     }
     router.push("/cashier/payment");

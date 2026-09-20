@@ -71,3 +71,16 @@ export function initials(name: string) {
     .slice(0, 2)
     .toUpperCase();
 }
+
+/**
+ * Queue order, oldest first. Ticket numbers only ever count up, so they are a
+ * safer key than timestamps (seed data and live tickets are stamped in
+ * different clocks). Timestamps break ties between different prefixes.
+ */
+export function byQueueOrder(
+  a: { number: string; createdAt: string },
+  b: { number: string; createdAt: string },
+): number {
+  const seq = (n: string) => parseInt(n.replace(/\D/g, ""), 10) || 0;
+  return seq(a.number) - seq(b.number) || a.createdAt.localeCompare(b.createdAt);
+}

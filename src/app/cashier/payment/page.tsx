@@ -68,10 +68,12 @@ export default function CashierPaymentPage() {
   const subtotal =
     posItems.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0) +
     (upsellPlan?.price ?? 0);
-  const discountValue =
+  const discountValue = Math.min(
+    subtotal,
     posDiscountMode === "percent"
       ? Math.round(((subtotal * posDiscount) / 100) * 100) / 100
-      : posDiscount;
+      : posDiscount,
+  );
   const serviceSubtotal = posItems
     .filter((i) => i.type === "service")
     .reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);

@@ -37,6 +37,12 @@ import {
   parseIso,
 } from "@/lib/roster";
 import { LEAVES, ROSTER, SHIFTS } from "@/lib/mock/roster-data";
+import { DRAWER_HISTORY } from "@/lib/mock/drawer-data";
+import {
+  CASHIER_PAYOUT_LIMIT,
+  DRAWER_VARIANCE_TOLERANCE,
+  MIN_VARIANCE_REASON,
+} from "@/lib/drawer";
 import {
   BOOKINGS,
   BRANCHES,
@@ -112,6 +118,8 @@ interface AppState {
   drawerSession: DrawerSession | null;
   drawerHistory: DrawerSession[];
   trackingTicketId: string | null;
+  /** The booking a customer is following before they've been checked in. */
+  trackingBookingId: string | null;
 
   setSession: (session: SessionUser | null) => void;
   setRole: (role: UserRole | null, staffId?: string | null) => void;
@@ -190,17 +198,43 @@ interface AppState {
     cashierId: string;
     cashierName: string;
     openingFloat: number;
-  }) => void;
+  }) => { ok: boolean; error?: string };
   addCashMovement: (input: {
     type: CashMovement["type"];
     amount: number;
     note: string;
     saleId?: string;
-  }) => void;
-  closeDrawer: (input: { countedAmount: number; closingNote?: string }) => void;
+    category?: string;
+  }) => { ok: boolean; error?: string };
+  /**
+   * Close the drawer from a count. The cashier is never told the expected
+   * figure or the variance: a count that is off is bounced for one recount,
+   * then needs a written reason and goes to the owner for review.
+   */
+  closeDrawer: (input: {
+    countedAmount: number;
+    denominations?: Record<string, number>;
+    closingNote?: string;
+  }) => { result: CloseDrawerResult; message?: string };
+  /** Owner signs off a close that came in outside tolerance. */
+  reviewDrawer: (id: string, note: string) => { ok: boolean; error?: string };
   setTrackingTicketId: (id: string | null) => void;
+  setTrackingBookingId: (id: string | null) => void;
 }
 
+/**
+ * Commission on a sale. `total` is the goods figure after any discount.
+ *
+ * - A staff-specific Percentage or Fixed rule scoped to "all" replaces the
+ *   barber's rate entirely (an override).
+ * - Otherwise each item earns a base rate — the most specific matching
+ *   percentage rule wins (one for that exact service/product, then the
+ *   service/product default, then a rule for everything). No matching rule
+ *   means no base commission; there is no hidden default.
+ * - A staff-specific Service/Product percentage rule adds on top as a bonus.
+ * - Fixed rules add a flat amount for each eligible item sold.
+ * - A discount lowers what every line earns commission on, pro rata.
+ */
 export function calcCommission(
   total: number,
   staffId: string,
@@ -208,12 +242,6 @@ export function calcCommission(
   rules: CommissionRule[],
 ): number {
   const active = rules.filter((r) => r.active);
-  // A staff-specific Percentage or Fixed rule scoped to "all" replaces this
-  // barber's default rate entirely, matching what the Commission page tells
-  // the owner an override does. A staff-specific Service/Product rule is a
-  // narrower bonus instead — it stacks on top in the per-item loop below,
-  // since "extra on this one service" isn't meant to wipe out their normal
-  // rate on everything else they sell.
   const staffOverride = active.find(
     (r) =>
       r.staffId === staffId &&
@@ -226,10 +254,18 @@ export function calcCommission(
       : Math.round(staffOverride.value * 100) / 100;
   }
 
+  const isPercent = (r: CommissionRule) =>
+    r.type === "percentage" || r.type === "service-based" || r.type === "product-based";
+  const specificity = (r: CommissionRule) =>
+    r.serviceId || r.productId ? 2 : r.appliesTo === "all" ? 0 : 1;
+
+  const gross = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  const ratio = gross > 0 ? Math.min(1, Math.max(0, total) / gross) : 1;
+
   let commission = 0;
   for (const item of items) {
-    const line = item.unitPrice * item.quantity;
-    const typeRules = active.filter((r) => {
+    const line = item.unitPrice * item.quantity * ratio;
+    const matching = active.filter((r) => {
       if (r.staffId && r.staffId !== staffId) return false;
       if (r.appliesTo === "all") return true;
       if (r.appliesTo === "service" && item.type === "service") {
@@ -241,14 +277,17 @@ export function calcCommission(
       return false;
     });
 
-    const pct =
-      typeRules.find((r) => r.type === "percentage" || r.type === "service-based" || r.type === "product-based")
-        ?.value ?? 30;
-    const fixed = typeRules
+    const base = matching
+      .filter((r) => isPercent(r) && !(r.staffId && r.appliesTo !== "all"))
+      .sort((a, b) => specificity(b) - specificity(a))[0];
+    const bonus = matching
+      .filter((r) => isPercent(r) && r.staffId && r.appliesTo !== "all")
+      .reduce((sum, r) => sum + r.value, 0);
+    const fixed = matching
       .filter((r) => r.type === "fixed")
       .reduce((sum, r) => sum + r.value * item.quantity, 0);
 
-    commission += line * (pct / 100) + fixed;
+    commission += line * (((base?.value ?? 0) + bonus) / 100) + fixed;
   }
 
   return Math.round(commission * 100) / 100;
@@ -259,6 +298,56 @@ const initialStatuses = Object.fromEntries(
 ) as Record<string, StaffStatus>;
 
 /** Everything that changes when someone clocks out, or is forced out. */
+export type CloseDrawerResult =
+  | "closed"
+  | "needs-review"
+  | "recount"
+  | "reason-required"
+  | "blocked"
+  | "forbidden";
+
+/** Who is acting, from the server-verified session mirrored into the store. */
+function actorOf(s: AppState) {
+  return {
+    id: s.session?.staffId ?? null,
+    name: s.session?.name ?? "Unknown",
+    role: s.session?.role ?? null,
+  };
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * A barber is "busy" exactly when a ticket is in service under them. Keeps the
+ * flag honest whoever moves the ticket (barber, cashier, POS) — and never
+ * touches someone who is off duty or on a break.
+ */
+function barberSyncPatch(
+  s: AppState,
+  queue: QueueTicket[],
+  staffIds: Iterable<string | null | undefined>,
+): Partial<AppState> {
+  let statuses = s.staffStatuses;
+  let staff = s.staff;
+  for (const id of staffIds) {
+    if (!id) continue;
+    const cur = statuses[id] ?? staff.find((m) => m.id === id)?.status;
+    const busyNow = queue.some(
+      (q) => q.assignedStaffId === id && q.status === "in-service",
+    );
+    const next =
+      cur === "busy" && !busyNow
+        ? ("available" as const)
+        : cur === "available" && busyNow
+          ? ("busy" as const)
+          : null;
+    if (!next) continue;
+    statuses = { ...statuses, [id]: next };
+    staff = staff.map((m) => (m.id === id ? { ...m, status: next } : m));
+  }
+  return statuses === s.staffStatuses ? {} : { staffStatuses: statuses, staff };
+}
+
 function closeShiftPatch(
   s: AppState,
   staffId: string,
@@ -273,6 +362,12 @@ function closeShiftPatch(
         : sh,
     ),
     chairs: s.chairs.map((c) => (c.staffId === staffId ? { ...c, staffId: null } : c)),
+    // Customers who asked for this barber shouldn't wait for someone who's gone.
+    queue: s.queue.map((q) =>
+      q.preferredStaffId === staffId && (q.status === "waiting" || q.status === "called")
+        ? { ...q, preferredStaffId: null }
+        : q,
+    ),
     staff: s.staff.map((m) =>
       m.id === staffId ? { ...m, status: "off-duty" as const, chairId: null } : m,
     ),
@@ -320,9 +415,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   posStaffId: null,
   posMembershipPlanId: null,
   drawerSession: null,
-  drawerHistory: [],
+  drawerHistory: DRAWER_HISTORY.map((d) => ({
+    ...d,
+    movements: d.movements.map((m) => ({ ...m })),
+  })),
   lastReceipt: null,
   trackingTicketId: null,
+  trackingBookingId: null,
 
   setSession: (session) =>
     set((s) => ({
@@ -334,7 +433,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       branchId: session?.branchId ?? s.branchId,
     })),
   setRole: (role, staffId = null) => set({ role, staffId }),
-  setBranchId: (branchId) => set({ branchId }),
+  setBranchId: (branchId) =>
+    set((s) =>
+      branchId === s.branchId
+        ? {}
+        : {
+            branchId,
+            // A half-rung sale belongs to the branch it was started in.
+            posItems: [],
+            posDiscount: 0,
+            posDiscountReason: "",
+            posTip: 0,
+            posCustomerId: null,
+            posTicketId: null,
+            posStaffId: null,
+            posMembershipPlanId: null,
+          },
+    ),
   updateBusinessProfile: (patch) =>
     set((s) => ({
       businessProfile: { ...s.businessProfile, ...patch },
@@ -419,6 +534,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     for (const sh of s.shifts) {
       if (sh.endedAt) continue;
       if (s.queue.some((q) => q.assignedStaffId === sh.staffId && q.status === "in-service")) continue;
+      if (s.drawerSession && !s.drawerSession.closedAt && s.drawerSession.cashierId === sh.staffId) continue;
       const close = closingMins(s.branches.find((b) => b.id === sh.branchId));
       // A shift started after closing (stock take, late clean-up) stays open
       // until the next day rather than being closed with zero minutes.
@@ -682,17 +798,47 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
 
   updateQueueTicket: (id, patch) =>
-    set((s) => ({
-      queue: s.queue.map((q) => (q.id === id ? { ...q, ...patch } : q)),
-    })),
+    set((s) => {
+      const before = s.queue.find((q) => q.id === id);
+      if (!before) return {};
+      const after = { ...before, ...patch };
+      const queue = s.queue.map((q) => (q.id === id ? after : q));
+      // Someone who leaves or no-shows takes their booking with them.
+      const bookings =
+        after.bookingId && (patch.status === "cancelled" || patch.status === "no-show")
+          ? s.bookings.map((b) =>
+              b.id === after.bookingId &&
+              (b.status === "confirmed" || b.status === "checked-in")
+                ? { ...b, status: patch.status as "cancelled" | "no-show" }
+                : b,
+            )
+          : s.bookings;
+      return {
+        queue,
+        bookings,
+        ...barberSyncPatch(s, queue, [before.assignedStaffId, after.assignedStaffId]),
+      };
+    }),
 
   addBooking: (booking) =>
     set((s) => ({ bookings: [booking, ...s.bookings] })),
 
   updateBooking: (id, patch) =>
-    set((s) => ({
-      bookings: s.bookings.map((b) => (b.id === id ? { ...b, ...patch } : b)),
-    })),
+    set((s) => {
+      const bookings = s.bookings.map((b) => (b.id === id ? { ...b, ...patch } : b));
+      if (patch.status !== "cancelled" && patch.status !== "no-show") {
+        return { bookings };
+      }
+      const status = patch.status;
+      return {
+        bookings,
+        queue: s.queue.map((q) =>
+          q.bookingId === id && (q.status === "waiting" || q.status === "called")
+            ? { ...q, status }
+            : q,
+        ),
+      };
+    }),
 
   setPosItems: (posItems) => set({ posItems }),
   addPosItem: (item) =>
@@ -724,12 +870,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPosTip: (posTip) => set({ posTip: Math.max(0, posTip) }),
   setPosCustomerId: (posCustomerId) => set({ posCustomerId }),
   selectPosCustomer: (id) => {
+    // Changing who is paying while a ticket's services are in the cart would
+    // detach the sale from that ticket (leaving it to be paid twice), so a
+    // loaded ticket is dropped along with its cart.
+    if (get().posTicketId) get().clearPos();
     if (!id) {
       set({ posCustomerId: null, posTicketId: null, posStaffId: null });
       return;
     }
     const ticket = get().queue.find(
-      (q) => q.customerId === id && q.status === "awaiting-payment",
+      (q) =>
+        q.customerId === id &&
+        q.status === "awaiting-payment" &&
+        q.branchId === get().branchId,
     );
     if (ticket) {
       get().loadPosTicket(ticket.id);
@@ -762,8 +915,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const ticket = s.queue.find((q) => q.id === ticketId);
       if (!ticket) return {};
       const cust = s.customers.find((c) => c.id === ticket.customerId);
+      // Always the ticket's own services — reusing whatever was already in
+      // the cart would bill this customer for someone else's haircut.
       const items: PosItem[] =
-        s.posItems.length > 0
+        s.posTicketId === ticketId && s.posItems.length > 0
           ? s.posItems
           : ticket.serviceIds.flatMap((sid) => {
               const svc = s.services.find((v) => v.id === sid);
@@ -782,7 +937,17 @@ export const useAppStore = create<AppState>((set, get) => ({
                 },
               ];
             });
+      const switching = s.posTicketId !== ticketId;
       return {
+        ...(switching
+          ? {
+              posDiscount: 0,
+              posDiscountMode: "amount" as const,
+              posDiscountReason: "",
+              posTip: 0,
+              posMembershipPlanId: null,
+            }
+          : {}),
         posTicketId: ticket.id,
         posCustomerId: ticket.customerId,
         posStaffId:
@@ -888,7 +1053,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Commission is on the goods, not the tip, service charge or tax.
     const commission = staff
       ? calcCommission(
-          goodsTotal,
+          // A membership sold on the visit isn't commissionable goods.
+          Math.max(0, goodsTotal - (plan?.price ?? 0)),
           staff.id,
           state.posItems,
           state.commissionRules,
@@ -897,7 +1063,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const sale: Sale = {
       id: `sale-${Date.now()}`,
-      branchId: state.branchId,
+      branchId: ticket?.branchId ?? state.branchId,
       customerId: state.posCustomerId ?? "walk-in",
       customerName,
       customerEmail: ticket?.customerEmail ?? crmCustomer?.email,
@@ -923,6 +1089,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       commission,
       createdAt: new Date().toISOString(),
       receiptNo: `FH-KL-${Math.floor(1100 + Math.random() * 800)}`,
+      rungBy: actorOf(state).name,
     };
 
     const soldProductIds = new Map(
@@ -942,12 +1109,72 @@ export const useAppStore = create<AppState>((set, get) => ({
               note: `${sale.receiptNo} · ${customerName}`,
               at: sale.createdAt,
               saleId: sale.id,
+              by: actorOf(state).name,
             }
           : null;
+
+      // Keep the customer's record honest: visits, spend, last visit, and any
+      // membership just bought. A first-timer who left contact details is
+      // remembered so they're recognised next time.
+      const today = localIso(new Date(sale.createdAt));
+      const soldService = items.some((i) => i.type === "service");
+      const digits = (ticket?.customerPhone ?? "").replace(/\D/g, "");
+      const tail = digits.slice(-9);
+      const mail = ticket?.customerEmail?.trim().toLowerCase();
+      const known =
+        crmCustomer ??
+        (ticket
+          ? s.customers.find(
+              (c) =>
+                (mail && c.email?.toLowerCase() === mail) ||
+                (digits.length >= 7 && c.phone.replace(/\D/g, "").endsWith(tail)),
+            )
+          : undefined);
+      let customers = s.customers;
+      if (known) {
+        customers = s.customers.map((c) =>
+          c.id === known.id
+            ? {
+                ...c,
+                visits: c.visits + (soldService ? 1 : 0),
+                totalSpent: round2(c.totalSpent + total),
+                lastVisit: today,
+                membership: plan ? plan.tier : c.membership,
+              }
+            : c,
+        );
+      } else if (ticket && (mail || digits.length >= 7)) {
+        customers = [
+          {
+            id: `cust-${Date.now()}`,
+            name: ticket.customerName,
+            phone: ticket.customerPhone,
+            email: ticket.customerEmail,
+            membership: plan ? plan.tier : "none",
+            visits: soldService ? 1 : 0,
+            totalSpent: total,
+            lastVisit: today,
+          },
+          ...s.customers,
+        ];
+      }
+
+      const settledQueue = s.queue.map((q) =>
+        q.id === state.posTicketId &&
+        (q.status === "awaiting-payment" || q.status === "in-service")
+          ? { ...q, status: "completed" as const }
+          : q,
+      );
 
       return {
         sales: [sale, ...s.sales],
         lastReceipt: sale,
+        customers,
+        bookings: ticket?.bookingId
+          ? s.bookings.map((b) =>
+              b.id === ticket.bookingId ? { ...b, status: "completed" as const } : b,
+            )
+          : s.bookings,
         posItems: [],
         posDiscount: 0,
         posDiscountMode: "amount" as const,
@@ -979,15 +1206,12 @@ export const useAppStore = create<AppState>((set, get) => ({
                 movements: [...s.drawerSession.movements, cashMovement],
               }
             : s.drawerSession,
-        staffStatuses: staff
-          ? { ...s.staffStatuses, [staff.id]: "available" }
-          : s.staffStatuses,
+        ...barberSyncPatch(s, settledQueue, [staff?.id]),
         staff: staff
-          ? s.staff.map((m) =>
+          ? (barberSyncPatch(s, settledQueue, [staff.id]).staff ?? s.staff).map((m) =>
               m.id === staff.id
                 ? {
                     ...m,
-                    status: "available",
                     todaySales: m.todaySales + goodsTotal,
                     todayCommission: m.todayCommission + barberTake,
                     todayCustomers: m.todayCustomers + 1,
@@ -997,12 +1221,7 @@ export const useAppStore = create<AppState>((set, get) => ({
                 : m,
             )
           : s.staff,
-        queue: s.queue.map((q) =>
-          q.id === state.posTicketId &&
-          (q.status === "awaiting-payment" || q.status === "in-service")
-            ? { ...q, status: "completed" as const }
-            : q,
-        ),
+        queue: settledQueue,
       };
     });
 
@@ -1030,6 +1249,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               note: `Void ${sale.receiptNo} · ${reason}`,
               at,
               saleId: sale.id,
+              by,
             }
           : null;
 
@@ -1041,19 +1261,42 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       return {
         sales: s.sales.map((x) =>
-          x.id === saleId ? { ...x, voided: { reason, at, by } } : x,
-        ),
-        staff: s.staff.map((m) =>
-          m.id === sale.staffId
+          x.id === saleId
             ? {
-                ...m,
-                todaySales: Math.max(0, m.todaySales - goodsTotal),
-                todayCommission: Math.max(0, m.todayCommission - barberTake),
-                todayCustomers: Math.max(0, m.todayCustomers - 1),
-                monthlySales: Math.max(0, m.monthlySales - goodsTotal),
-                monthlyCommission: Math.max(0, m.monthlyCommission - barberTake),
+                ...x,
+                voided: {
+                  reason,
+                  at,
+                  by,
+                  // Cash owed back but no till open to record it against.
+                  refundPending:
+                    sale.paymentMethod === "cash" && !s.drawerSession ? true : undefined,
+                },
               }
-            : m,
+            : x,
+        ),
+        staff: s.staff.map((m) => {
+          if (m.id !== sale.staffId) return m;
+          // Voiding an older sale must not eat into today's or this month's figures.
+          const day = localIso(new Date(sale.createdAt)) === localIso(new Date(at));
+          const month = sale.createdAt.slice(0, 7) === at.slice(0, 7);
+          return {
+            ...m,
+            todaySales: day ? Math.max(0, m.todaySales - goodsTotal) : m.todaySales,
+            todayCommission: day ? Math.max(0, m.todayCommission - barberTake) : m.todayCommission,
+            todayCustomers: day ? Math.max(0, m.todayCustomers - 1) : m.todayCustomers,
+            monthlySales: month ? Math.max(0, m.monthlySales - goodsTotal) : m.monthlySales,
+            monthlyCommission: month ? Math.max(0, m.monthlyCommission - barberTake) : m.monthlyCommission,
+          };
+        }),
+        customers: s.customers.map((c) =>
+          c.id === sale.customerId
+            ? {
+                ...c,
+                visits: Math.max(0, c.visits - (sale.items.some((i) => i.type === "service") ? 1 : 0)),
+                totalSpent: Math.max(0, round2(c.totalSpent - sale.total)),
+              }
+            : c,
         ),
         products: restock.size
           ? s.products.map((p) =>
@@ -1072,63 +1315,165 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     }),
 
-  openDrawer: ({ cashierId, cashierName, openingFloat }) =>
-    set((s) => {
-      if (s.drawerSession) return {};
-      return {
-        drawerSession: {
-          id: `drw-${Date.now()}`,
-          branchId: s.branchId,
-          cashierId,
-          cashierName,
-          openedAt: new Date().toISOString(),
-          openingFloat: Math.max(0, openingFloat),
-          movements: [],
-        },
-      };
-    }),
+  openDrawer: ({ cashierId, cashierName, openingFloat }) => {
+    const s = get();
+    if (s.drawerSession) return { ok: false, error: "A drawer is already open" };
+    const actor = actorOf(s);
+    if (actor.role === "cashier" && actor.id) {
+      const status = s.staffStatuses[actor.id];
+      if (!status || status === "off-duty") {
+        return { ok: false, error: "Start your shift before opening the drawer" };
+      }
+    }
+    const float = round2(Math.max(0, openingFloat));
+    const last = s.drawerHistory
+      .filter(
+        (d) => d.branchId === s.branchId && d.closedAt && d.countedAmount !== undefined,
+      )
+      .sort((a, b) => (b.closedAt ?? "").localeCompare(a.closedAt ?? ""))[0];
+    const diff = last ? round2(float - (last.countedAmount ?? 0)) : 0;
+    set({
+      drawerSession: {
+        id: `drw-${Date.now()}`,
+        branchId: s.branchId,
+        cashierId,
+        cashierName,
+        openedAt: new Date().toISOString(),
+        openingFloat: float,
+        movements: [],
+        floatMismatch: Math.abs(diff) > DRAWER_VARIANCE_TOLERANCE ? diff : undefined,
+      },
+    });
+    return { ok: true };
+  },
 
-  addCashMovement: ({ type, amount, note, saleId }) =>
-    set((s) => {
-      if (!s.drawerSession) return {};
-      const signed =
-        type === "pay-out" || type === "refund"
-          ? -Math.abs(amount)
-          : Math.abs(amount);
-      return {
-        drawerSession: {
-          ...s.drawerSession,
-          movements: [
-            ...s.drawerSession.movements,
-            {
-              id: `cm-${Date.now()}`,
-              type,
-              amount: signed,
-              note,
-              at: new Date().toISOString(),
-              saleId,
-            },
-          ],
-        },
-      };
-    }),
+  addCashMovement: ({ type, amount, note, saleId, category }) => {
+    const s = get();
+    const d = s.drawerSession;
+    if (!d) return { ok: false, error: "No open drawer" };
+    const actor = actorOf(s);
+    if (actor.role === "cashier" && actor.id && actor.id !== d.cashierId) {
+      return { ok: false, error: `This drawer belongs to ${d.cashierName}` };
+    }
+    const abs = round2(Math.abs(amount));
+    if (type === "pay-out") {
+      if (actor.role === "cashier" && abs > CASHIER_PAYOUT_LIMIT) {
+        return {
+          ok: false,
+          error: `Cash out above RM${CASHIER_PAYOUT_LIMIT} needs the owner`,
+        };
+      }
+      if (abs > drawerExpected(d)) {
+        return { ok: false, error: "There isn't that much cash in the drawer" };
+      }
+    }
+    const signed = type === "pay-out" || type === "refund" ? -abs : abs;
+    set({
+      drawerSession: {
+        ...d,
+        movements: [
+          ...d.movements,
+          {
+            id: `cm-${Date.now()}`,
+            type,
+            amount: signed,
+            note,
+            at: new Date().toISOString(),
+            saleId,
+            by: actor.name,
+            category,
+          },
+        ],
+      },
+    });
+    return { ok: true };
+  },
 
-  closeDrawer: ({ countedAmount, closingNote }) =>
-    set((s) => {
-      if (!s.drawerSession) return {};
-      const closed: DrawerSession = {
-        ...s.drawerSession,
-        closedAt: new Date().toISOString(),
-        countedAmount: Math.max(0, countedAmount),
-        closingNote: closingNote?.trim() || undefined,
-      };
+  closeDrawer: ({ countedAmount, denominations, closingNote }) => {
+    const s = get();
+    const d = s.drawerSession;
+    if (!d) return { result: "forbidden", message: "No open drawer" };
+    const actor = actorOf(s);
+    const isOwner = actor.role === "owner";
+    if (!isOwner && actor.id && actor.id !== d.cashierId) {
       return {
-        drawerSession: null,
-        drawerHistory: [closed, ...s.drawerHistory],
+        result: "forbidden",
+        message: `Only ${d.cashierName} can close this drawer`,
       };
-    }),
+    }
+    const awaiting = s.queue.filter(
+      (q) => q.branchId === d.branchId && q.status === "awaiting-payment",
+    ).length;
+    if (awaiting > 0 && !isOwner) {
+      return {
+        result: "blocked",
+        message: `${awaiting} customer${awaiting > 1 ? "s are" : " is"} still awaiting payment — take payment first`,
+      };
+    }
+
+    const expected = drawerExpected(d);
+    const counted = round2(Math.max(0, countedAmount));
+    const variance = round2(counted - expected);
+    const within = Math.abs(variance) <= DRAWER_VARIANCE_TOLERANCE;
+    const now = new Date().toISOString();
+    const counts = [...(d.counts ?? []), { amount: counted, at: now, denominations }];
+    const reason = closingNote?.trim() ?? "";
+
+    let status: "closed" | "needs-review" = "closed";
+    if (!isOwner && !within) {
+      if (counts.length === 1) {
+        set({ drawerSession: { ...d, counts } });
+        return { result: "recount" };
+      }
+      if (reason.length < MIN_VARIANCE_REASON) {
+        set({ drawerSession: { ...d, counts } });
+        return { result: "reason-required" };
+      }
+      status = "needs-review";
+    }
+
+    const closed: DrawerSession = {
+      ...d,
+      closedAt: now,
+      closedBy: actor.name,
+      closedByOwner: isOwner || undefined,
+      countedAmount: counted,
+      denominations,
+      counts,
+      expectedAtClose: expected,
+      variance,
+      status,
+      closingNote: reason || undefined,
+      varianceReason: !within && reason ? reason : undefined,
+    };
+    set({ drawerSession: null, drawerHistory: [closed, ...s.drawerHistory] });
+    return { result: status };
+  },
+
+  reviewDrawer: (id, note) => {
+    const s = get();
+    const actor = actorOf(s);
+    if (actor.role !== "owner") {
+      return { ok: false, error: "Only the owner can review a drawer" };
+    }
+    set({
+      drawerHistory: s.drawerHistory.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              status: "reviewed" as const,
+              reviewedBy: actor.name,
+              reviewedAt: new Date().toISOString(),
+              reviewNote: note.trim() || undefined,
+            }
+          : d,
+      ),
+    });
+    return { ok: true };
+  },
 
   setTrackingTicketId: (trackingTicketId) => set({ trackingTicketId }),
+  setTrackingBookingId: (trackingBookingId) => set({ trackingBookingId }),
 }));
 
 /** Cash the drawer should hold right now: opening float plus every movement. */

@@ -17,9 +17,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
-import { BRANCHES, SERVICES, STAFF, TIME_SLOTS, findCustomerByPhone } from "@/lib/mock/data";
+import { TIME_SLOTS, findCustomerByPhone } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
-import { isRosteredOn } from "@/lib/roster";
+import { useNow } from "@/hooks/use-now";
+import {
+  closingMins,
+  hhmmToMins,
+  isRosteredOn,
+  localIso,
+  minsOfDay,
+  openingMins,
+  rosterFor,
+} from "@/lib/roster";
 import type { Booking } from "@/lib/types";
 import { cn, formatCurrency, formatDate, initials } from "@/lib/utils";
 import { toast } from "sonner";
@@ -33,7 +42,7 @@ function getNextDays(count: number) {
     const d = new Date(now);
     d.setDate(now.getDate() + i);
     days.push({
-      iso: d.toISOString().slice(0, 10),
+      iso: localIso(d),
       label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : formatDate(d),
       weekday: d.toLocaleDateString("en-MY", { weekday: "short" }),
     });
@@ -48,9 +57,13 @@ function BookingWizard() {
 
   const addBooking = useAppStore((s) => s.addBooking);
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
-  const addQueueTicket = useAppStore((s) => s.addQueueTicket);
-  const queue = useAppStore((s) => s.queue);
+  const setTrackingBookingId = useAppStore((s) => s.setTrackingBookingId);
   const customers = useAppStore((s) => s.customers);
+  const BRANCHES = useAppStore((s) => s.branches);
+  const SERVICES = useAppStore((s) => s.services);
+  const STAFF = useAppStore((s) => s.staff);
+  const bookings = useAppStore((s) => s.bookings);
+  const now = useNow();
 
   const [branchId, setBranchId] = useState(
     paramBranchId ?? BRANCHES[0]?.id ?? "b1",
@@ -84,10 +97,35 @@ function BookingWizard() {
       ? STAFF.find((s) => s.id === preferredStaffId)
       : null;
 
-  const takenSlots = useMemo(() => {
-    const seed = date.split("-").reduce((a, b) => a + parseInt(b, 10), 0);
-    return TIME_SLOTS.filter((_, i) => (seed + i) % 4 === 0);
-  }, [date]);
+  // A slot is only offered if the shop is open, it hasn't passed, at least one
+  // rostered barber is working then, and they aren't all already booked.
+  const takenSlots = (() => {
+    const open = openingMins(branch);
+    const close = closingMins(branch);
+    const today = now ? localIso(now) : "";
+    const nowMins = now ? minsOfDay(now) : -1;
+    const blocked = new Set<string>();
+    for (const slot of TIME_SLOTS) {
+      const start = hhmmToMins(slot);
+      const working = branchBarbers.filter((b) => {
+        if (!isRosteredOn(roster, leaves, b.id, date)) return false;
+        const day = rosterFor(roster, b.id, date);
+        return !!day && start >= hhmmToMins(day.start) && start + 30 <= hhmmToMins(day.end);
+      });
+      const booked = bookings.filter(
+        (b) =>
+          b.branchId === branch.id &&
+          b.date === date &&
+          b.time === slot &&
+          (b.status === "confirmed" || b.status === "checked-in"),
+      ).length;
+      const past = date === today && start <= nowMins;
+      if (start < open || start + 30 > close || past || working.length === 0 || booked >= working.length) {
+        blocked.add(slot);
+      }
+    }
+    return blocked;
+  })();
 
   function canProceed() {
     if (step === 0)
@@ -96,7 +134,7 @@ function BookingWizard() {
         phone.trim().length >= 8 &&
         /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
       );
-    if (step === 1) return date && time;
+    if (step === 1) return !!date && !!time && !takenSlots.has(time);
     if (step === 2) return !!serviceId;
     if (step === 3) {
       if (barberMode === "preferred" && barbers.length > 0) {
@@ -113,6 +151,24 @@ function BookingWizard() {
     // A returning customer booking on their own should still be recognised
     // by phone, so their membership pricing carries through to checkout.
     const matched = findCustomerByPhone(customers, phone);
+
+    // Re-check at the moment of booking: the barber may have been taken while
+    // this form was open.
+    if (
+      staff &&
+      bookings.some(
+        (b) =>
+          b.staffId === staff.id &&
+          b.date === date &&
+          b.time === time &&
+          (b.status === "confirmed" || b.status === "checked-in"),
+      )
+    ) {
+      toast.error(`${staff.name} is already booked at ${time}`, {
+        description: "Pick another time or barber",
+      });
+      return;
+    }
 
     const booking: Booking = {
       id: `bk-${Date.now()}`,
@@ -134,31 +190,10 @@ function BookingWizard() {
 
     addBooking(booking);
 
-    const nums = queue
-      .map((q) => parseInt(q.number.replace(/\D/g, ""), 10))
-      .filter((n) => !Number.isNaN(n));
-    const number = `A${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, "0")}`;
-
-    const ticketId = `q-bk-${Date.now()}`;
-    addQueueTicket({
-      id: ticketId,
-      number,
-      branchId: branch.id,
-      customerId: matched?.id ?? "guest",
-      customerName: name.trim(),
-      customerPhone: phone.trim(),
-      customerEmail: email.trim(),
-      serviceIds: [service.id],
-      serviceNames: [service.name],
-      preferredStaffId: staff?.id ?? null,
-      assignedStaffId: null,
-      chairId: null,
-      status: "waiting",
-      estimatedWaitMins: 0,
-      createdAt: new Date().toISOString(),
-      source: "booking",
-    });
-    setTrackingTicketId(ticketId);
+    // No queue ticket yet: it's created when the counter checks them in, so a
+    // booking for next week doesn't sit in today's line.
+    setTrackingTicketId(null);
+    setTrackingBookingId(booking.id);
 
     if (matched && matched.membership !== "none") {
       toast.success(`Welcome back, ${matched.name.split(" ")[0]}!`, {
@@ -264,6 +299,7 @@ function BookingWizard() {
                     setBranchId(e.target.value);
                     setBarberMode("any");
                     setPreferredStaffId(null);
+                    setTime("");
                   }}
                   className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
                 >
@@ -342,7 +378,7 @@ function BookingWizard() {
                 <Label>Time</Label>
                 <div className="grid grid-cols-4 gap-2">
                   {TIME_SLOTS.map((slot) => {
-                    const taken = takenSlots.includes(slot);
+                    const taken = takenSlots.has(slot);
                     return (
                       <button
                         key={slot}

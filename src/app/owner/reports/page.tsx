@@ -27,7 +27,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store/app-store";
-import { SALES_TREND, PEAK_HOURS, TOP_SERVICES } from "@/lib/mock/data";
+import { peakHours, topServices, weeklyTrend } from "@/lib/analytics";
+import { useNow } from "@/hooks/use-now";
 import { formatCurrency, initials, todayIso } from "@/lib/utils";
 import {
   buildBookingReport,
@@ -81,17 +82,36 @@ export default function OwnerReportsPage() {
   const [includeVoided, setIncludeVoided] = useState(false);
 
   const allSales = useAppStore((s) => s.sales);
-  const staff = useAppStore((s) => s.staff);
+  const allStaff = useAppStore((s) => s.staff);
   const CUSTOMERS = useAppStore((s) => s.customers);
   const services = useAppStore((s) => s.services);
   const products = useAppStore((s) => s.products);
-  const queue = useAppStore((s) => s.queue);
-  const bookings = useAppStore((s) => s.bookings);
+  const allQueue = useAppStore((s) => s.queue);
+  const allBookings = useAppStore((s) => s.bookings);
   const branches = useAppStore((s) => s.branches);
   const branchId = useAppStore((s) => s.branchId);
   const business = useAppStore((s) => s.businessProfile);
 
   const branchName = branches.find((b) => b.id === branchId)?.name;
+
+  // Every figure on this page is for the branch being viewed.
+  const staff = useMemo(
+    () => allStaff.filter((s) => s.branchId === branchId),
+    [allStaff, branchId],
+  );
+  const queue = useMemo(
+    () => allQueue.filter((q) => q.branchId === branchId),
+    [allQueue, branchId],
+  );
+  const bookings = useMemo(
+    () => allBookings.filter((b) => b.branchId === branchId),
+    [allBookings, branchId],
+  );
+  const branchSales = useMemo(
+    () => allSales.filter((s) => s.branchId === branchId),
+    [allSales, branchId],
+  );
+  const now = useNow();
 
   const inRange = (iso: string) => {
     const day = iso.slice(0, 10);
@@ -102,12 +122,12 @@ export default function OwnerReportsPage() {
 
   const sales = useMemo(
     () =>
-      allSales.filter(
+      branchSales.filter(
         (s) =>
           (includeVoided || !s.voided) && inRange(s.createdAt),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [allSales, from, to, includeVoided],
+    [branchSales, from, to, includeVoided],
   );
 
   const rangedQueue = useMemo(
@@ -178,7 +198,8 @@ export default function OwnerReportsPage() {
     ).toFixed(1),
   };
 
-  const maxServiceCount = TOP_SERVICES[0]?.count ?? 1;
+  const topSvc = topServices(sales);
+  const maxServiceCount = topSvc[0]?.count ?? 1;
 
   async function handleExport(format: "excel" | "pdf") {
     if (!activeReport) return;
@@ -276,7 +297,7 @@ export default function OwnerReportsPage() {
                 Include voided
               </label>
               <span className="ml-auto text-xs text-[var(--text-faint)]">
-                {sales.length} of {allSales.length} sales
+                {sales.length} of {branchSales.length} sales
               </span>
             </div>
           </Card>
@@ -330,8 +351,8 @@ export default function OwnerReportsPage() {
               </Card>
 
               <div className="grid gap-6 lg:grid-cols-2">
-                <SalesChart data={SALES_TREND} title="Weekly Sales Trend" />
-                <PeakHoursChart data={PEAK_HOURS} />
+                <SalesChart data={now ? weeklyTrend(branchSales, now) : []} title="Last 7 Days" />
+                <PeakHoursChart data={peakHours(sales)} />
               </div>
 
               <div className="grid gap-6 lg:grid-cols-3">
@@ -381,7 +402,10 @@ export default function OwnerReportsPage() {
                     </CardTitle>
                   </CardHeader>
                   <div className="space-y-4">
-                    {TOP_SERVICES.map((svc, i) => (
+                    {topSvc.length === 0 && (
+                      <p className="text-sm text-[var(--text-muted)]">No service sales in this range.</p>
+                    )}
+                    {topSvc.map((svc, i) => (
                       <div key={svc.name}>
                         <div className="mb-1 flex justify-between text-sm">
                           <span>{svc.name}</span>

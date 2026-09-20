@@ -24,7 +24,12 @@ const METHOD_FILTERS: { id: "all" | PaymentMethod; label: string }[] = [
 export function SalesHistory() {
   const session = useSession();
   const isOwner = session.role === "owner";
-  const sales = useAppStore((s) => s.sales);
+  const allSales = useAppStore((s) => s.sales);
+  const branchId = useAppStore((s) => s.branchId);
+  const sales = useMemo(
+    () => allSales.filter((s) => s.branchId === branchId),
+    [allSales, branchId],
+  );
   const business = useAppStore((s) => s.businessProfile);
   const taxConfig = useAppStore((s) => s.taxConfig);
   const voidSale = useAppStore((s) => s.voidSale);
@@ -115,7 +120,9 @@ export function SalesHistory() {
 
       <div className="flex items-center justify-between text-xs text-[var(--text-faint)]">
         <span>{filtered.length} receipt(s)</span>
-        <span>Total: {formatCurrency(totalShown)}</span>
+        {/* Cashiers don't see running cash totals — that would let them work
+            out what the drawer should hold before counting it. */}
+        {isOwner && <span>Total: {formatCurrency(totalShown)}</span>}
       </div>
 
       {filtered.length === 0 ? (
@@ -202,6 +209,8 @@ export function SalesHistory() {
                   <span className="font-semibold uppercase">Voided</span> ·{" "}
                   {selected.voided.reason} · by {selected.voided.by} ·{" "}
                   {formatDateTime(selected.voided.at)}
+                  {selected.voided.refundPending &&
+                    " · cash refund still owed (no drawer was open)"}
                 </div>
               )}
               <div className="flex items-center justify-between text-sm">

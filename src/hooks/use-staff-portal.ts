@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/store/app-store";
 import type { QueueTicket, StaffMember, StaffStatus } from "@/lib/types";
+import { byQueueOrder } from "@/lib/utils";
 
 /**
  * Everything the staff portal screens read about "me".
@@ -83,15 +84,15 @@ export function useStaffPortal() {
 export function findNextQueueTicket(
   queue: QueueTicket[],
   staffId: string,
+  branchId?: string,
 ): QueueTicket | undefined {
-  const waiting = queue.filter((q) => q.status === "waiting");
+  const waiting = queue.filter(
+    (q) => q.status === "waiting" && (!branchId || q.branchId === branchId),
+  );
   const preferred = waiting.filter((q) => q.preferredStaffId === staffId);
   const any = waiting.filter((q) => !q.preferredStaffId);
 
-  const sortByCreated = (a: QueueTicket, b: QueueTicket) =>
-    new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-
-  if (preferred.length > 0) return [...preferred].sort(sortByCreated)[0];
-  if (any.length > 0) return [...any].sort(sortByCreated)[0];
+  if (preferred.length > 0) return [...preferred].sort(byQueueOrder)[0];
+  if (any.length > 0) return [...any].sort(byQueueOrder)[0];
   return undefined;
 }

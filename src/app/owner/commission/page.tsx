@@ -82,7 +82,13 @@ export default function OwnerCommissionPage() {
   const commissionRules = useAppStore((s) => s.commissionRules);
   const updateCommissionRule = useAppStore((s) => s.updateCommissionRule);
   const addCommissionRule = useAppStore((s) => s.addCommissionRule);
-  const sales = useAppStore((s) => s.sales);
+  const allSales = useAppStore((s) => s.sales);
+  const activeBranchId = useAppStore((s) => s.branchId);
+  // Voided sales earned nothing, and other branches aren't this leaderboard.
+  const sales = useMemo(
+    () => allSales.filter((s) => !s.voided && s.branchId === activeBranchId),
+    [allSales, activeBranchId],
+  );
   const staff = useAppStore((s) => s.staff);
   const services = useAppStore((s) => s.services);
 
@@ -90,8 +96,8 @@ export default function OwnerCommissionPage() {
   const [form, setForm] = useState<AddRuleForm>(emptyRuleForm);
 
   const barbers = useMemo(
-    () => staff.filter((s) => s.role === "barber"),
-    [staff],
+    () => staff.filter((s) => s.role === "barber" && s.branchId === activeBranchId),
+    [staff, activeBranchId],
   );
 
   const leaderboard = useMemo(() => {
@@ -268,7 +274,7 @@ export default function OwnerCommissionPage() {
                     <strong>Percentage</strong> — cut of sale total (e.g. 30% on services)
                   </li>
                   <li>
-                    <strong>Fixed</strong> — flat bonus per transaction (e.g. RM5 campaign)
+                    <strong>Fixed</strong> — flat bonus for each eligible item sold (e.g. RM5 campaign)
                   </li>
                   <li>
                     <strong>Service / Product</strong> — boosted rate on specific items

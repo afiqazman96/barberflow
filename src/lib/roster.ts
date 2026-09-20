@@ -75,6 +75,12 @@ export function formatDuration(mins: number): string {
   return r === 0 ? `${h}h` : `${h}h ${r}m`;
 }
 
+/** Opening time of a branch as minutes past midnight, from "10:00 – 22:00". */
+export function openingMins(branch?: Pick<Branch, "openHours">): number {
+  const m = branch?.openHours.match(/(\d{1,2}):(\d{2})\s*[–-]\s*\d{1,2}:\d{2}/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
+
 /** Closing time of a branch as minutes past midnight, from "10:00 – 22:00". */
 export function closingMins(branch?: Pick<Branch, "openHours">): number {
   const m = branch?.openHours.match(/(\d{1,2}):(\d{2})\s*[–-]\s*(\d{1,2}):(\d{2})/);

@@ -211,6 +211,8 @@ export interface QueueTicket {
   assignedStaffId: string | null;
   chairId: string | null;
   status: QueueStatus;
+  /** The booking this ticket was created from at check-in. */
+  bookingId?: string;
   estimatedWaitMins: number;
   createdAt: string;
   startedAt?: string;
@@ -271,8 +273,16 @@ export interface Sale {
   commission: number;
   createdAt: string;
   receiptNo: string;
+  /** Who rang the sale up. */
+  rungBy?: string;
   /** Set when an owner reverses the sale. */
-  voided?: { reason: string; at: string; by: string };
+  voided?: {
+    reason: string;
+    at: string;
+    by: string;
+    /** A cash refund was owed but no drawer was open to record it. */
+    refundPending?: boolean;
+  };
 }
 
 /** Owner-configured service charge and SST. All off by default. */
@@ -298,6 +308,10 @@ export interface CashMovement {
   note: string;
   at: string;
   saleId?: string;
+  /** Who recorded it. */
+  by?: string;
+  /** Reason category for a manual pay-in or pay-out. */
+  category?: string;
 }
 
 /** A cashier's shift at the till, from opening float to close-out. */
@@ -310,9 +324,26 @@ export interface DrawerSession {
   openingFloat: number;
   movements: CashMovement[];
   closedAt?: string;
-  /** Cash counted in the drawer at close. */
+  closedBy?: string;
+  /** Cash counted in the drawer at close (the final count). */
   countedAmount?: number;
   closingNote?: string;
+  /** Frozen when the drawer closes so later changes can't move it. Owner-only. */
+  expectedAtClose?: number;
+  variance?: number;
+  /** Every blind count attempt at close, in order. */
+  counts?: { amount: number; at: string; denominations?: Record<string, number> }[];
+  denominations?: Record<string, number>;
+  status?: "closed" | "needs-review" | "reviewed";
+  /** Written reason when the count was still off after a recount. */
+  varianceReason?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  /** Opening float minus the previous close's count, when they differed. */
+  floatMismatch?: number;
+  /** Closed by the owner, who can see the expected figure. */
+  closedByOwner?: boolean;
 }
 
 export interface SaleItem {

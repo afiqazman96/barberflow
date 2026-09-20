@@ -41,7 +41,7 @@ const TABS = [
   { id: "services", label: "Services", icon: Scissors },
   { id: "tax", label: "Tax & Charges", icon: Percent },
   { id: "chairs", label: "Chairs", icon: Armchair },
-  { id: "qr", label: "Walk-in QR", icon: QrCode },
+  { id: "qr", label: "QR & Links", icon: QrCode },
   { id: "queue", label: "Queue Rules", icon: ListOrdered },
   { id: "booking", label: "Booking", icon: CalendarDays },
   { id: "membership", label: "Membership", icon: Crown },

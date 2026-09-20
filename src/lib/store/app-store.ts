@@ -1496,6 +1496,14 @@ export function drawerExpected(session: DrawerSession): number {
   );
 }
 
+/** Advance-booking page for one branch — safe to share as a link or QR. */
+export function getBranchBookingUrl(branchId: string, origin?: string) {
+  const base =
+    origin ??
+    (typeof window !== "undefined" ? window.location.origin : "https://barberflow.app");
+  return `${base}/customer/booking?branch=${branchId}`;
+}
+
 export function getBranchJoinUrl(branchId: string, origin?: string) {
   const base =
     origin ??

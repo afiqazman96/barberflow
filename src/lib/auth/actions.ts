@@ -168,8 +168,36 @@ export async function createStaff(input: {
   branchId: string | null;
   temporaryPassword: string;
   mustChangePassword?: boolean;
+  specialty?: string;
+  monthlyTarget?: number;
+  chairId?: string | null;
 }): Promise<ActionResult<{ staffId: string }>> {
   const { staff: owner } = await requireRole("OWNER");
+
+  // Validate the shop-side references before creating an auth user, so a bad
+  // branch or an occupied chair does not leave a login behind to clean up.
+  if (input.branchId) {
+    const branch = await prisma.branch.findFirst({
+      where: { id: input.branchId, tenantId: owner.tenantId },
+      select: { id: true },
+    });
+    if (!branch) {
+      return { ok: false, error: "Branch not found" };
+    }
+  }
+
+  if (input.chairId) {
+    const chair = await prisma.chair.findFirst({
+      where: { id: input.chairId, branchId: input.branchId ?? undefined },
+      select: { id: true, label: true, staff: { select: { id: true } } },
+    });
+    if (!chair) {
+      return { ok: false, error: "Chair not found at that branch" };
+    }
+    if (chair.staff) {
+      return { ok: false, error: `${chair.label} is already taken` };
+    }
+  }
 
   const email = input.email.trim().toLowerCase();
   const admin = createAdminClient();
@@ -199,11 +227,16 @@ export async function createStaff(input: {
         role: input.role,
         authUserId: data.user.id,
         mustChangePassword: input.mustChangePassword ?? true,
+        specialty: input.specialty?.trim() || null,
+        monthlyTarget: input.monthlyTarget ?? null,
+        // Only barbers sit at a chair; anyone else ignores the field.
+        chairId: input.role === "BARBER" ? (input.chairId ?? null) : null,
       },
       select: { id: true },
     });
 
     revalidatePath("/owner/settings");
+    revalidatePath("/owner/staff");
     return { ok: true, data: { staffId: staff.id } };
   } catch (cause) {
     await admin.auth.admin.deleteUser(data.user.id);
@@ -246,6 +279,7 @@ export async function resetStaffPassword(
   });
 
   revalidatePath("/owner/settings");
+  revalidatePath("/owner/staff");
   return { ok: true };
 }
 
@@ -253,6 +287,10 @@ export async function resetStaffPassword(
  * Soft-disable or re-enable a staff account (BACKEND_HANDOFF §5.5). We also ban
  * the Supabase user when disabling, so any session they already hold stops
  * refreshing instead of staying live until it expires.
+ *
+ * Disabling ends their duty as well: a barber who cannot sign in must not stay
+ * clocked in holding a chair, or the queue would keep routing customers to
+ * somebody who has gone home.
  */
 export async function setStaffActive(
   staffId: string,
@@ -277,8 +315,14 @@ export async function setStaffActive(
     });
   }
 
-  await prisma.staff.update({ where: { id: staffId }, data: { active } });
+  await prisma.staff.update({
+    where: { id: staffId },
+    data: active
+      ? { active: true }
+      : { active: false, status: "OFF_DUTY", chairId: null },
+  });
 
   revalidatePath("/owner/settings");
+  revalidatePath("/owner/staff");
   return { ok: true };
 }

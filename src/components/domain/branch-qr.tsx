@@ -19,7 +19,8 @@ export function BranchQrPanel({
   size = 180,
   compact = false,
 }: {
-  branch: Branch;
+  /** Only the id and name are rendered, so a settings DTO fits here too. */
+  branch: Pick<Branch, "id" | "name">;
   size?: number;
   compact?: boolean;
 }) {

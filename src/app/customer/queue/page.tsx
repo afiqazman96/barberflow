@@ -58,6 +58,7 @@ function QueueWizard() {
   const customers = useAppStore((s) => s.customers);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
+  const trackingTicketId = useAppStore((s) => s.trackingTicketId);
   const setBranchId = useAppStore((s) => s.setBranchId);
 
   const branch = branches.find((b) => b.id === branchIdParam) ?? branches[0];
@@ -153,19 +154,27 @@ function QueueWizard() {
     // One spot per person: the same email or phone already waiting here is a
     // double-tap or a second device, not a second customer.
     const emailKey = email.trim().toLowerCase();
-    const phoneKey = phone.replace(/D/g, "");
+    const phoneKey = phone.replace(/[^0-9]/g, "");
     const already = queue.find(
       (q) =>
         q.branchId === branch.id &&
         (q.status === "waiting" || q.status === "called" || q.status === "in-service") &&
         ((q.customerEmail ?? "").trim().toLowerCase() === emailKey ||
           (phoneKey.length >= 8 &&
-            (q.customerPhone ?? "").replace(/D/g, "") === phoneKey)),
+            (q.customerPhone ?? "").replace(/[^0-9]/g, "") === phoneKey)),
     );
     if (already) {
-      setTrackingTicketId(already.id);
-      toast.message(`You're already in the queue — ticket ${already.number}`);
-      router.push("/customer/tracking");
+      // Only this device's own ticket may be reopened. Anyone else typing a
+      // stored email or phone must not be handed that person's tracking view.
+      if (already.id === trackingTicketId) {
+        toast.message(`You're already in the queue — ticket ${already.number}`);
+        router.push("/customer/tracking");
+      } else {
+        toast.error("Already in the queue with these details", {
+          description:
+            "If that's you, reopen the page on the phone you joined with, or ask at the counter.",
+        });
+      }
       return;
     }
 

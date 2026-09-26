@@ -19,12 +19,11 @@ import {
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { useAppStore } from "@/lib/store/app-store";
-import { usePlatformStore } from "@/lib/store/platform-store";
+import { DEMO_TENANT_ID, usePlatformStore } from "@/lib/store/platform-store";
 import type { FeatureKey } from "@/lib/types";
 
-// The demo shop ("Fade House") is tenant t1 in the platform store — its
+// The demo shop ("Fade House") is DEMO_TENANT_ID in the platform store — its
 // package's feature matrix is what Super Admin > Features actually toggles.
-const DEMO_TENANT_ID = "t1";
 
 // Nav items whose visibility is gated by a package feature flag. Anything not
 // listed here is always shown (core flows every package includes).

@@ -28,6 +28,9 @@ import type {
   UserRole,
 } from "@/lib/types";
 import { computeCharges, DEFAULT_TAX_CONFIG } from "@/lib/pos-pricing";
+import { isPrivateOrigin, publicOrigin } from "@/lib/public-origin";
+
+export { isPrivateOrigin, publicOrigin };
 import {
   AUTO_CLOSE_GRACE_MINS,
   closingMins,
@@ -1494,20 +1497,6 @@ export function drawerExpected(session: DrawerSession): number {
     session.openingFloat +
     session.movements.reduce((sum, m) => sum + m.amount, 0)
   );
-}
-
-/**
- * The address customers should be sent to. `NEXT_PUBLIC_APP_URL` wins so a QR
- * printed from any machine (even localhost) still points at the live site.
- */
-export function publicOrigin(): string | undefined {
-  const fromEnv = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
-  return fromEnv || undefined;
-}
-
-/** True for addresses only this computer or its network can open. */
-export function isPrivateOrigin(origin: string): boolean {
-  return /^https?:\/\/(localhost|127\.|10\.|192\.168\.|0\.0\.0\.0)/i.test(origin);
 }
 
 /** Advance-booking page for one branch — safe to share as a link or QR. */

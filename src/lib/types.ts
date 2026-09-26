@@ -32,6 +32,19 @@ export type CommissionType =
   | "service-based"
   | "product-based";
 
+/** The sign-in a shop owner is handed when their tenant is created. */
+export interface OwnerAccount {
+  loginEmail: string;
+  /** Shown to Super Admin until the owner sets their own; never persisted. */
+  tempPassword?: string;
+  mustChangePassword: boolean;
+  status: "awaiting-first-login" | "active";
+  issuedAt: string;
+  lastResetAt?: string;
+  /** False while this is only a demo credential with no live login behind it. */
+  provisioned: boolean;
+}
+
 export interface Tenant {
   id: string;
   name: string;
@@ -48,6 +61,8 @@ export interface Tenant {
   mrr: number;
   ownerName: string;
   ownerEmail: string;
+  /** Absent on tenants that predate the onboarding flow. */
+  ownerAccount?: OwnerAccount;
   billing: "monthly" | "yearly";
   trialEndsAt?: string;
   createdAt: string;

@@ -10,7 +10,10 @@ import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
-import { usePlatformStore } from "@/lib/store/platform-store";
+import { TenantCredentials } from "@/components/domain/tenant-credentials";
+import { usePlatformHydration, usePlatformStore } from "@/lib/store/platform-store";
+import { ownerEmailProblem } from "@/lib/tenant-onboarding";
+import type { Tenant } from "@/lib/types";
 import { formatCurrency, cn } from "@/lib/utils";
 
 /**
@@ -21,6 +24,10 @@ export default function PricingPage() {
   const router = useRouter();
   const packages = usePlatformStore((s) => s.packages);
   const addTenant = usePlatformStore((s) => s.addTenant);
+  const tenants = usePlatformStore((s) => s.tenants);
+  usePlatformHydration();
+  // The tenant just created, so the new owner can see how to sign in.
+  const [created, setCreated] = useState<Tenant | null>(null);
 
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const [selectedPkg, setSelectedPkg] = useState<string | null>(null);
@@ -39,8 +46,13 @@ export default function PricingPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPkg) return;
-    if (!form.businessName.trim() || !form.ownerEmail.trim()) {
-      toast.error("Business name and email required");
+    if (!form.businessName.trim()) {
+      toast.error("Business name is required");
+      return;
+    }
+    const emailProblem = ownerEmailProblem(form.ownerEmail, tenants);
+    if (emailProblem) {
+      toast.error("Email", { description: emailProblem });
       return;
     }
     const tenant = addTenant({
@@ -51,12 +63,13 @@ export default function PricingPage() {
       billing,
       startAs: "trial",
     });
-    toast.success("14-day trial started", {
+    const trialDays = packages.find((p) => p.id === selectedPkg)?.trialDays ?? 14;
+    toast.success(`${trialDays}-day trial started`, {
       description: `${tenant.name} · ${tenant.plan} plan`,
     });
     setOpen(false);
     setForm({ businessName: "", ownerName: "", ownerEmail: "" });
-    router.push(`/?subscribed=${tenant.id}`);
+    setCreated(tenant);
   }
 
   const pkg = packages.find((p) => p.id === selectedPkg);
@@ -226,6 +239,31 @@ export default function PricingPage() {
             Create trial account
           </Button>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!created}
+        onOpenChange={(o) => !o && setCreated(null)}
+        title="Your account is ready"
+        description={created ? `Welcome to BarberFlow, ${created.name}. Keep these details to sign in.` : ""}
+        className="max-w-md"
+      >
+        {created && (
+          <div className="space-y-4">
+            <TenantCredentials tenant={created} />
+            <Button
+              className="w-full"
+              onClick={() => {
+                const email = created.ownerAccount?.loginEmail ?? created.ownerEmail;
+                setCreated(null);
+                router.push(`/?email=${encodeURIComponent(email)}`);
+              }}
+            >
+              Go to sign in
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </Modal>
     </div>
   );

@@ -49,6 +49,7 @@ export default function SuperAdminSubscriptionPage() {
   const trialCount = usePlatformStore((s) => s.trialCount);
   const changeTenantPlan = usePlatformStore((s) => s.changeTenantPlan);
   const convertTrialToActive = usePlatformStore((s) => s.convertTrialToActive);
+  const activateTenant = usePlatformStore((s) => s.activateTenant);
   const suspendTenant = usePlatformStore((s) => s.suspendTenant);
 
   const [planModal, setPlanModal] = useState<Tenant | null>(null);
@@ -60,12 +61,14 @@ export default function SuperAdminSubscriptionPage() {
 
   const mrr = totalMrr();
   const trials = trialCount();
-  const activeCount = tenants.filter((t) => t.status === "active").length;
-  const suspendedCount = tenants.filter((t) => t.status === "suspended").length;
+  // Archived tenants are offboarded: they don't belong in live billing.
+  const liveTenants = useMemo(() => tenants.filter((t) => !t.archived), [tenants]);
+  const activeCount = liveTenants.filter((t) => t.status === "active").length;
+  const suspendedCount = liveTenants.filter((t) => t.status === "suspended").length;
 
   const mrrByPackage = useMemo(() => {
     return packages.map((pkg) => {
-      const subs = tenants.filter(
+      const subs = liveTenants.filter(
         (t) => t.packageId === pkg.id && t.status === "active",
       );
       return {
@@ -75,15 +78,15 @@ export default function SuperAdminSubscriptionPage() {
         count: subs.length,
       };
     });
-  }, [packages, tenants]);
+  }, [packages, liveTenants]);
 
   const subscriptions = useMemo(
     () =>
-      [...tenants].sort(
+      [...liveTenants].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       ),
-    [tenants],
+    [liveTenants],
   );
 
   function openChangePlan(tenant: Tenant) {
@@ -114,6 +117,11 @@ export default function SuperAdminSubscriptionPage() {
   function handleConvert(tenant: Tenant) {
     convertTrialToActive(tenant.id);
     toast.success("Trial converted to active", { description: tenant.name });
+  }
+
+  function handleActivate(tenant: Tenant) {
+    activateTenant(tenant.id);
+    toast.success("Subscription reactivated", { description: tenant.name });
   }
 
   function handleSuspend(tenant: Tenant) {
@@ -307,7 +315,15 @@ export default function SuperAdminSubscriptionPage() {
                                 Convert
                               </Button>
                             )}
-                            {tenant.status !== "suspended" && (
+                            {tenant.status === "suspended" ? (
+                              <Button
+                                variant="success"
+                                size="sm"
+                                onClick={() => handleActivate(tenant)}
+                              >
+                                Activate
+                              </Button>
+                            ) : (
                               <Button
                                 variant="danger"
                                 size="sm"

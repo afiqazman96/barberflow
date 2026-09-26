@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect } from "react";
 
 import type { SessionUser } from "@/lib/auth/dto";
 import { ForcePasswordChange } from "@/components/auth/force-password-change";
+import { SuspendedScreen } from "@/components/auth/suspended-screen";
+import { DEMO_TENANT_ID, usePlatformHydration, usePlatformStore } from "@/lib/store/platform-store";
 import { useAppStore } from "@/lib/store/app-store";
 
 const SessionContext = createContext<SessionUser | null>(null);
@@ -29,6 +31,15 @@ export function SessionProvider({
   children: React.ReactNode;
 }) {
   const setSession = useAppStore((s) => s.setSession);
+  usePlatformHydration();
+  // The shop portals all belong to the demo tenant for now; when its
+  // subscription is suspended in Super Admin the shop stops working.
+  const demoTenant = usePlatformStore((s) =>
+    s.tenants.find((t) => t.id === DEMO_TENANT_ID),
+  );
+  const shopSuspended =
+    demoTenant?.status === "suspended" &&
+    (session.role === "owner" || session.role === "cashier" || session.role === "staff");
 
   useEffect(() => {
     // `session` is a fresh object on every server render, so compare contents:
@@ -45,7 +56,13 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider value={session}>
-      {session.mustChangePassword ? <ForcePasswordChange /> : children}
+      {session.mustChangePassword ? (
+        <ForcePasswordChange />
+      ) : shopSuspended ? (
+        <SuspendedScreen shopName={demoTenant?.name ?? "This shop"} />
+      ) : (
+        children
+      )}
     </SessionContext.Provider>
   );
 }

@@ -34,22 +34,26 @@ export default function SuperAdminDashboardPage() {
   const tenants = usePlatformStore((s) => s.tenants);
   const totalMrr = usePlatformStore((s) => s.totalMrr);
   const trialCount = usePlatformStore((s) => s.trialCount);
+  const expiredTrialCount = usePlatformStore((s) => s.expiredTrialCount);
   const openTicketCount = usePlatformStore((s) => s.openTicketCount);
 
   const mrr = totalMrr();
   const trials = trialCount();
+  const expiredTrials = expiredTrialCount();
+  // Offboarded (archived) tenants are history, not part of the live book.
+  const liveTenants = tenants.filter((t) => !t.archived);
   const openTickets = openTicketCount();
-  const activeTenants = tenants.filter((t) => t.status === "active").length;
+  const activeTenants = liveTenants.filter((t) => t.status === "active").length;
 
   const recentTenants = useMemo(
     () =>
-      [...tenants]
+      [...liveTenants]
         .sort(
           (a, b) =>
             new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         )
         .slice(0, 5),
-    [tenants],
+    [liveTenants],
   );
 
   const avgMrr =
@@ -85,7 +89,7 @@ export default function SuperAdminDashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Total Tenants"
-              value={String(tenants.length)}
+              value={String(liveTenants.length)}
               change={`${activeTenants} active`}
               trend="up"
               icon={Building2}
@@ -102,7 +106,7 @@ export default function SuperAdminDashboardPage() {
             <StatCard
               label="Active Trials"
               value={String(trials)}
-              change="Pre-conversion"
+              change={expiredTrials > 0 ? `${expiredTrials} expired — needs follow-up` : "Pre-conversion"}
               trend="neutral"
               icon={FlaskConical}
               delay={0.1}
@@ -207,6 +211,11 @@ export default function SuperAdminDashboardPage() {
                       </td>
                       <td className="py-3.5 pr-4 text-[var(--text-muted)]">
                         {tenant.ownerEmail}
+                        {tenant.ownerAccount?.status === "awaiting-first-login" && (
+                          <Badge variant="warning" className="ml-2">
+                            Awaiting first login
+                          </Badge>
+                        )}
                       </td>
                       <td className="py-3.5 pr-4">
                         <Badge variant={planVariant(tenant.plan)}>

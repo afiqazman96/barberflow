@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type {
   FeatureKey,
   Package,
@@ -13,6 +15,16 @@ import {
   SUPPORT_TICKETS,
   TENANTS,
 } from "@/lib/mock/data";
+import {
+  generateTempPassword,
+  isTrialExpired,
+  issueOwnerAccount,
+} from "@/lib/tenant-onboarding";
+import { todayIso } from "@/lib/utils";
+
+/** The demo shop's tenant id — the shop portals read its status and plan. */
+export const DEMO_TENANT_ID = "t1";
+const STORAGE_KEY = "bf-platform-v1";
 
 function slugify(name: string) {
   return name
@@ -66,6 +78,8 @@ interface PlatformState {
   convertTrialToActive: (tenantId: string) => void;
   suspendTenant: (tenantId: string) => void;
   activateTenant: (tenantId: string) => void;
+  /** New temporary password for the owner; returns the updated tenant. */
+  resetOwnerPassword: (tenantId: string) => Tenant | undefined;
   archiveTenant: (tenantId: string) => void;
   restoreTenant: (tenantId: string) => void;
 
@@ -84,10 +98,13 @@ interface PlatformState {
 
   totalMrr: () => number;
   trialCount: () => number;
+  expiredTrialCount: () => number;
   openTicketCount: () => number;
 }
 
-export const usePlatformStore = create<PlatformState>((set, get) => ({
+export const usePlatformStore = create<PlatformState>()(
+  persist(
+    (set, get) => ({
   tenants: TENANTS.map((t) => ({ ...t })),
   packages: PACKAGES.map((p) => ({ ...p })),
   supportTickets: SUPPORT_TICKETS.map((t) => ({ ...t })),
@@ -114,6 +131,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       billing,
       trialEndsAt: status === "trial" ? addDays(pkg.trialDays) : undefined,
       createdAt: new Date().toISOString().slice(0, 10),
+      ownerAccount: issueOwnerAccount(input.ownerEmail),
     };
     set((s) => ({ tenants: [tenant, ...s.tenants] }));
     return tenant;
@@ -121,10 +139,41 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
 
   updateTenant: (id, patch) =>
     set((s) => ({
-      tenants: s.tenants.map((t) =>
-        t.id === id ? { ...t, ...patch, updatedAt: new Date().toISOString() } : t,
-      ),
+      tenants: s.tenants.map((t) => {
+        if (t.id !== id) return t;
+        const next = { ...t, ...patch, updatedAt: new Date().toISOString() };
+        // The owner signs in with this address, so the two never drift apart.
+        if (patch.ownerEmail && t.ownerAccount) {
+          next.ownerAccount = { ...t.ownerAccount, loginEmail: patch.ownerEmail.trim().toLowerCase() };
+        }
+        return next;
+      }),
     })),
+
+  resetOwnerPassword: (tenantId) => {
+    let updated: Tenant | undefined;
+    set((s) => ({
+      tenants: s.tenants.map((t) => {
+        if (t.id !== tenantId) return t;
+        const now = new Date().toISOString();
+        updated = {
+          ...t,
+          ownerAccount: {
+            loginEmail: t.ownerAccount?.loginEmail ?? t.ownerEmail,
+            tempPassword: generateTempPassword(),
+            mustChangePassword: true,
+            status: "awaiting-first-login",
+            issuedAt: t.ownerAccount?.issuedAt ?? now,
+            lastResetAt: now,
+            provisioned: t.ownerAccount?.provisioned ?? false,
+          },
+          updatedAt: now,
+        };
+        return updated;
+      }),
+    }));
+    return updated;
+  },
 
   changeTenantPlan: (tenantId, packageId, billing) => {
     const pkg = get().packages.find((p) => p.id === packageId);
@@ -182,13 +231,19 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
     const tenant = get().tenants.find((t) => t.id === tenantId);
     const pkg = get().packages.find((p) => p.id === tenant?.packageId);
     if (!tenant || !pkg) return;
+    // Lifting a suspension puts a tenant back where it was: a trial that has
+    // not run out resumes as a trial, anything else is a paying subscription.
+    // It must never turn a trial into a free paid plan.
+    const resumeTrial = !!tenant.trialEndsAt && tenant.trialEndsAt >= todayIso();
+    const status: Tenant["status"] = resumeTrial ? "trial" : "active";
     set((s) => ({
       tenants: s.tenants.map((t) =>
         t.id === tenantId
           ? {
               ...t,
-              status: "active" as const,
-              mrr: mrrFor(pkg, t.billing, "active"),
+              status,
+              trialEndsAt: resumeTrial ? t.trialEndsAt : undefined,
+              mrr: mrrFor(pkg, t.billing, status),
               updatedAt: new Date().toISOString(),
             }
           : t,
@@ -306,9 +361,49 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       (sum, t) => sum + (t.status === "active" ? t.mrr : 0),
       0,
     ),
-  trialCount: () => get().tenants.filter((t) => t.status === "trial").length,
+  trialCount: () =>
+    get().tenants.filter((t) => t.status === "trial" && !t.archived && !isTrialExpired(t)).length,
+  expiredTrialCount: () =>
+    get().tenants.filter((t) => !t.archived && isTrialExpired(t)).length,
   openTicketCount: () =>
     get().supportTickets.filter(
       (t) => t.status === "open" || t.status === "in-progress",
     ).length,
-}));
+    }),
+    {
+      name: STORAGE_KEY,
+      version: 1,
+      // Hydrated in an effect (see usePlatformHydration) so the first client
+      // render matches the server's.
+      skipHydration: true,
+      partialize: (s) => ({
+        // A temporary password is shown once and never written to storage.
+        tenants: s.tenants.map((t) =>
+          t.ownerAccount
+            ? { ...t, ownerAccount: { ...t.ownerAccount, tempPassword: undefined } }
+            : t,
+        ),
+        packages: s.packages,
+        supportTickets: s.supportTickets,
+        featureMatrix: s.featureMatrix,
+      }),
+    },
+  ),
+);
+
+/**
+ * Loads the saved platform data after mount and keeps other tabs of the same
+ * browser in step — a subscription made on /pricing in one tab shows up in
+ * Super Admin in another.
+ */
+export function usePlatformHydration() {
+  useEffect(() => {
+    void usePlatformStore.persist.rehydrate();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) void usePlatformStore.persist.rehydrate();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+}
+

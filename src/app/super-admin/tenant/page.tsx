@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Archive, Building2, Plus, RotateCcw, Search } from "lucide-react";
+import { Archive, Building2, KeyRound, Plus, RotateCcw, Search } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,9 @@ import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TenantCredentials } from "@/components/domain/tenant-credentials";
 import { usePlatformStore } from "@/lib/store/platform-store";
+import { ownerEmailProblem } from "@/lib/tenant-onboarding";
 import type { Tenant } from "@/lib/types";
 import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
 import { toast } from "sonner";
@@ -59,6 +61,7 @@ export default function SuperAdminTenantPage() {
   const activateTenant = usePlatformStore((s) => s.activateTenant);
   const archiveTenant = usePlatformStore((s) => s.archiveTenant);
   const restoreTenant = usePlatformStore((s) => s.restoreTenant);
+  const resetOwnerPassword = usePlatformStore((s) => s.resetOwnerPassword);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -73,6 +76,9 @@ export default function SuperAdminTenantPage() {
     staff: number;
   } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // Just-onboarded (or just-reset) tenant whose login details are on screen.
+  const [credentialsFor, setCredentialsFor] = useState<{ id: string; fresh: boolean } | null>(null);
+  const [resetTarget, setResetTarget] = useState<Tenant | null>(null);
   const [addForm, setAddForm] = useState(emptyAddForm);
   const [planModal, setPlanModal] = useState<Tenant | null>(null);
   const [planForm, setPlanForm] = useState({
@@ -125,6 +131,15 @@ export default function SuperAdminTenantPage() {
       });
       return;
     }
+    if (!editForm.name.trim()) {
+      toast.error("Business name is required");
+      return;
+    }
+    const emailProblem = ownerEmailProblem(editForm.ownerEmail, tenants, selected.id);
+    if (emailProblem) {
+      toast.error("Owner email", { description: emailProblem });
+      return;
+    }
     updateTenant(selected.id, editForm);
     const updated = { ...selected, ...editForm };
     setSelected(updated);
@@ -132,8 +147,17 @@ export default function SuperAdminTenantPage() {
   }
 
   function handleAddTenant() {
-    if (!addForm.businessName.trim() || !addForm.ownerEmail.trim()) {
-      toast.error("Business name and owner email are required");
+    if (!addForm.businessName.trim()) {
+      toast.error("Business name is required");
+      return;
+    }
+    if (!addForm.ownerName.trim()) {
+      toast.error("Owner name is required");
+      return;
+    }
+    const emailProblem = ownerEmailProblem(addForm.ownerEmail, tenants);
+    if (emailProblem) {
+      toast.error("Owner email", { description: emailProblem });
       return;
     }
     const pkgId = addForm.packageId || packages[0]?.id;
@@ -157,6 +181,15 @@ export default function SuperAdminTenantPage() {
     });
     setAddOpen(false);
     setAddForm(emptyAddForm);
+    setCredentialsFor({ id: tenant.id, fresh: true });
+  }
+
+  function handleResetPassword(tenant: Tenant) {
+    const updated = resetOwnerPassword(tenant.id);
+    if (!updated) return;
+    toast.success("New temporary password issued", { description: tenant.name });
+    setCredentialsFor({ id: tenant.id, fresh: false });
+    if (selected?.id === tenant.id) setSelected(updated);
   }
 
   function openChangePlan(tenant: Tenant) {
@@ -339,6 +372,11 @@ export default function SuperAdminTenantPage() {
                         <p className="text-xs text-[var(--text-faint)]">
                           {tenant.ownerEmail}
                         </p>
+                        {tenant.ownerAccount?.status === "awaiting-first-login" && (
+                          <Badge variant="warning" className="mt-1">
+                            Awaiting first login
+                          </Badge>
+                        )}
                       </td>
                       <td className="py-3.5 pr-4">
                         <Badge variant={planVariant(tenant.plan)}>
@@ -706,6 +744,27 @@ export default function SuperAdminTenantPage() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <KeyRound className="h-4 w-4 text-[var(--gold)]" />
+                Owner login
+              </p>
+              <TenantCredentials
+                tenant={selected}
+                onReset={selected.archived ? undefined : () => setResetTarget(selected)}
+              />
+              {selected.ownerAccount?.tempPassword && !selected.archived && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full"
+                  onClick={() => setResetTarget(selected)}
+                >
+                  Issue a different temporary password
+                </Button>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-2 pt-2">
               {selected.archived ? (
                 <Button
@@ -763,6 +822,40 @@ export default function SuperAdminTenantPage() {
           </div>
         )}
       </Modal>
+
+      <Modal
+        open={!!credentialsFor}
+        onOpenChange={(open) => !open && setCredentialsFor(null)}
+        title={credentialsFor?.fresh ? "Tenant onboarded" : "New temporary password"}
+        description="Send these to the shop owner. The password is only shown now and is not kept."
+        className="max-w-md"
+      >
+        {(() => {
+          const t = tenants.find((x) => x.id === credentialsFor?.id);
+          return t ? (
+            <div className="space-y-4">
+              <TenantCredentials tenant={t} onReset={() => setResetTarget(t)} />
+              <Button className="w-full" onClick={() => setCredentialsFor(null)}>
+                Done
+              </Button>
+            </div>
+          ) : null;
+        })()}
+      </Modal>
+
+      <ConfirmDialog
+        open={!!resetTarget}
+        onOpenChange={(open) => !open && setResetTarget(null)}
+        title="Issue a new temporary password?"
+        description={
+          resetTarget
+            ? `The current password for ${resetTarget.ownerName} stops working and they will be asked to set their own again on first sign-in.`
+            : undefined
+        }
+        confirmLabel="Issue new password"
+        confirmVariant="default"
+        onConfirm={() => resetTarget && handleResetPassword(resetTarget)}
+      />
 
       <ConfirmDialog
         open={!!suspendTarget}

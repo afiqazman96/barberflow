@@ -43,6 +43,7 @@ import {
 import type { StaffMember, StaffStatus } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
 import { createStaff, resetStaffPassword, setStaffActive } from "@/lib/auth/actions";
+import { emailStaffWelcome } from "@/lib/email/actions";
 import type { ActionResult } from "@/lib/auth/types";
 import type { StaffRole } from "@/generated/prisma/enums";
 
@@ -58,6 +59,8 @@ type AddStaffForm = {
   password: string;
   confirmPassword: string;
   mustChangePassword: boolean;
+  /** Email the new login to the staff member's address. */
+  emailLogin: boolean;
 };
 
 const emptyForm = (): AddStaffForm => ({
@@ -72,6 +75,7 @@ const emptyForm = (): AddStaffForm => ({
   password: "",
   confirmPassword: "",
   mustChangePassword: true,
+  emailLogin: true,
 });
 
 /**
@@ -478,6 +482,37 @@ export function OwnerStaffScreen({
     toast.success("Staff added", {
       description: `Login: ${loginEmail} / temp password shown once`,
     });
+
+    if (form.emailLogin) {
+      const mustChange = form.mustChangePassword;
+      // Not awaited: the modal shouldn't wait on the mail provider.
+      void (async () => {
+        try {
+          const sent = await emailStaffWelcome({
+            staffId: realStaffId,
+            tempPassword,
+            mustChangePassword: mustChange,
+          });
+          if (sent.ok) {
+            toast.success(sent.dryRun ? "Login emailed (test mode)" : "Login emailed", {
+              description: loginEmail,
+            });
+          } else if (sent.notConfigured) {
+            toast.message("Email isn't set up yet", {
+              description: "Give them the login yourself — the staff account is ready.",
+            });
+          } else {
+            toast.error("Staff added, but the email didn't send", {
+              description: sent.error,
+            });
+          }
+        } catch {
+          toast.error("Staff added, but the email didn't send", {
+            description: "Check the connection and give them the login yourself",
+          });
+        }
+      })();
+    }
     setAddOpen(false);
     setForm(emptyForm());
     // The list itself is server data — re-read it so the new hire appears.
@@ -880,6 +915,20 @@ export function OwnerStaffScreen({
               <span className="font-medium">Require password change on first login</span>
               <span className="mt-0.5 block text-xs text-[var(--text-muted)]">
                 Staff must set their own password after signing in with this temp password
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 px-3 py-3">
+            <input
+              type="checkbox"
+              checked={form.emailLogin}
+              onChange={(e) => setForm((f) => ({ ...f, emailLogin: e.target.checked }))}
+              className="mt-0.5 h-4 w-4 rounded border-[var(--border)] accent-[var(--gold)]"
+            />
+            <span className="text-sm">
+              <span className="font-medium">Email the login details</span>
+              <span className="mt-0.5 block text-xs text-[var(--text-muted)]">
+                Sends their email address, temporary password and sign-in link
               </span>
             </span>
           </label>

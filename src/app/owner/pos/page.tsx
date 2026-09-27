@@ -14,7 +14,6 @@ import {
   CreditCard,
   QrCode,
   CheckCircle2,
-  Mail,
   Ticket,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +26,8 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { PosSubnav } from "@/components/domain/pos-subnav";
 import { useAppStore } from "@/lib/store/app-store";
+import { ReceiptEmailControl } from "@/components/domain/receipt-email";
+import { sendReceiptEmail } from "@/lib/email/receipt-client";
 import { computeCharges } from "@/lib/pos-pricing";
 import type { PaymentMethod } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
@@ -238,6 +239,9 @@ export default function OwnerPosPage() {
       toast.success("Payment complete!", {
         description: `Receipt ${sale.receiptNo}`,
       });
+      if (sale.customerEmail) {
+        void sendReceiptEmail(sale, sale.customerEmail, { auto: true });
+      }
     }, 800);
   }
 
@@ -247,18 +251,6 @@ export default function OwnerPosPage() {
       setPaid(false);
       setMethod(null);
     }
-  }
-
-  function handleEmailReceipt() {
-    if (!lastReceipt?.customerEmail) {
-      toast.error("No email on file", {
-        description: "This customer didn't provide one",
-      });
-      return;
-    }
-    toast.success("Receipt emailed", {
-      description: `Sent to ${lastReceipt.customerEmail}`,
-    });
   }
 
   return (
@@ -729,10 +721,9 @@ export default function OwnerPosPage() {
                 </div>
               )}
               <div className="flex gap-2">
-                <Button variant="secondary" className="flex-1" onClick={handleEmailReceipt}>
-                  <Mail className="h-4 w-4" />
-                  Email
-                </Button>
+                {lastReceipt && (
+                  <ReceiptEmailControl sale={lastReceipt} className="flex-1" label="Email" />
+                )}
                 <Button className="flex-1" onClick={handleClosePayment}>
                   Done
                 </Button>

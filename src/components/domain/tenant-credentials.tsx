@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Copy, Eye, EyeOff, KeyRound, Mail, MessageSquareText } from "lucide-react";
+import { CheckCircle2, Copy, Eye, EyeOff, KeyRound, Mail, MessageSquareText, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useConfirm } from "@/hooks/use-confirm";
+import { sendTenantWelcomeEmail } from "@/lib/email/tenant-client";
 import { isPrivateOrigin, siteOrigin } from "@/lib/public-origin";
 import { welcomeMessage } from "@/lib/tenant-onboarding";
 import type { Tenant } from "@/lib/types";
@@ -67,6 +69,32 @@ export function TenantCredentials({
 }) {
   const account = tenant.ownerAccount;
   const [reveal, setReveal] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [emailedAt, setEmailedAt] = useState<string | null>(null);
+  const confirm = useConfirm();
+
+  async function emailOwner() {
+    setSending(true);
+    const ok = await sendTenantWelcomeEmail(tenant);
+    setSending(false);
+    if (ok) {
+      setEmailedAt(new Date().toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit" }));
+    }
+  }
+
+  function askEmailOwner() {
+    if (tenant.ownerAccount?.provisioned) {
+      void emailOwner();
+      return;
+    }
+    confirm.ask({
+      title: "Email a login that isn't live yet?",
+      description:
+        "The owner can't sign in with it until tenant provisioning is switched on. Send it only if that's what you want.",
+      confirmLabel: "Send anyway",
+      run: () => void emailOwner(),
+    });
+  }
 
   if (!account) {
     return (
@@ -152,18 +180,28 @@ export function TenantCredentials({
             <MessageSquareText className="h-4 w-4" />
             Copy welcome message
           </Button>
-          <Button size="sm" variant="secondary" asChild>
+          <Button size="sm" variant="secondary" onClick={askEmailOwner} disabled={sending}>
+            <Send className="h-4 w-4" />
+            {sending ? "Sending…" : "Email to owner"}
+          </Button>
+          <Button size="sm" variant="ghost" asChild>
             <a
               href={`mailto:${account.loginEmail}?subject=${encodeURIComponent(
                 `Your BarberFlow account for ${tenant.name}`,
               )}&body=${encodeURIComponent(message)}`}
             >
               <Mail className="h-4 w-4" />
-              Write email
+              Draft in my mail app
             </a>
           </Button>
         </div>
       )}
+      {emailedAt && (
+        <p className="text-xs text-[var(--success)]">
+          Emailed to {account.loginEmail} at {emailedAt}
+        </p>
+      )}
+      {confirm.node}
 
       {!account.provisioned && (
         <p className="flex items-start gap-2 rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2 text-xs text-[var(--text-muted)]">

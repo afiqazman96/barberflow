@@ -8,7 +8,6 @@ import {
   Banknote,
   CreditCard,
   QrCode,
-  Mail,
   CheckCircle2,
   ShoppingCart,
   ArrowLeft,
@@ -23,6 +22,8 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
 import { computeCharges } from "@/lib/pos-pricing";
+import { ReceiptEmailControl } from "@/components/domain/receipt-email";
+import { sendReceiptEmail } from "@/lib/email/receipt-client";
 import type { PaymentMethod } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -125,19 +126,11 @@ export default function CashierPaymentPage() {
       toast.success("Payment complete!", {
         description: `Receipt ${sale.receiptNo}`,
       });
+      // The receipt goes to the address the customer gave when they joined.
+      if (sale.customerEmail) {
+        void sendReceiptEmail(sale, sale.customerEmail, { auto: true });
+      }
     }, 800);
-  }
-
-  function handleEmailReceipt() {
-    if (!lastReceipt?.customerEmail) {
-      toast.error("No email on file", {
-        description: "This customer didn't provide one",
-      });
-      return;
-    }
-    toast.success("Receipt emailed", {
-      description: `Sent to ${lastReceipt.customerEmail}`,
-    });
   }
 
   function handleNewSale() {
@@ -560,14 +553,9 @@ export default function CashierPaymentPage() {
                 )}
 
                 <div className="flex flex-col gap-3 sm:flex-row">
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={handleEmailReceipt}
-                  >
-                    <Mail className="h-4 w-4" />
-                    Email Receipt
-                  </Button>
+                  {lastReceipt && (
+                    <ReceiptEmailControl sale={lastReceipt} className="flex-1" label="Email Receipt" />
+                  )}
                   <Button className="flex-1" size="lg" onClick={handleNewSale}>
                     <ShoppingCart className="h-4 w-4" />
                     New Sale

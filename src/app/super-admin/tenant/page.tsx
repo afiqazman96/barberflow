@@ -13,7 +13,8 @@ import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TenantCredentials } from "@/components/domain/tenant-credentials";
 import { usePlatformStore } from "@/lib/store/platform-store";
-import { ownerEmailProblem } from "@/lib/tenant-onboarding";
+import { sendTenantWelcomeEmail } from "@/lib/email/tenant-client";
+import { OWNER_LOGINS_ARE_LIVE, ownerEmailProblem } from "@/lib/tenant-onboarding";
 import type { Tenant } from "@/lib/types";
 import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
 import { toast } from "sonner";
@@ -48,6 +49,8 @@ const emptyAddForm = {
   startAs: "trial" as "trial" | "active",
   branches: 1,
   staff: 1,
+  // Only on by default once the login it emails actually works.
+  emailOwner: OWNER_LOGINS_ARE_LIVE,
 };
 
 export default function SuperAdminTenantPage() {
@@ -182,6 +185,7 @@ export default function SuperAdminTenantPage() {
     setAddOpen(false);
     setAddForm(emptyAddForm);
     setCredentialsFor({ id: tenant.id, fresh: true });
+    if (addForm.emailOwner) void sendTenantWelcomeEmail(tenant);
   }
 
   function handleResetPassword(tenant: Tenant) {
@@ -614,6 +618,22 @@ export default function SuperAdminTenantPage() {
               </p>
             ) : null;
           })()}
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 px-3 py-3">
+            <input
+              type="checkbox"
+              checked={addForm.emailOwner}
+              onChange={(e) => setAddForm({ ...addForm, emailOwner: e.target.checked })}
+              className="mt-0.5 h-4 w-4 rounded border-[var(--border)] accent-[var(--gold)]"
+            />
+            <span className="text-sm">
+              <span className="font-medium">Email the login to the owner</span>
+              <span className="mt-0.5 block text-xs text-[var(--text-muted)]">
+                {OWNER_LOGINS_ARE_LIVE
+                  ? "Sends their sign-in link, email and temporary password"
+                  : "Off for now: the owner login isn't live yet, so an emailed password wouldn't work"}
+              </span>
+            </span>
+          </label>
           <Button className="w-full" onClick={handleAddTenant}>
             Onboard Tenant
           </Button>

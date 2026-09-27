@@ -12,6 +12,13 @@ import { todayIso } from "@/lib/utils";
  * returns the same shape — the screens above it do not change.
  */
 
+/**
+ * Flip to true once tenant provisioning exists on the server and
+ * `issueOwnerAccount` really creates the login. Until then credentials are demo
+ * only, so nothing emails them out by default.
+ */
+export const OWNER_LOGINS_ARE_LIVE = false;
+
 // No 0/O, 1/l/I: the password gets read out or retyped from a chat message.
 const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
@@ -32,7 +39,7 @@ export function issueOwnerAccount(email: string): OwnerAccount {
     mustChangePassword: true,
     status: "awaiting-first-login",
     issuedAt: new Date().toISOString(),
-    provisioned: false,
+    provisioned: OWNER_LOGINS_ARE_LIVE,
   };
 }
 

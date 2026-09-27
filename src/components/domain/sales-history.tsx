@@ -1,8 +1,9 @@
 "use client";
 
+import { ReceiptEmailControl } from "@/components/domain/receipt-email";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Receipt as ReceiptIcon, Mail, Ban } from "lucide-react";
+import { Search, Receipt as ReceiptIcon, Ban } from "lucide-react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useSession } from "@/components/auth/session-provider";
 import { useAppStore } from "@/lib/store/app-store";
-import type { PaymentMethod, Sale } from "@/lib/types";
+import type { PaymentMethod } from "@/lib/types";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
 const METHOD_FILTERS: { id: "all" | PaymentMethod; label: string }[] = [
@@ -78,18 +79,6 @@ export function SalesHistory() {
   const totalShown = filtered
     .filter((s) => !s.voided)
     .reduce((sum, s) => sum + s.total, 0);
-
-  function handleEmailReceipt(sale: Sale) {
-    if (!sale.customerEmail) {
-      toast.error("No email on file", {
-        description: `${sale.receiptNo} — this customer didn't provide one`,
-      });
-      return;
-    }
-    toast.success("Receipt emailed", {
-      description: `${sale.receiptNo} → ${sale.customerEmail}`,
-    });
-  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-4 md:p-6">
@@ -322,14 +311,7 @@ export function SalesHistory() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  onClick={() => handleEmailReceipt(selected)}
-                >
-                  <Mail className="h-4 w-4" />
-                  Email receipt
-                </Button>
+                <ReceiptEmailControl sale={selected} className="flex-1" />
                 {isOwner && !selected.voided && (
                   <Button
                     variant="danger"

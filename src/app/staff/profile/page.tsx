@@ -6,12 +6,16 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   Armchair,
+  DollarSign,
   KeyRound,
   Mail,
   Phone,
   Star,
   Scissors,
   Award,
+  Target,
+  Users,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,6 +24,7 @@ import { Input, Label } from "@/components/ui/input";
 import { StatusBadge } from "@/components/ui/badge";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { RecentShifts, WeekSchedule } from "@/components/domain/shift-cards";
+import { StatTile } from "@/components/domain/stat-tile";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { useAppStore } from "@/lib/store/app-store";
 import { changePassword } from "@/lib/auth/actions";
@@ -196,38 +201,30 @@ function StaffProfileContent() {
           </CardTitle>
         </CardHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-[var(--bg-muted)] p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-              Monthly Sales
-            </p>
-            <p className="mt-1 font-display text-lg font-bold text-[var(--gold-soft)]">
-              {formatCurrency(staff.monthlySales)}
-            </p>
-          </div>
-          <div className="rounded-xl bg-[var(--bg-muted)] p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-              Commission
-            </p>
-            <p className="mt-1 font-display text-lg font-bold">
-              {formatCurrency(staff.monthlyCommission)}
-            </p>
-          </div>
-          <div className="rounded-xl bg-[var(--bg-muted)] p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-              Today
-            </p>
-            <p className="mt-1 font-display text-lg font-bold">
-              {staff.todayCustomers} clients
-            </p>
-          </div>
-          <div className="rounded-xl bg-[var(--bg-muted)] p-3 text-center">
-            <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-              Target
-            </p>
-            <p className="mt-1 font-display text-lg font-bold">
-              {formatCurrency(staff.monthlyTarget)}
-            </p>
-          </div>
+          <StatTile
+            icon={DollarSign}
+            chip="mint"
+            value={formatCurrency(staff.monthlySales)}
+            label="Monthly sales"
+          />
+          <StatTile
+            icon={Wallet}
+            chip="amber"
+            value={formatCurrency(staff.monthlyCommission)}
+            label="Monthly commission"
+          />
+          <StatTile
+            icon={Users}
+            chip="sky"
+            value={String(staff.todayCustomers)}
+            label="Clients today"
+          />
+          <StatTile
+            icon={Target}
+            chip="coral"
+            value={formatCurrency(staff.monthlyTarget)}
+            label="Monthly target"
+          />
         </div>
       </Card>
 

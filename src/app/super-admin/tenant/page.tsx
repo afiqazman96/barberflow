@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, Label, Select } from "@/components/ui/input";
+import { PillTabs } from "@/components/ui/pill-tabs";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TenantCredentials } from "@/components/domain/tenant-credentials";
@@ -39,6 +40,13 @@ function trialUrgency(
   if (days <= 3) return { label: `${days}d left`, variant: "warning" };
   return null;
 }
+
+/** Left-edge accent colour per tenant status — read at a glance down the table. */
+const ROW_ACCENT: Record<string, string> = {
+  active: "var(--success)",
+  trial: "var(--info)",
+  suspended: "var(--danger)",
+};
 
 const emptyAddForm = {
   businessName: "",
@@ -94,20 +102,34 @@ export default function SuperAdminTenantPage() {
     [tenants],
   );
 
-  const filtered = useMemo(() => {
+  const liveTenants = useMemo(() => tenants.filter((t) => !t.archived), [tenants]);
+  const activeTenantCount = liveTenants.filter((t) => t.status === "active").length;
+  const trialTenantCount = liveTenants.filter((t) => t.status === "trial").length;
+  const suspendedTenantCount = liveTenants.filter((t) => t.status === "suspended").length;
+
+  // Search + archived visibility first, so status-tab counts reflect what
+  // search/archive already narrowed down — same logic as `filtered` below,
+  // just split so each status pill can show its own count.
+  const searched = useMemo(() => {
     return tenants.filter((t) => {
       if (!showArchived && t.archived) return false;
       const q = search.toLowerCase();
-      const matchesSearch =
+      return (
         t.name.toLowerCase().includes(q) ||
         t.slug.toLowerCase().includes(q) ||
         t.ownerEmail.toLowerCase().includes(q) ||
-        t.ownerName.toLowerCase().includes(q);
-      const matchesStatus =
-        statusFilter === "all" || t.status === statusFilter;
-      return matchesSearch && matchesStatus;
+        t.ownerName.toLowerCase().includes(q)
+      );
     });
-  }, [tenants, search, statusFilter, showArchived]);
+  }, [tenants, search, showArchived]);
+
+  const filtered = useMemo(
+    () =>
+      statusFilter === "all"
+        ? searched
+        : searched.filter((t) => t.status === statusFilter),
+    [searched, statusFilter],
+  );
 
   function openTenant(tenant: Tenant) {
     setSelected(tenant);
@@ -308,36 +330,63 @@ export default function SuperAdminTenantPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Total", value: liveTenants.length },
+              { label: "Active", value: activeTenantCount },
+              { label: "Trial", value: trialTenantCount },
+              { label: "Suspended", value: suspendedTenantCount },
+            ].map((tile) => (
+              <div
+                key={tile.label}
+                className="card-surface flex flex-col items-center gap-0.5 py-4 text-center"
+              >
+                <p className="font-display text-2xl font-bold">{tile.value}</p>
+                <p className="text-xs text-[var(--text-faint)]">{tile.label}</p>
+              </div>
+            ))}
+          </div>
+
           <Card>
             <CardHeader>
-              <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-[var(--gold)]" />
-                  All Tenants
-                </CardTitle>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="relative">
+              <div className="flex w-full flex-col gap-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-[var(--gold)]" />
+                    All Tenants
+                  </CardTitle>
+                  <div className="relative sm:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
                     <Input
                       placeholder="Search tenants..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="pl-9 sm:w-56"
+                      className="pl-9"
                     />
                   </div>
-                  <Select
-                    value={statusFilter}
-                    onChange={(e) =>
-                      setStatusFilter(e.target.value as StatusFilter)
-                    }
-                    className="sm:w-40"
-                  >
-                    <option value="all">All statuses</option>
-                    <option value="active">Active</option>
-                    <option value="trial">Trial</option>
-                    <option value="suspended">Suspended</option>
-                  </Select>
                 </div>
+                <PillTabs
+                  tabs={[
+                    { value: "all", label: "All statuses", count: searched.length },
+                    {
+                      value: "active",
+                      label: "Active",
+                      count: searched.filter((t) => t.status === "active").length,
+                    },
+                    {
+                      value: "trial",
+                      label: "Trial",
+                      count: searched.filter((t) => t.status === "trial").length,
+                    },
+                    {
+                      value: "suspended",
+                      label: "Suspended",
+                      count: searched.filter((t) => t.status === "suspended").length,
+                    },
+                  ]}
+                  value={statusFilter}
+                  onChange={(v) => setStatusFilter(v as StatusFilter)}
+                />
               </div>
             </CardHeader>
 
@@ -345,7 +394,7 @@ export default function SuperAdminTenantPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-left text-xs uppercase tracking-wider text-[var(--text-faint)]">
-                    <th className="pb-3 pr-4 font-medium">Tenant</th>
+                    <th className="pb-3 pl-3 pr-4 font-medium">Tenant</th>
                     <th className="pb-3 pr-4 font-medium">Owner</th>
                     <th className="pb-3 pr-4 font-medium">Package</th>
                     <th className="pb-3 pr-4 font-medium">Status</th>
@@ -362,8 +411,13 @@ export default function SuperAdminTenantPage() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.03 }}
                       className="border-b border-[var(--border)]/50 last:border-0 hover:bg-[var(--bg-muted)]/30"
+                      style={{
+                        boxShadow: `inset 3px 0 0 ${
+                          tenant.archived ? "var(--text-faint)" : (ROW_ACCENT[tenant.status] ?? "transparent")
+                        }`,
+                      }}
                     >
-                      <td className="py-3.5 pr-4">
+                      <td className="py-3.5 pl-3 pr-4">
                         <div>
                           <p className="font-medium">{tenant.name}</p>
                           <p className="text-xs text-[var(--text-faint)]">

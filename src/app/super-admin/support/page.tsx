@@ -9,13 +9,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Input, Label, Select } from "@/components/ui/input";
+import { PillTabs } from "@/components/ui/pill-tabs";
 import { Modal } from "@/components/ui/modal";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import type { SupportTicket } from "@/lib/types";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 type StatusFilter = "all" | SupportTicket["status"];
+
+/** Left-edge accent colour per ticket status — mirrors the appointment list. */
+const BORDER_BY_STATUS: Record<string, string> = {
+  open: "border-l-[var(--info)]",
+  "in-progress": "border-l-[var(--warning)]",
+  resolved: "border-l-[var(--success)]",
+};
 
 const emptyTicketForm = {
   tenantId: "",
@@ -35,18 +43,31 @@ export default function SuperAdminSupportPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [ticketForm, setTicketForm] = useState(emptyTicketForm);
 
-  const filtered = useMemo(() => {
+  // Search first, so status-tab counts reflect what the search already
+  // narrowed down — same logic as `filtered` below, just split so each
+  // status pill can show its own count.
+  const searched = useMemo(() => {
     return supportTickets.filter((t) => {
       const q = search.toLowerCase();
-      const matchesSearch =
+      return (
         t.subject.toLowerCase().includes(q) ||
         t.tenantName.toLowerCase().includes(q) ||
-        t.id.toLowerCase().includes(q);
-      const matchesStatus =
-        statusFilter === "all" || t.status === statusFilter;
-      return matchesSearch && matchesStatus;
+        t.id.toLowerCase().includes(q)
+      );
     });
-  }, [supportTickets, search, statusFilter]);
+  }, [supportTickets, search]);
+
+  const filtered = useMemo(
+    () =>
+      statusFilter === "all"
+        ? searched
+        : searched.filter((t) => t.status === statusFilter),
+    [searched, statusFilter],
+  );
+
+  const openCount = supportTickets.filter((t) => t.status === "open").length;
+  const inProgressCount = supportTickets.filter((t) => t.status === "in-progress").length;
+  const resolvedCount = supportTickets.filter((t) => t.status === "resolved").length;
 
   function handleCreateTicket() {
     if (!ticketForm.tenantId || !ticketForm.subject.trim()) {
@@ -89,36 +110,62 @@ export default function SuperAdminSupportPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Open", value: openCount },
+              { label: "In Progress", value: inProgressCount },
+              { label: "Resolved", value: resolvedCount },
+            ].map((tile) => (
+              <div
+                key={tile.label}
+                className="card-surface flex flex-col items-center gap-0.5 py-4 text-center"
+              >
+                <p className="font-display text-2xl font-bold">{tile.value}</p>
+                <p className="text-xs text-[var(--text-faint)]">{tile.label}</p>
+              </div>
+            ))}
+          </div>
+
           <Card>
             <CardHeader>
-              <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <HeadphonesIcon className="h-5 w-5 text-[var(--gold)]" />
-                  Support Tickets
-                </CardTitle>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="relative">
+              <div className="flex w-full flex-col gap-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <HeadphonesIcon className="h-5 w-5 text-[var(--gold)]" />
+                    Support Tickets
+                  </CardTitle>
+                  <div className="relative sm:w-64">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
                     <Input
                       placeholder="Search tickets..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      className="pl-9 sm:w-52"
+                      className="pl-9"
                     />
                   </div>
-                  <Select
-                    value={statusFilter}
-                    onChange={(e) =>
-                      setStatusFilter(e.target.value as StatusFilter)
-                    }
-                    className="sm:w-36"
-                  >
-                    <option value="all">All status</option>
-                    <option value="open">Open</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="resolved">Resolved</option>
-                  </Select>
                 </div>
+                <PillTabs
+                  tabs={[
+                    { value: "all", label: "All status", count: searched.length },
+                    {
+                      value: "open",
+                      label: "Open",
+                      count: searched.filter((t) => t.status === "open").length,
+                    },
+                    {
+                      value: "in-progress",
+                      label: "In Progress",
+                      count: searched.filter((t) => t.status === "in-progress").length,
+                    },
+                    {
+                      value: "resolved",
+                      label: "Resolved",
+                      count: searched.filter((t) => t.status === "resolved").length,
+                    },
+                  ]}
+                  value={statusFilter}
+                  onChange={(v) => setStatusFilter(v as StatusFilter)}
+                />
               </div>
             </CardHeader>
 
@@ -129,7 +176,10 @@ export default function SuperAdminSupportPage() {
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.04 }}
-                  className="flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/30 p-4 sm:flex-row sm:items-center sm:justify-between"
+                  className={cn(
+                    "flex flex-col gap-3 rounded-xl border border-l-4 border-[var(--border)] bg-[var(--bg-muted)]/30 p-4 sm:flex-row sm:items-center sm:justify-between",
+                    BORDER_BY_STATUS[ticket.status] ?? "border-l-[var(--border)]",
+                  )}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

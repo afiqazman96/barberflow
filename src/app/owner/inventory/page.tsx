@@ -9,6 +9,8 @@ import {
   Minus,
   Search,
   Boxes,
+  Layers,
+  Coins,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -19,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ImageUpload } from "@/components/ui/image-upload";
+import { StatTile } from "@/components/domain/stat-tile";
 import { useAppStore } from "@/lib/store/app-store";
 import { formatCurrency } from "@/lib/utils";
 
@@ -127,27 +130,35 @@ export default function OwnerInventoryPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">SKUs</p>
-              <p className="font-display text-2xl font-semibold">{products.length}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Total Units</p>
-              <p className="font-display text-2xl font-semibold">{totalUnits}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Retail Value</p>
-              <p className="font-display text-2xl font-semibold text-[var(--gold-soft)]">
-                {formatCurrency(totalValue)}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Low Stock Alerts</p>
-              <p className="font-display text-2xl font-semibold text-[var(--warning)]">
-                {lowStock.length}
-              </p>
-            </Card>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
+              icon={Package}
+              chip="mint"
+              value={String(products.length)}
+              label="SKUs"
+              delay={0}
+            />
+            <StatTile
+              icon={Layers}
+              chip="sky"
+              value={String(totalUnits)}
+              label="Total units"
+              delay={0.05}
+            />
+            <StatTile
+              icon={Coins}
+              chip="amber"
+              value={formatCurrency(totalValue)}
+              label="Retail value"
+              delay={0.1}
+            />
+            <StatTile
+              icon={AlertTriangle}
+              chip="coral"
+              value={String(lowStock.length)}
+              label="Low stock alerts"
+              delay={0.15}
+            />
           </div>
 
           {lowStock.length > 0 && (

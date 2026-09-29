@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { History, Receipt, Scissors } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
+import { StatTile } from "@/components/domain/stat-tile";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 
@@ -113,22 +114,18 @@ export default function StaffHistoryPage() {
       </motion.header>
 
       <div className="grid grid-cols-2 gap-3">
-        <Card className="p-4 text-center">
-          <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-            Completed
-          </p>
-          <p className="mt-1 font-display text-2xl font-bold text-[var(--gold-soft)]">
-            {historyTickets.filter((t) => t.status === "completed").length}
-          </p>
-        </Card>
-        <Card className="p-4 text-center">
-          <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-            Sales
-          </p>
-          <p className="mt-1 font-display text-2xl font-bold">
-            {staffSales.length}
-          </p>
-        </Card>
+        <StatTile
+          icon={Scissors}
+          chip="mint"
+          value={String(historyTickets.filter((t) => t.status === "completed").length)}
+          label="Completed services"
+        />
+        <StatTile
+          icon={Receipt}
+          chip="amber"
+          value={String(staffSales.length)}
+          label="Sales recorded"
+        />
       </div>
 
       <Card>

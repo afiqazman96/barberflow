@@ -2,16 +2,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const badgeVariants = cva(
-  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium tracking-wide",
+  "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium tracking-wide",
   {
     variants: {
       variant: {
-        default: "bg-[var(--bg-muted)] text-[var(--text-muted)] border border-[var(--border)]",
-        gold: "bg-[var(--gold)]/15 text-[var(--gold-soft)] border border-[var(--gold)]/25",
-        success: "bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/25",
-        warning: "bg-[var(--warning)]/15 text-[var(--warning)] border border-[var(--warning)]/25",
-        danger: "bg-[var(--danger)]/15 text-[var(--danger)] border border-[var(--danger)]/25",
-        info: "bg-[var(--info)]/15 text-[var(--info)] border border-[var(--info)]/25",
+        default: "bg-[var(--bg-muted)] text-[var(--text-muted)]",
+        gold: "bg-[var(--gold)]/15 text-[var(--gold-soft)]",
+        success: "bg-[var(--success)]/12 text-[var(--success)]",
+        warning: "bg-[var(--warning)]/12 text-[var(--warning)]",
+        danger: "bg-[var(--danger)]/12 text-[var(--danger)]",
+        info: "bg-[var(--info)]/12 text-[var(--info)]",
       },
     },
     defaultVariants: { variant: "default" },

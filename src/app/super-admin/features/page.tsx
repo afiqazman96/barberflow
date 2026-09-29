@@ -7,10 +7,13 @@ import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatTile } from "@/components/domain/stat-tile";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import { FEATURE_KEYS } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+const CHIP_ROTATION = ["mint", "amber", "sky", "coral"] as const;
 
 function planVariant(name: string): "gold" | "info" | "default" {
   if (name === "Enterprise") return "gold";
@@ -84,26 +87,16 @@ export default function SuperAdminFeaturesPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
             {enabledCounts.map((item, i) => (
-              <motion.div
+              <StatTile
                 key={item.pkg.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.05 }}
-              >
-                <Card>
-                  <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-faint)]">
-                    {item.pkg.name}
-                  </p>
-                  <p className="mt-1 font-display text-2xl font-semibold">
-                    {item.count}/{FEATURE_KEYS.length}
-                  </p>
-                  <Badge variant={planVariant(item.pkg.name)} className="mt-2">
-                    features enabled
-                  </Badge>
-                </Card>
-              </motion.div>
+                icon={ToggleLeft}
+                chip={CHIP_ROTATION[i % CHIP_ROTATION.length]}
+                value={`${item.count}/${FEATURE_KEYS.length}`}
+                label={`${item.pkg.name} · features enabled`}
+                delay={i * 0.05}
+              />
             ))}
           </div>
 

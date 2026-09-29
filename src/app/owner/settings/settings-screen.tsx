@@ -601,7 +601,7 @@ export function OwnerSettingsScreen({
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-medium transition ${
                     active
                       ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
                       : "text-[var(--text-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--text)]"
@@ -1072,7 +1072,11 @@ export function OwnerSettingsScreen({
                           return (
                             <div
                               key={chair.id}
-                              className="rounded-xl bg-[var(--bg-muted)] px-4 py-3"
+                              className={`rounded-2xl border-l-4 bg-[var(--bg-muted)] px-4 py-3 ${
+                                assigned
+                                  ? "border-l-[var(--success)]"
+                                  : "border-l-[var(--border)]"
+                              }`}
                             >
                               <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
@@ -1273,7 +1277,16 @@ export function OwnerSettingsScreen({
                         </Card>
                       )}
                       {membershipPlans.map((plan) => (
-                        <Card key={plan.id} className="p-4">
+                        <Card
+                          key={plan.id}
+                          className={`border-l-4 p-4 ${
+                            plan.tier === "platinum"
+                              ? "border-l-[var(--info)]"
+                              : plan.tier === "gold"
+                                ? "border-l-[var(--gold)]"
+                                : "border-l-[var(--text-faint)]"
+                          }`}
+                        >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">

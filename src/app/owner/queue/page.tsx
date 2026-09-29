@@ -13,6 +13,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
+import { PillTabs } from "@/components/ui/pill-tabs";
 import { useAppStore } from "@/lib/store/app-store";
 import { findCustomerByPhone } from "@/lib/mock/data";
 import type { QueueStatus, QueueTicket } from "@/lib/types";
@@ -75,6 +76,7 @@ function OwnerQueueContent() {
   );
   const branchChairs = chairs.filter((c) => c.branchId === branchId);
   const branchQueue = queue.filter((q) => q.branchId === branchId);
+  const waitingCount = branchQueue.filter((q) => q.status === "waiting").length;
 
   const filtered = useMemo(
     () =>
@@ -147,19 +149,23 @@ function OwnerQueueContent() {
       <Topbar
         title="Queue Monitor"
         actions={
-          <div className="flex items-center gap-2">
-            <span className="hidden text-xs text-[var(--text-faint)] sm:inline">
-              {branchQueue.filter((q) => q.status === "waiting").length} waiting
-            </span>
-            <Button size="sm" onClick={() => setRegisterOpen(true)}>
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Walk-in</span>
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            className="rounded-full bg-[var(--text)] text-[var(--bg)] hover:bg-[var(--text)]/90"
+            onClick={() => setRegisterOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Walk-in</span>
+          </Button>
         }
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+          <p className="text-sm text-[var(--text-muted)]">
+            {branchChairs.length} chair{branchChairs.length === 1 ? "" : "s"} ·{" "}
+            {waitingCount} waiting
+          </p>
+
           <div>
             <div className="mb-4 flex items-center gap-2">
               <Armchair className="h-5 w-5 text-[var(--gold)]" />
@@ -235,25 +241,16 @@ function OwnerQueueContent() {
 
           <div>
             <div className="mb-4 flex flex-wrap items-center gap-2">
-              <Filter className="h-4 w-4 text-[var(--text-faint)]" />
-              {STATUS_FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  onClick={() => setFilter(f.value)}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
-                    filter === f.value
-                      ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                      : "bg-[var(--bg-muted)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                  }`}
-                >
-                  {f.label}
-                  {f.value !== "all" && (
-                    <span className="ml-1 opacity-60">
-                      ({branchQueue.filter((q) => q.status === f.value).length})
-                    </span>
-                  )}
-                </button>
-              ))}
+              <Filter className="hidden h-4 w-4 shrink-0 text-[var(--text-faint)] sm:block" />
+              <PillTabs
+                tabs={STATUS_FILTERS.map((f) => ({
+                  value: f.value,
+                  label: f.label,
+                  count: f.value === "all" ? undefined : branchQueue.filter((q) => q.status === f.value).length,
+                }))}
+                value={filter}
+                onChange={(v) => setFilter(v as QueueStatus | "all")}
+              />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

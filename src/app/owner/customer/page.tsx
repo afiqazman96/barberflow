@@ -14,6 +14,10 @@ import {
   UserPlus,
   Pencil,
   StickyNote,
+  Users,
+  Star,
+  Crown,
+  DollarSign,
 } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
@@ -22,6 +26,8 @@ import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PillTabs } from "@/components/ui/pill-tabs";
+import { StatTile } from "@/components/domain/stat-tile";
 import { STAFF } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Customer } from "@/lib/types";
@@ -202,27 +208,35 @@ export default function OwnerCustomerPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Total Customers</p>
-              <p className="font-display text-2xl font-semibold">{stats.total}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Members</p>
-              <p className="font-display text-2xl font-semibold text-[var(--gold-soft)]">
-                {stats.members}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Platinum</p>
-              <p className="font-display text-2xl font-semibold">{stats.platinum}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Avg Lifetime Value</p>
-              <p className="font-display text-2xl font-semibold">
-                {formatCurrency(stats.avgSpend)}
-              </p>
-            </Card>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
+              icon={Users}
+              chip="mint"
+              value={String(stats.total)}
+              label="Total customers"
+              delay={0}
+            />
+            <StatTile
+              icon={Star}
+              chip="amber"
+              value={String(stats.members)}
+              label="Members"
+              delay={0.05}
+            />
+            <StatTile
+              icon={Crown}
+              chip="sky"
+              value={String(stats.platinum)}
+              label="Platinum"
+              delay={0.1}
+            />
+            <StatTile
+              icon={DollarSign}
+              chip="coral"
+              value={formatCurrency(stats.avgSpend)}
+              label="Avg lifetime value"
+              delay={0.15}
+            />
           </div>
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -255,28 +269,15 @@ export default function OwnerCustomerPage() {
               <option value="spent">Sort by Spend</option>
               <option value="name">Sort by Name</option>
             </select>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setView("table")}
-                className={`rounded-xl px-3 py-2 text-sm ${
-                  view === "table"
-                    ? "bg-[var(--gold)]/15 text-[var(--gold-soft)]"
-                    : "bg-[var(--bg-muted)] text-[var(--text-muted)]"
-                }`}
-              >
-                Table
-              </button>
-              <button
-                onClick={() => setView("cards")}
-                className={`rounded-xl px-3 py-2 text-sm ${
-                  view === "cards"
-                    ? "bg-[var(--gold)]/15 text-[var(--gold-soft)]"
-                    : "bg-[var(--bg-muted)] text-[var(--text-muted)]"
-                }`}
-              >
-                Cards
-              </button>
-            </div>
+            <PillTabs
+              tabs={[
+                { value: "table", label: "Table" },
+                { value: "cards", label: "Cards" },
+              ]}
+              value={view}
+              onChange={(v) => setView(v as "table" | "cards")}
+              className="overflow-visible pb-0"
+            />
           </div>
 
           {view === "table" ? (

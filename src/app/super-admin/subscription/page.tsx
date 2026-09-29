@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
-import { StatCard } from "@/components/domain/stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -28,6 +28,13 @@ function planVariant(plan: string): "gold" | "info" | "default" {
   if (plan === "Growth") return "info";
   return "default";
 }
+
+/** Left-edge accent colour per tenant status — read at a glance down the table. */
+const ROW_ACCENT: Record<string, string> = {
+  active: "var(--success)",
+  trial: "var(--info)",
+  suspended: "var(--danger)",
+};
 
 function trialUrgency(
   trialEndsAt?: string,
@@ -153,37 +160,33 @@ export default function SuperAdminSubscriptionPage() {
             </p>
           </Card>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label="Total MRR"
-              value={formatCurrency(mrr)}
-              change={`${activeCount} paying tenants`}
-              trend="up"
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
               icon={CreditCard}
+              chip="mint"
+              value={formatCurrency(mrr)}
+              label={`Total MRR · ${activeCount} paying`}
               delay={0}
             />
-            <StatCard
-              label="Active Subscriptions"
-              value={String(activeCount)}
-              change={`${trials} on trial`}
-              trend="neutral"
+            <StatTile
               icon={Users}
+              chip="amber"
+              value={String(activeCount)}
+              label={`Active subs · ${trials} on trial`}
               delay={0.05}
             />
-            <StatCard
-              label="Active Trials"
-              value={String(trials)}
-              change="Pre-conversion"
-              trend="neutral"
+            <StatTile
               icon={FlaskConical}
+              chip="sky"
+              value={String(trials)}
+              label="Active trials · pre-conversion"
               delay={0.1}
             />
-            <StatCard
-              label="Suspended"
-              value={String(suspendedCount)}
-              change="No MRR counted"
-              trend={suspendedCount > 0 ? "down" : "neutral"}
+            <StatTile
               icon={Ban}
+              chip="coral"
+              value={String(suspendedCount)}
+              label="Suspended · no MRR counted"
               delay={0.15}
             />
           </div>
@@ -245,7 +248,7 @@ export default function SuperAdminSubscriptionPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[var(--border)] text-left text-xs uppercase tracking-wider text-[var(--text-faint)]">
-                      <th className="pb-3 pr-4 font-medium">Tenant</th>
+                      <th className="pb-3 pl-3 pr-4 font-medium">Tenant</th>
                       <th className="pb-3 pr-4 font-medium">Plan</th>
                       <th className="pb-3 pr-4 font-medium">Billing</th>
                       <th className="pb-3 pr-4 font-medium">Status</th>
@@ -262,8 +265,11 @@ export default function SuperAdminSubscriptionPage() {
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.25 + i * 0.04 }}
                         className="border-b border-[var(--border)]/50 last:border-0"
+                        style={{
+                          boxShadow: `inset 3px 0 0 ${ROW_ACCENT[tenant.status] ?? "transparent"}`,
+                        }}
                       >
-                        <td className="py-3.5 pr-4 font-medium">
+                        <td className="py-3.5 pl-3 pr-4 font-medium">
                           {tenant.name}
                         </td>
                         <td className="py-3.5 pr-4">

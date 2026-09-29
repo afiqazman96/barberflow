@@ -130,7 +130,7 @@ export default function OwnerBillingPage() {
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="relative overflow-hidden rounded-2xl border border-[var(--gold)]/25 bg-gradient-to-br from-[var(--gold)]/10 via-[var(--bg-card)] to-[var(--bg-card)] p-6 md:p-8"
+            className="relative overflow-hidden rounded-3xl bg-[var(--hero-bg)] p-6 text-[var(--hero-text)] shadow-[var(--shadow)] md:p-8"
           >
             <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-[var(--gold)]/10 blur-3xl" />
             <div className="relative flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
@@ -153,23 +153,25 @@ export default function OwnerBillingPage() {
                   >
                     {tenant.status}
                   </Badge>
-                  <span className="text-sm capitalize text-[var(--text-muted)]">
+                  <span className="text-sm capitalize text-[var(--hero-text-muted)]">
                     {tenant.billing} billing
                   </span>
                 </div>
                 {isTrial && tenant.trialEndsAt && (
-                  <p className="mt-3 flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                  <p className="mt-3 flex items-center gap-2 text-sm text-[var(--hero-text-muted)]">
                     <FlaskConical className="h-4 w-4 text-[var(--gold)]" />
                     Trial ends {formatDate(tenant.trialEndsAt)}
                   </p>
                 )}
               </div>
-              <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/60 px-5 py-4 text-right">
-                <p className="text-xs text-[var(--text-faint)]">Monthly recurring</p>
-                <p className="font-display text-3xl font-bold text-[var(--gold-soft)]">
+              <div className="rounded-2xl bg-white/5 px-5 py-4 text-right">
+                <p className="text-xs uppercase tracking-wider text-[var(--hero-text-muted)]">
+                  Monthly recurring
+                </p>
+                <p className="font-display text-3xl font-bold text-[var(--gold)]">
                   {formatCurrency(tenant.mrr)}
                 </p>
-                <p className="mt-1 text-xs text-[var(--text-faint)]">
+                <p className="mt-1 text-xs text-[var(--hero-text-muted)]">
                   {isTrial ? "Charged after trial" : "Billed automatically"}
                 </p>
               </div>
@@ -180,7 +182,9 @@ export default function OwnerBillingPage() {
             <Card className="p-5">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-[var(--gold)]" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--chip-sky-bg)] text-[var(--chip-sky-fg)]">
+                    <Building2 className="h-4.5 w-4.5" />
+                  </div>
                   <CardTitle className="text-base">Branches</CardTitle>
                 </div>
                 <span className="text-sm font-medium">
@@ -201,7 +205,9 @@ export default function OwnerBillingPage() {
             <Card className="p-5">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-[var(--gold)]" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--chip-mint-bg)] text-[var(--chip-mint-fg)]">
+                    <Users className="h-4.5 w-4.5" />
+                  </div>
                   <CardTitle className="text-base">Staff seats</CardTitle>
                 </div>
                 <span className="text-sm font-medium">

@@ -23,6 +23,28 @@
   --shadow: 0 10px 36px rgba(28, 25, 23, 0.08);
   --shadow-soft: 0 2px 14px rgba(28, 25, 23, 0.06);
   --on-gold: #1c1917;
+
+  /* Pastel icon-chip pairs for stat tiles — one hue per metric family, kept
+     soft (15% tint) so a row of them reads as one set, not four accents. */
+  --chip-mint-bg: #e3f3ea;
+  --chip-mint-fg: #2f9e6c;
+  --chip-amber-bg: #faf0dd;
+  --chip-amber-fg: #c9862c;
+  --chip-sky-bg: #e6f0fa;
+  --chip-sky-fg: #3d7fbf;
+  --chip-coral-bg: #fbe9e6;
+  --chip-coral-fg: #d1654a;
+
+  /* Dark "hero" surface for the one card per screen that leads with a single
+     headline number (today's takings, etc). Never used for ordinary cards. */
+  --hero-bg: #17140f;
+  --hero-bg-elevated: #221d15;
+  --hero-text: #f7f3ea;
+  --hero-text-muted: rgba(247, 243, 234, 0.55);
+  --hero-bar: rgba(247, 243, 234, 0.12);
+  --hero-bar-active: var(--gold);
+
+  --radius-pill: 999px;
 }
 
 @theme inline {

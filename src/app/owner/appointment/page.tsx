@@ -4,7 +4,6 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
-  Calendar,
   CheckCircle,
   Search,
   XCircle,
@@ -22,10 +21,20 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { PillTabs } from "@/components/ui/pill-tabs";
 import { useAppStore } from "@/lib/store/app-store";
 import { isRosteredOn } from "@/lib/roster";
 import type { Booking } from "@/lib/types";
-import { formatDate, todayIso } from "@/lib/utils";
+import { cn, formatDate, todayIso } from "@/lib/utils";
+
+const BORDER_BY_STATUS: Record<string, string> = {
+  confirmed: "border-l-[var(--info)]",
+  "checked-in": "border-l-[var(--warning)]",
+  "in-service": "border-l-[var(--warning)]",
+  completed: "border-l-[var(--success)]",
+  "no-show": "border-l-[var(--danger)]",
+  cancelled: "border-l-[var(--danger)]",
+};
 
 const emptyNewBooking = () => ({
   customerName: "",
@@ -206,27 +215,20 @@ export default function OwnerAppointmentPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Card className="flex items-center gap-3 p-4">
-              <Calendar className="h-8 w-8 text-[var(--gold)]" />
-              <div>
-                <p className="text-xs text-[var(--text-faint)]">Today</p>
-                <p className="font-display text-xl font-semibold">{todayCount}</p>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Today", value: todayCount },
+              { label: "Confirmed", value: confirmedCount },
+              { label: "Total Bookings", value: bookings.length },
+            ].map((tile) => (
+              <div
+                key={tile.label}
+                className="card-surface flex flex-col items-center gap-0.5 py-4 text-center"
+              >
+                <p className="font-display text-2xl font-bold">{tile.value}</p>
+                <p className="text-xs text-[var(--text-faint)]">{tile.label}</p>
               </div>
-            </Card>
-            <Card className="flex items-center gap-3 p-4">
-              <CheckCircle className="h-8 w-8 text-[var(--success)]" />
-              <div>
-                <p className="text-xs text-[var(--text-faint)]">Confirmed</p>
-                <p className="font-display text-xl font-semibold">{confirmedCount}</p>
-              </div>
-            </Card>
-            <Card className="flex items-center gap-3 p-4">
-              <div>
-                <p className="text-xs text-[var(--text-faint)]">Total Bookings</p>
-                <p className="font-display text-xl font-semibold">{bookings.length}</p>
-              </div>
-            </Card>
+            ))}
           </div>
 
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -251,28 +253,15 @@ export default function OwnerAppointmentPage() {
               <option value="no-show">No Show</option>
               <option value="cancelled">Cancelled</option>
             </select>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode("list")}
-                className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                  viewMode === "list"
-                    ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                    : "bg-[var(--bg-muted)] text-[var(--text-muted)]"
-                }`}
-              >
-                All Dates
-              </button>
-              <button
-                onClick={() => setViewMode("calendar")}
-                className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                  viewMode === "calendar"
-                    ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                    : "bg-[var(--bg-muted)] text-[var(--text-muted)]"
-                }`}
-              >
-                By Day
-              </button>
-            </div>
+            <PillTabs
+              tabs={[
+                { value: "list", label: "All Dates" },
+                { value: "calendar", label: "By Day" },
+              ]}
+              value={viewMode}
+              onChange={(v) => setViewMode(v as "list" | "calendar")}
+              className="overflow-visible pb-0"
+            />
           </div>
 
           {viewMode === "calendar" && (
@@ -319,7 +308,7 @@ export default function OwnerAppointmentPage() {
               </div>
             ))
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {filtered.map((booking, i) => (
                 <motion.button
                   key={booking.id}
@@ -327,15 +316,19 @@ export default function OwnerAppointmentPage() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: i * 0.03 }}
                   onClick={() => setSelected(booking)}
-                  className="flex w-full items-center gap-4 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 px-4 py-3 text-left transition hover:border-[var(--gold)]/30 hover:bg-[var(--bg-muted)]"
+                  className={cn(
+                    "card-surface flex w-full items-center gap-3 border-l-4 p-3.5 text-left",
+                    BORDER_BY_STATUS[booking.status] ?? "border-l-[var(--border)]",
+                  )}
                 >
-                  <div className="w-16 shrink-0 text-center">
-                    <p className="font-display text-lg font-bold text-[var(--gold-soft)]">
-                      {booking.time}
+                  <div className="w-14 shrink-0 text-center">
+                    <p className="font-display text-sm font-bold">{booking.time}</p>
+                    <p className="text-[11px] text-[var(--text-faint)]">
+                      {booking.durationMins}m
                     </p>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{booking.customerName}</p>
+                  <div className="min-w-0 flex-1 border-l border-[var(--border-subtle)] pl-3">
+                    <p className="truncate text-sm font-semibold">{booking.customerName}</p>
                     <p className="truncate text-xs text-[var(--text-muted)]">
                       {booking.serviceNames.join(" · ")} · {booking.staffName}
                     </p>

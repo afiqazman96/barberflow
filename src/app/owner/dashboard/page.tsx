@@ -2,7 +2,6 @@
 
 import { motion } from "framer-motion";
 import {
-  DollarSign,
   Users,
   ListOrdered,
   CalendarDays,
@@ -11,7 +10,8 @@ import {
 } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
-import { StatCard } from "@/components/domain/stat-card";
+import { HeroStatCard } from "@/components/domain/hero-stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { StaffCard } from "@/components/domain/staff-card";
 import { SalesChart } from "@/components/domain/charts";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +43,9 @@ export default function OwnerDashboardPage() {
   const todaySales = todaySalesList.reduce((sum, s) => sum + s.total, 0);
   const waiting = queue.filter((q) => q.status === "waiting").length;
   const todayBookings = bookings.filter((b) => b.date === today).length;
+  const todayConfirmedBookings = bookings.filter(
+    (b) => b.date === today && b.status === "confirmed",
+  ).length;
   const avgWait =
     queue.filter((q) => q.status === "waiting").reduce((sum, q) => sum + q.estimatedWaitMins, 0) /
       Math.max(waiting, 1);
@@ -75,46 +78,45 @@ export default function OwnerDashboardPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard
-              label="Today's Sales"
-              value={formatCurrency(todaySales)}
-              change={`${todaySalesList.length} transactions`}
-              trend="up"
-              icon={DollarSign}
+          <HeroStatCard
+            label="Today's sales"
+            value={formatCurrency(todaySales)}
+            pill={`${todaySalesList.length} transaction${todaySalesList.length === 1 ? "" : "s"}`}
+            bars={trend.map((t, i) => ({
+              label: i === trend.length - 1 ? "Today" : t.day,
+              value: t.sales,
+            }))}
+          />
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
+              icon={Users}
+              chip="mint"
+              value={String(uniqueCustomers)}
+              label={`Customers · ${CUSTOMERS.length} in CRM`}
               delay={0}
             />
-            <StatCard
-              label="Customers"
-              value={String(uniqueCustomers)}
-              change={`${CUSTOMERS.length} in CRM`}
-              trend="up"
-              icon={Users}
+            <StatTile
+              icon={ListOrdered}
+              chip="amber"
+              value={String(waiting)}
+              label={`Queue · ${queue.filter((q) => q.status === "in-service").length} in service`}
               delay={0.05}
             />
-            <StatCard
-              label="Queue"
-              value={String(waiting)}
-              change={`${queue.filter((q) => q.status === "in-service").length} in service`}
-              trend={waiting > 5 ? "up" : "neutral"}
-              icon={ListOrdered}
+            <StatTile
+              icon={CalendarDays}
+              chip="sky"
+              value={String(todayBookings)}
+              label={`Bookings · ${todayConfirmedBookings} confirmed`}
               delay={0.1}
             />
-            <StatCard
-              label="Bookings"
-              value={String(todayBookings)}
-              change={`${bookings.filter((b) => b.status === "confirmed").length} confirmed`}
-              trend="neutral"
-              icon={CalendarDays}
-              delay={0.15}
-            />
-            <StatCard
-              label="Avg Wait"
-              value={`${Math.round(avgWait)} min`}
-              change={waiting > 0 ? "Live estimate" : "Queue clear"}
-              trend={avgWait > 20 ? "down" : "neutral"}
+            <StatTile
               icon={Clock}
-              delay={0.2}
+              chip="coral"
+              value={String(Math.round(avgWait))}
+              unit="min"
+              label={waiting > 0 ? "Avg wait · live estimate" : "Avg wait · queue clear"}
+              delay={0.15}
             />
           </div>
 

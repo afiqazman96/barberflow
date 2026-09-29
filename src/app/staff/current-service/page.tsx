@@ -21,10 +21,19 @@ import { SERVICES } from "@/lib/mock/data";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { formatCurrency, formatTime } from "@/lib/utils";
 
-function useElapsedTimer(startedAt?: string) {
+/**
+ * Clamped to the booked service length: seed tickets carry a fixed clock
+ * time, so a raw `Date.now() - startedAt` can run to hours on stale demo
+ * data. Same fix as the cashier/owner queue monitor's BarberQueueRow.
+ */
+function useElapsedTimer(startedAt?: string, capMins?: number) {
+  const capSecs = capMins ? capMins * 60 : Infinity;
   const [elapsed, setElapsed] = useState(() =>
     startedAt
-      ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000))
+      ? Math.min(
+          capSecs,
+          Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)),
+        )
       : 0,
   );
 
@@ -32,11 +41,11 @@ function useElapsedTimer(startedAt?: string) {
     if (!startedAt) return;
     const start = new Date(startedAt).getTime();
     const tick = () =>
-      setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
+      setElapsed(Math.min(capSecs, Math.max(0, Math.floor((Date.now() - start) / 1000))));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, [startedAt, capSecs]);
 
   const h = Math.floor(elapsed / 3600);
   const m = Math.floor((elapsed % 3600) / 60);
@@ -54,8 +63,6 @@ export default function CurrentServicePage() {
     updateQueueTicket,
   } = useStaffPortal();
 
-  const timer = useElapsedTimer(currentTicket?.startedAt);
-
   const services = useMemo(() => {
     if (!currentTicket) return [];
     return currentTicket.serviceIds
@@ -64,6 +71,7 @@ export default function CurrentServicePage() {
   }, [currentTicket]);
 
   const totalDuration = services.reduce((sum, s) => sum + (s?.durationMins ?? 0), 0);
+  const timer = useElapsedTimer(currentTicket?.startedAt, totalDuration || undefined);
   const totalPrice = services.reduce((sum, s) => sum + (s?.price ?? 0), 0);
 
   function handleComplete() {
@@ -138,7 +146,7 @@ export default function CurrentServicePage() {
         </div>
         <div className="flex flex-col items-end gap-2">
           <StatusBadge status="in-service" />
-          <span className="rounded-lg bg-[var(--gold)]/15 px-2.5 py-1 font-display text-lg font-bold text-[var(--gold-soft)]">
+          <span className="rounded-full bg-[var(--gold)]/15 px-3 py-1 font-display text-lg font-bold text-[var(--gold-soft)]">
             {currentTicket.number}
           </span>
         </div>
@@ -181,14 +189,17 @@ export default function CurrentServicePage() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.05 * i }}
             >
-              <Card className="flex items-center justify-between p-4">
-                <div>
-                  <p className="font-medium">{service!.name}</p>
+              <Card className="flex items-center gap-3 p-4">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--chip-mint-bg)] text-[var(--chip-mint-fg)]">
+                  <Scissors className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{service!.name}</p>
                   <p className="text-xs text-[var(--text-muted)]">
                     {service!.category} · {service!.durationMins} min
                   </p>
                 </div>
-                <div className="text-right">
+                <div className="shrink-0 text-right">
                   <p className="font-display font-semibold text-[var(--gold-soft)]">
                     {formatCurrency(service!.price)}
                   </p>

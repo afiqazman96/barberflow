@@ -72,6 +72,13 @@ export default function SuperAdminPackagesPage() {
   const addPackage = usePlatformStore((s) => s.addPackage);
   const updatePackage = usePlatformStore((s) => s.updatePackage);
 
+  const totalSubscribers = tenants.length;
+  const avgMonthlyPrice = packages.length
+    ? Math.round(
+        packages.reduce((sum, p) => sum + p.price, 0) / packages.length,
+      )
+    : 0;
+
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<PackageForm>(emptyForm);
@@ -133,6 +140,22 @@ export default function SuperAdminPackagesPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Packages", value: packages.length },
+              { label: "Subscribers", value: totalSubscribers },
+              { label: "Avg. price/mo", value: formatCurrency(avgMonthlyPrice) },
+            ].map((tile) => (
+              <div
+                key={tile.label}
+                className="card-surface flex flex-col items-center gap-0.5 py-4 text-center"
+              >
+                <p className="font-display text-2xl font-bold">{tile.value}</p>
+                <p className="text-xs text-[var(--text-faint)]">{tile.label}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {packages.map((pkg, i) => (
               <motion.div

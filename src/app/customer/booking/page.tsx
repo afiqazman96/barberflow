@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { StepIndicator } from "@/components/domain/step-indicator";
 import { TIME_SLOTS, findCustomerByPhone } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
 import { useNow } from "@/hooks/use-now";
@@ -284,17 +285,7 @@ function BookingWizard() {
         </p>
       </div>
 
-      <div className="flex gap-1">
-        {STEPS.map((_, i) => (
-          <div
-            key={i}
-            className={cn(
-              "h-1 flex-1 rounded-full transition",
-              i <= step ? "bg-[var(--gold)]" : "bg-[var(--bg-muted)]",
-            )}
-          />
-        ))}
-      </div>
+      <StepIndicator steps={STEPS} current={step} />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -376,7 +367,7 @@ function BookingWizard() {
                         setTime("");
                       }}
                       className={cn(
-                        "shrink-0 rounded-xl border px-3 py-2 text-center transition",
+                        "shrink-0 rounded-2xl border px-3 py-2 text-center transition",
                         date === d.iso
                           ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                           : "border-[var(--border)] hover:border-[var(--gold-dim)]",
@@ -402,7 +393,7 @@ function BookingWizard() {
                         disabled={taken}
                         onClick={() => setTime(slot)}
                         className={cn(
-                          "rounded-lg py-2 text-xs font-medium transition",
+                          "rounded-xl py-2 text-xs font-medium transition",
                           taken && "cursor-not-allowed opacity-30 line-through",
                           time === slot
                             ? "bg-[var(--gold)] text-[#0c0b09]"
@@ -426,7 +417,7 @@ function BookingWizard() {
                   type="button"
                   onClick={() => setServiceId(svc.id)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition",
+                    "flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition",
                     serviceId === svc.id
                       ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                       : "border-[var(--border)] hover:border-[var(--gold-dim)]",
@@ -457,7 +448,7 @@ function BookingWizard() {
                     setPreferredStaffId(null);
                   }}
                   className={cn(
-                    "rounded-xl border p-4 text-left transition",
+                    "rounded-2xl border p-4 text-left transition",
                     barberMode === "any"
                       ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                       : "border-[var(--border)]",
@@ -471,7 +462,7 @@ function BookingWizard() {
                   onClick={() => setBarberMode("preferred")}
                   disabled={barbers.length === 0}
                   className={cn(
-                    "rounded-xl border p-4 text-left transition disabled:opacity-40",
+                    "rounded-2xl border p-4 text-left transition disabled:opacity-40",
                     barberMode === "preferred"
                       ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                       : "border-[var(--border)]",
@@ -488,7 +479,7 @@ function BookingWizard() {
                     type="button"
                     onClick={() => setPreferredStaffId(barber.id)}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-xl border p-3 text-left",
+                      "flex w-full items-center gap-3 rounded-2xl border p-3 text-left",
                       preferredStaffId === barber.id
                         ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                         : "border-[var(--border)]",

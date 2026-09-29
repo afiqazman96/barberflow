@@ -6,11 +6,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  ArrowRight,
   Minus,
   Plus,
   Trash2,
   Sparkles,
   ShoppingBag,
+  ShoppingCart,
+  Search,
   User,
   Scissors,
 } from "lucide-react";
@@ -21,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PillTabs } from "@/components/ui/pill-tabs";
 import { PosSubnav } from "@/components/domain/pos-subnav";
 import { useAppStore, calcCommission } from "@/lib/store/app-store";
 import { CASHIER_DISCOUNT_CAP_PCT, computeCharges } from "@/lib/pos-pricing";
@@ -69,6 +73,7 @@ export default function CashierPosPage() {
 
   const [tab, setTab] = useState<Tab>("services");
   const [catalogSearch, setCatalogSearch] = useState("");
+  const [category, setCategory] = useState("all");
 
   const awaitingPayment = queue.filter((q) => q.status === "awaiting-payment");
   const barbers = staff.filter(
@@ -164,14 +169,25 @@ export default function CashierPosPage() {
             type: "product" as const,
           }));
 
-    if (!catalogSearch) return items;
+    const byCategory =
+      category === "all" ? items : items.filter((i) => i.category === category);
+    if (!catalogSearch) return byCategory;
     const q = catalogSearch.toLowerCase();
-    return items.filter(
+    return byCategory.filter(
       (i) =>
         i.name.toLowerCase().includes(q) ||
         i.category.toLowerCase().includes(q),
     );
-  }, [tab, catalogSearch, PRODUCTS, SERVICES]);
+  }, [tab, catalogSearch, category, PRODUCTS, SERVICES]);
+
+  const categories = useMemo(() => {
+    const items = tab === "services" ? SERVICES : PRODUCTS;
+    return [...new Set(items.map((i) => i.category))];
+  }, [tab, SERVICES, PRODUCTS]);
+
+  function qtyInCart(id: string): number {
+    return posItems.find((i) => i.id === id)?.quantity ?? 0;
+  }
 
   function getPrice(item: (typeof catalog)[0]) {
     if (
@@ -274,102 +290,131 @@ export default function CashierPosPage() {
       <PosSubnav base="/cashier/pos" />
       <PageTransition>
         <div className="mx-auto flex max-w-7xl flex-col gap-5 p-4 lg:flex-row lg:p-6">
-          <div className="min-w-0 flex-1 space-y-4">
+          <div className="min-w-0 flex-1 space-y-4 pb-24 lg:pb-0">
             <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
+                <Input
+                  placeholder={`Search ${tab}…`}
+                  value={catalogSearch}
+                  onChange={(e) => setCatalogSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
               <button
-                onClick={() => setTab("services")}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                  tab === "services"
-                    ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                    : "bg-[var(--bg-muted)] text-[var(--text-muted)]"
-                }`}
+                onClick={() => {
+                  setTab(tab === "services" ? "products" : "services");
+                  setCategory("all");
+                }}
+                className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[var(--bg-muted)] px-3.5 text-sm font-medium text-[var(--text-muted)] transition hover:text-[var(--text)]"
+                aria-label={`Switch to ${tab === "services" ? "products" : "services"}`}
               >
-                <Sparkles className="h-4 w-4" />
-                Services
-              </button>
-              <button
-                onClick={() => setTab("products")}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
-                  tab === "products"
-                    ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                    : "bg-[var(--bg-muted)] text-[var(--text-muted)]"
-                }`}
-              >
-                <ShoppingBag className="h-4 w-4" />
-                Products
+                {tab === "services" ? (
+                  <ShoppingBag className="h-4 w-4" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
               </button>
             </div>
 
-            <Input
-              placeholder={`Search ${tab}…`}
-              value={catalogSearch}
-              onChange={(e) => setCatalogSearch(e.target.value)}
+            <PillTabs
+              tabs={[
+                { value: "all", label: "All" },
+                ...categories.map((c) => ({ value: c, label: c })),
+              ]}
+              value={category}
+              onChange={setCategory}
             />
 
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3">
               {catalog.map((item, i) => {
                 const imageUrl =
                   "imageUrl" in item && typeof item.imageUrl === "string"
                     ? item.imageUrl
                     : undefined;
+                const qty = qtyInCart(item.id);
                 return (
-                <motion.button
-                  key={item.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.02 }}
-                  onClick={() => handleAdd(item)}
-                  className="card-surface flex items-center justify-between gap-3 p-4 text-left transition hover:border-[var(--gold)]/40 active:scale-[0.98]"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    {imageUrl ? (
+                  <motion.button
+                    key={item.id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.02 }}
+                    onClick={() => handleAdd(item)}
+                    className={`relative flex flex-col gap-2 rounded-2xl border p-3.5 text-left transition active:scale-[0.98] ${
+                      qty > 0
+                        ? "border-[var(--gold)]/40 bg-[var(--gold)]/[0.04]"
+                        : "border-[var(--border)] bg-[var(--bg-card)]"
+                    }`}
+                  >
+                    {"popular" in item && item.popular && (
+                      <Badge variant="gold" className="w-fit">
+                        Popular
+                      </Badge>
+                    )}
+                    {imageUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={imageUrl}
                         alt=""
-                        className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-[var(--border)]"
+                        className="h-16 w-16 rounded-xl object-cover ring-1 ring-[var(--border)]"
                       />
-                    ) : (
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--gold)]/12 text-[var(--gold-soft)]">
-                        {tab === "services" ? (
-                          <Sparkles className="h-4 w-4" />
-                        ) : (
-                          <ShoppingBag className="h-4 w-4" />
-                        )}
-                      </div>
                     )}
                     <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate font-medium">{item.name}</p>
-                        {"popular" in item && item.popular && (
-                          <Badge variant="gold" className="shrink-0">
-                            Popular
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-xs text-[var(--text-faint)]">
+                      <p className="truncate text-sm font-semibold">{item.name}</p>
+                      <p className="truncate text-xs text-[var(--text-faint)]">
                         {item.category}
+                        {"durationMins" in item && ` · ${item.durationMins} min`}
                         {"stock" in item && ` · ${item.stock} in stock`}
                       </p>
                     </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <p className="font-semibold text-[var(--gold-soft)]">
-                      {formatCurrency(getPrice(item))}
-                    </p>
-                    {item.type === "service" &&
-                      membership !== "none" &&
-                      "membershipPrice" in item && (
-                        <p className="text-[10px] line-through text-[var(--text-faint)]">
-                          {formatCurrency(item.price)}
+                    <div className="flex items-end justify-between">
+                      <div>
+                        <p className="font-display text-base font-bold">
+                          {formatCurrency(getPrice(item))}
                         </p>
-                      )}
-                  </div>
-                </motion.button>
+                        {item.type === "service" &&
+                          membership !== "none" &&
+                          "membershipPrice" in item && (
+                            <p className="text-[10px] text-[var(--text-faint)] line-through">
+                              {formatCurrency(item.price)}
+                            </p>
+                          )}
+                      </div>
+                      <span
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition ${
+                          qty > 0
+                            ? "bg-[var(--text)] text-[var(--bg)]"
+                            : "border border-[var(--border)] text-[var(--text-muted)]"
+                        }`}
+                      >
+                        {qty > 0 ? qty : <Plus className="h-3.5 w-3.5" />}
+                      </span>
+                    </div>
+                  </motion.button>
                 );
               })}
             </div>
           </div>
+
+          {posItems.length > 0 && (
+            <div className="safe-bottom fixed inset-x-0 bottom-[4.75rem] z-30 px-4 lg:hidden">
+              <button
+                onClick={handlePay}
+                className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl bg-[var(--text)] px-4 py-3.5 text-[var(--bg)] shadow-[0_12px_32px_rgba(28,25,23,0.25)]"
+              >
+                <span className="flex items-center gap-2 text-sm">
+                  <ShoppingCart className="h-4 w-4" />
+                  {posItems.reduce((n, i) => n + i.quantity, 0)} item
+                  {posItems.reduce((n, i) => n + i.quantity, 0) === 1 ? "" : "s"}
+                  {ticket && ` · ${ticket.number} ${ticket.customerName}`}
+                </span>
+                <span className="flex items-center gap-1.5 font-display font-bold">
+                  {formatCurrency(total)}
+                  <ArrowRight className="h-4 w-4" />
+                </span>
+              </button>
+            </div>
+          )}
 
           <div className="w-full shrink-0 space-y-4 lg:w-96">
             {awaitingPayment.length > 0 && (

@@ -5,9 +5,11 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Armchair,
+  DollarSign,
   KeyRound,
   Mail,
   Plus,
+  Scissors,
   Search,
   Star,
   Target,
@@ -15,12 +17,14 @@ import {
   Pencil,
   ShieldCheck,
   ShieldOff,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import Link from "next/link";
 import { StaffCard } from "@/components/domain/staff-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { useNow } from "@/hooks/use-now";
 import { attendanceFor } from "@/lib/roster";
 import { Input, Label, Select } from "@/components/ui/input";
@@ -28,6 +32,7 @@ import { Card } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { PillTabs } from "@/components/ui/pill-tabs";
 import { useAppStore } from "@/lib/store/app-store";
 import type {
   BranchOption,
@@ -600,29 +605,35 @@ export function OwnerStaffScreen({
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Total Staff</p>
-              <p className="font-display text-2xl font-semibold">{staff.length}</p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Available</p>
-              <p className="font-display text-2xl font-semibold text-[var(--success)]">
-                {barbers.filter((b) => statusOf(b) === "available").length}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">In Service</p>
-              <p className="font-display text-2xl font-semibold text-[var(--warning)]">
-                {barbers.filter((b) => statusOf(b) === "busy").length}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-[var(--text-faint)]">Team Sales Today</p>
-              <p className="font-display text-2xl font-semibold text-[var(--gold-soft)]">
-                {formatCurrency(totalTodaySales)}
-              </p>
-            </Card>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
+              icon={Users}
+              chip="mint"
+              value={String(staff.length)}
+              label="Total staff"
+              delay={0}
+            />
+            <StatTile
+              icon={ShieldCheck}
+              chip="sky"
+              value={String(barbers.filter((b) => statusOf(b) === "available").length)}
+              label="Available now"
+              delay={0.05}
+            />
+            <StatTile
+              icon={Scissors}
+              chip="amber"
+              value={String(barbers.filter((b) => statusOf(b) === "busy").length)}
+              label="In service"
+              delay={0.1}
+            />
+            <StatTile
+              icon={DollarSign}
+              chip="coral"
+              value={formatCurrency(totalTodaySales)}
+              label="Team sales today"
+              delay={0.15}
+            />
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -635,16 +646,17 @@ export function OwnerStaffScreen({
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <select
+            <PillTabs
+              tabs={[
+                { value: "all", label: "All Roles" },
+                { value: "owner", label: "Owner" },
+                { value: "cashier", label: "Cashier" },
+                { value: "barber", label: "Barber" },
+              ]}
               value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="h-11 rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm capitalize"
-            >
-              <option value="all">All Roles</option>
-              <option value="owner">Owner</option>
-              <option value="cashier">Cashier</option>
-              <option value="barber">Barber</option>
-            </select>
+              onChange={setRoleFilter}
+              className="sm:w-auto"
+            />
           </div>
 
           {filtered.length === 0 && (

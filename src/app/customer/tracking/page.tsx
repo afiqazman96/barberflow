@@ -268,12 +268,13 @@ export default function TrackingPage() {
         }
         transition={{ duration: 2 }}
         className={cn(
-          "card-surface overflow-hidden text-center",
+          "relative overflow-hidden rounded-3xl bg-[var(--hero-bg)] text-center text-[var(--hero-text)] shadow-[var(--shadow)]",
           ticket.status === "in-service" && "pulse-gold",
         )}
       >
-        <div className="bg-[var(--gold)]/5 px-4 py-8">
-          <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-faint)]">
+        <div className="pointer-events-none absolute -right-10 -top-16 h-40 w-40 rounded-full bg-[var(--gold)]/10 blur-2xl" />
+        <div className="relative px-4 py-8">
+          <p className="text-xs uppercase tracking-[0.2em] text-[var(--hero-text-muted)]">
             Your Number
           </p>
           <motion.p
@@ -289,10 +290,10 @@ export default function TrackingPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 divide-x divide-[var(--border)] border-t border-[var(--border)]">
+        <div className="relative grid grid-cols-2 divide-x divide-white/10 border-t border-white/10">
           <div className="px-4 py-5">
             <Users className="mx-auto h-4 w-4 text-[var(--gold)]" />
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+            <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--hero-text-muted)]">
               Position
             </p>
             <p className="font-display text-2xl font-bold">
@@ -301,16 +302,16 @@ export default function TrackingPage() {
           </div>
           <div className="px-4 py-5">
             <Clock className="mx-auto h-4 w-4 text-[var(--gold)]" />
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+            <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--hero-text-muted)]">
               Est. Wait
             </p>
-            <p className="font-display text-2xl font-bold text-[var(--gold-soft)]">
+            <p className="font-display text-2xl font-bold text-[var(--gold)]">
               {ticket.status !== "waiting" ? (
                 "Now"
               ) : waitLeft > 0 ? (
                 <>
                   {waitLeft}
-                  <span className="text-sm font-normal text-[var(--text-muted)]">
+                  <span className="text-sm font-normal text-[var(--hero-text-muted)]">
                     m
                   </span>
                 </>

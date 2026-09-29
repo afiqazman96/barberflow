@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { SalesChart, PeakHoursChart } from "@/components/domain/charts";
-import { StatCard } from "@/components/domain/stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -281,7 +281,7 @@ export default function OwnerReportsPage() {
                       setFrom(r.from());
                       setTo(todayIso());
                     }}
-                    className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:border-[var(--gold-dim)] hover:text-[var(--text)]"
+                    className="rounded-full border border-[var(--border)] px-3.5 py-2 text-xs font-medium text-[var(--text-muted)] transition hover:border-[var(--gold-dim)] hover:text-[var(--text)]"
                   >
                     {r.label}
                   </button>
@@ -304,37 +304,33 @@ export default function OwnerReportsPage() {
 
           {tab === "overview" && (
             <div className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                  label="Total Revenue"
-                  value={formatCurrency(totalRevenue)}
-                  change={`${sales.length} transactions`}
-                  trend="up"
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <StatTile
                   icon={TrendingUp}
+                  chip="mint"
+                  value={formatCurrency(totalRevenue)}
+                  label={`Revenue · ${sales.length} txn${sales.length === 1 ? "" : "s"}`}
                   delay={0}
                 />
-                <StatCard
-                  label="Avg Ticket"
-                  value={formatCurrency(avgTicket)}
-                  change="Per transaction"
-                  trend="neutral"
+                <StatTile
                   icon={Award}
+                  chip="amber"
+                  value={formatCurrency(avgTicket)}
+                  label="Avg ticket"
                   delay={0.05}
                 />
-                <StatCard
-                  label="Returning Rate"
-                  value={`${retentionStats.returning}%`}
-                  change={`${retentionStats.newThisMonth} new customers`}
-                  trend="up"
+                <StatTile
                   icon={Repeat}
+                  chip="sky"
+                  value={`${retentionStats.returning}%`}
+                  label={`Returning · ${retentionStats.newThisMonth} new`}
                   delay={0.1}
                 />
-                <StatCard
-                  label="Avg Visits"
-                  value={retentionStats.avgVisits}
-                  change="Per customer lifetime"
-                  trend="neutral"
+                <StatTile
                   icon={Users}
+                  chip="coral"
+                  value={retentionStats.avgVisits}
+                  label="Avg visits / customer"
                   delay={0.15}
                 />
               </div>
@@ -370,7 +366,7 @@ export default function OwnerReportsPage() {
                         initial={{ opacity: 0, x: -8 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: i * 0.05 }}
-                        className="flex items-center gap-3 rounded-xl bg-[var(--bg-muted)]/50 p-3"
+                        className="flex items-center gap-3 rounded-2xl bg-[var(--bg-muted)]/50 p-3"
                       >
                         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--gold)]/15 text-xs font-bold text-[var(--gold-soft)]">
                           {i + 1}
@@ -436,7 +432,7 @@ export default function OwnerReportsPage() {
                     </CardTitle>
                   </CardHeader>
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-[var(--gold)]/20 bg-[var(--gold)]/5 p-4 text-center">
+                    <div className="rounded-2xl border border-[var(--gold)]/20 bg-[var(--gold)]/5 p-4 text-center">
                       <p className="font-display text-4xl font-bold text-[var(--gold-soft)]">
                         {retentionStats.returning}%
                       </p>
@@ -445,7 +441,7 @@ export default function OwnerReportsPage() {
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-xl bg-[var(--bg-muted)] p-3">
+                      <div className="rounded-2xl bg-[var(--bg-muted)] p-3">
                         <p className="text-xs text-[var(--text-faint)]">
                           New (≤2 visits)
                         </p>
@@ -453,7 +449,7 @@ export default function OwnerReportsPage() {
                           {retentionStats.newThisMonth}
                         </p>
                       </div>
-                      <div className="rounded-xl bg-[var(--bg-muted)] p-3">
+                      <div className="rounded-2xl bg-[var(--bg-muted)] p-3">
                         <p className="text-xs text-[var(--text-faint)]">Members</p>
                         <p className="font-display text-xl font-semibold">
                           {

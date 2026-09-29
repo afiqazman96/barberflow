@@ -32,8 +32,8 @@ export function PosSubnav({ base }: { base: string }) {
               href={href}
               className={`flex shrink-0 items-center gap-2 rounded-full px-3.5 py-2 text-sm font-medium transition ${
                 active
-                  ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                  : "bg-[var(--bg-elevated)] text-[var(--text-muted)] ring-1 ring-[var(--border)] hover:text-[var(--text)]"
+                  ? "bg-[var(--text)] text-[var(--bg)] shadow-[var(--shadow-soft)]"
+                  : "bg-[var(--bg-muted)] text-[var(--text-muted)] hover:text-[var(--text)]"
               }`}
             >
               <Icon className="h-4 w-4" />

@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Sparkles,
   CalendarClock,
+  Armchair,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
@@ -108,31 +109,40 @@ export default function CustomerHomePage() {
                   </div>
 
                   <div className="mt-4 grid grid-cols-3 gap-2">
-                    <div className="rounded-lg bg-[var(--bg-muted)] px-2.5 py-2 text-center">
-                      <p className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-                        <Users className="h-3 w-3" /> Queue
-                      </p>
-                      <p className="mt-0.5 font-display text-lg font-bold text-[var(--gold-soft)]">
+                    <div className="rounded-xl bg-[var(--bg-muted)] px-2.5 py-2 text-center">
+                      <div className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--chip-amber-bg)] text-[var(--chip-amber-fg)]">
+                        <Users className="h-3.5 w-3.5" />
+                      </div>
+                      <p className="mt-1.5 font-display text-lg font-bold leading-none">
                         {branch.queueCount}
                       </p>
-                    </div>
-                    <div className="rounded-lg bg-[var(--bg-muted)] px-2.5 py-2 text-center">
-                      <p className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-                        <Clock className="h-3 w-3" /> Avg Wait
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+                        Queue
                       </p>
-                      <p className="mt-0.5 font-display text-lg font-bold">
+                    </div>
+                    <div className="rounded-xl bg-[var(--bg-muted)] px-2.5 py-2 text-center">
+                      <div className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--chip-coral-bg)] text-[var(--chip-coral-fg)]">
+                        <Clock className="h-3.5 w-3.5" />
+                      </div>
+                      <p className="mt-1.5 font-display text-lg font-bold leading-none">
                         {branch.avgWaitMins}
                         <span className="text-xs font-normal text-[var(--text-muted)]">
                           m
                         </span>
                       </p>
-                    </div>
-                    <div className="rounded-lg bg-[var(--bg-muted)] px-2.5 py-2 text-center">
-                      <p className="text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-                        Chairs
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+                        Avg Wait
                       </p>
-                      <p className="mt-0.5 font-display text-lg font-bold">
+                    </div>
+                    <div className="rounded-xl bg-[var(--bg-muted)] px-2.5 py-2 text-center">
+                      <div className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--chip-sky-bg)] text-[var(--chip-sky-fg)]">
+                        <Armchair className="h-3.5 w-3.5" />
+                      </div>
+                      <p className="mt-1.5 font-display text-lg font-bold leading-none">
                         {branch.chairs}
+                      </p>
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+                        Chairs
                       </p>
                     </div>
                   </div>

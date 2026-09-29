@@ -22,6 +22,15 @@ import { TIME_SLOTS } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
 import { cn, initials } from "@/lib/utils";
 
+/** Pastel icon-chip backgrounds, matching the ones used on stat tiles
+ * elsewhere in the app — one hue per metric so a row of them reads as a
+ * set. */
+const CHIP_STYLES = {
+  amber: "bg-[var(--chip-amber-bg)] text-[var(--chip-amber-fg)]",
+  coral: "bg-[var(--chip-coral-bg)] text-[var(--chip-coral-fg)]",
+  sky: "bg-[var(--chip-sky-bg)] text-[var(--chip-sky-fg)]",
+} as const;
+
 export default function ShopDetailPage({
   params,
 }: {
@@ -77,25 +86,39 @@ export default function ShopDetailPage({
 
       <div className="grid grid-cols-3 gap-2">
         {[
-          { icon: Users, label: "In Queue", value: branch.queueCount },
+          {
+            icon: Users,
+            label: "In Queue",
+            value: branch.queueCount,
+            chip: "amber" as const,
+          },
           {
             icon: Clock,
             label: "Est. Wait",
             value: `${branch.avgWaitMins}m`,
+            chip: "coral" as const,
           },
           {
             icon: Calendar,
             label: "Slots Today",
             value: openSlots,
+            chip: "sky" as const,
           },
         ].map((stat) => (
           <Card key={stat.label} className="p-3 text-center">
-            <stat.icon className="mx-auto h-4 w-4 text-[var(--gold)]" />
-            <p className="mt-1 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
-              {stat.label}
-            </p>
-            <p className="font-display text-xl font-bold text-[var(--gold-soft)]">
+            <div
+              className={cn(
+                "mx-auto flex h-8 w-8 items-center justify-center rounded-xl",
+                CHIP_STYLES[stat.chip],
+              )}
+            >
+              <stat.icon className="h-4 w-4" />
+            </div>
+            <p className="mt-1.5 font-display text-xl font-bold">
               {stat.value}
+            </p>
+            <p className="mt-0.5 text-[10px] uppercase tracking-wide text-[var(--text-faint)]">
+              {stat.label}
             </p>
           </Card>
         ))}
@@ -194,7 +217,7 @@ export default function ShopDetailPage({
             <span
               key={slot}
               className={cn(
-                "rounded-lg px-2.5 py-1.5 text-xs font-medium",
+                "rounded-full px-2.5 py-1.5 text-xs font-medium",
                 slot.endsWith("30")
                   ? "bg-[var(--bg-muted)] text-[var(--text-muted)]"
                   : "border border-[var(--gold)]/25 bg-[var(--gold)]/10 text-[var(--gold-soft)]",
@@ -203,7 +226,7 @@ export default function ShopDetailPage({
               {slot}
             </span>
           ))}
-          <span className="rounded-lg bg-[var(--bg-muted)] px-2.5 py-1.5 text-xs text-[var(--text-faint)]">
+          <span className="rounded-full bg-[var(--bg-muted)] px-2.5 py-1.5 text-xs text-[var(--text-faint)]">
             +{Math.max(0, openSlots - 8)} more
           </span>
         </div>

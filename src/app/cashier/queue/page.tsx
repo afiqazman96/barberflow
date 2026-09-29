@@ -18,11 +18,13 @@ import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { QueueCard } from "@/components/domain/queue-card";
+import { BarberQueueRow } from "@/components/domain/barber-queue-row";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
-import { Card, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
+import { PillTabs } from "@/components/ui/pill-tabs";
 import { useAppStore } from "@/lib/store/app-store";
 import type { QueueStatus, QueueTicket } from "@/lib/types";
 import { formatTime } from "@/lib/utils";
@@ -69,6 +71,7 @@ function QueuePageContent() {
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const loadPosTicket = useAppStore((s) => s.loadPosTicket);
   const clearPos = useAppStore((s) => s.clearPos);
+  const chairs = useAppStore((s) => s.chairs);
 
   const [filter, setFilter] = useState<QueueStatus | "all">("all");
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -93,6 +96,51 @@ function QueuePageContent() {
   const barbers = staff.filter(
     (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
+
+  const waitingTickets = queue
+    .filter((q) => q.status === "waiting")
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  /** The ticket that would be called next for this barber, if any. */
+  function nextTicketFor(barberId: string): QueueTicket | undefined {
+    return (
+      waitingTickets.find((t) => t.preferredStaffId === barberId) ??
+      waitingTickets.find((t) => !t.preferredStaffId)
+    );
+  }
+
+  const barberRows = barbers.map((b) => {
+    const status = staffStatuses[b.id] ?? b.status;
+    const chairLabel = chairs.find((c) => c.id === b.chairId)?.label;
+    const ticket =
+      status === "busy"
+        ? queue.find((q) => q.assignedStaffId === b.id && q.status === "in-service")
+        : undefined;
+    const durationMins = ticket
+      ? ticket.serviceIds.reduce(
+          (sum, id) => sum + (services.find((s) => s.id === id)?.durationMins ?? 0),
+          0,
+        )
+      : undefined;
+    // Clamped to the service length for display: seed tickets carry a fixed
+    // clock time, so a raw elapsed figure can run to hours on stale demo data.
+    const elapsedMins =
+      ticket?.startedAt !== undefined
+        ? Math.min(
+            durationMins ?? Infinity,
+            Math.max(0, Math.round((nowMs - new Date(ticket.startedAt).getTime()) / 60000)),
+          )
+        : undefined;
+    return {
+      staff: b,
+      status,
+      chairLabel,
+      ticket,
+      durationMins,
+      elapsedMins,
+      nextTicket: status === "available" ? nextTicketFor(b.id) : undefined,
+    };
+  });
 
   function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -217,40 +265,49 @@ function QueuePageContent() {
       <Topbar
         title="Queue Monitor"
         actions={
-          <Button size="sm" onClick={() => setRegisterOpen(true)}>
+          <Button
+            size="sm"
+            className="rounded-full bg-[var(--text)] text-[var(--bg)] hover:bg-[var(--text)]/90"
+            onClick={() => setRegisterOpen(true)}
+          >
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Walk-in</span>
+            Walk-in
           </Button>
         }
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+          <p className="text-sm text-[var(--text-muted)]">
+            {barbers.length} chair{barbers.length === 1 ? "" : "s"} ·{" "}
+            {waitingTickets.length} waiting
+          </p>
+
           {overLimit > 0 && (
             <p className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-2.5 text-sm text-[var(--text-muted)]">
               {overLimit} {overLimit === 1 ? "customer has" : "customers have"} waited
               longer than {maxWaitMins} min.
             </p>
           )}
+
+          {barberRows.length > 0 && (
+            <div className="space-y-2">
+              {barberRows.map((row) => (
+                <BarberQueueRow key={row.staff.id} {...row} onCall={handleCall} />
+              ))}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
-            <Filter className="h-4 w-4 text-[var(--text-faint)]" />
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                className={`rounded-xl px-3 py-1.5 text-xs font-medium transition ${
-                  filter === f.value
-                    ? "bg-[var(--gold)]/15 text-[var(--gold-soft)] ring-1 ring-[var(--gold)]/30"
-                    : "bg-[var(--bg-muted)] text-[var(--text-muted)] hover:text-[var(--text)]"
-                }`}
-              >
-                {f.label}
-                {f.value !== "all" && (
-                  <span className="ml-1 opacity-60">
-                    ({queue.filter((q) => q.status === f.value).length})
-                  </span>
-                )}
-              </button>
-            ))}
+            <Filter className="hidden h-4 w-4 shrink-0 text-[var(--text-faint)] sm:block" />
+            <PillTabs
+              tabs={STATUS_FILTERS.map((f) => ({
+                value: f.value,
+                label: f.label,
+                count: f.value === "all" ? undefined : queue.filter((q) => q.status === f.value).length,
+              }))}
+              value={filter}
+              onChange={(v) => setFilter(v as QueueStatus | "all")}
+            />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

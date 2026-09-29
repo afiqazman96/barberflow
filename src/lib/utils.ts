@@ -84,3 +84,19 @@ export function byQueueOrder(
   const seq = (n: string) => parseInt(n.replace(/\D/g, ""), 10) || 0;
   return seq(a.number) - seq(b.number) || a.createdAt.localeCompare(b.createdAt);
 }
+
+/** Short weekday, e.g. "Tue". */
+export function formatWeekdayShort(date: string | Date): string {
+  return new Intl.DateTimeFormat("en-MY", { weekday: "short" }).format(
+    typeof date === "string" ? new Date(date) : date,
+  );
+}
+
+/** Compact "Tue, 29 Sep" — for a header pill where a full date is too wide. */
+export function formatDateCompact(date: string | Date): string {
+  return new Intl.DateTimeFormat("en-MY", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(typeof date === "string" ? new Date(date) : date);
+}

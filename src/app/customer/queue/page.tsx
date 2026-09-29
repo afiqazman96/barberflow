@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { StepIndicator } from "@/components/domain/step-indicator";
 import { useAppStore } from "@/lib/store/app-store";
 import { findCustomerByPhone } from "@/lib/mock/data";
 import { closingMins, minsOfDay, openingMins } from "@/lib/roster";
@@ -240,20 +241,7 @@ function QueueWizard() {
         </p>
       </div>
 
-      <div className="flex gap-1">
-        {STEPS.map((label, i) => (
-          <div
-            key={label}
-            className={cn(
-              "h-1 flex-1 rounded-full transition",
-              i <= step ? "bg-[var(--gold)]" : "bg-[var(--bg-muted)]",
-            )}
-          />
-        ))}
-      </div>
-      <p className="text-xs text-[var(--text-faint)]">
-        Step {step + 1} of {STEPS.length} · {STEPS[step]}
-      </p>
+      <StepIndicator steps={STEPS} current={step} />
 
       <motion.div
         key={step}
@@ -336,7 +324,7 @@ function QueueWizard() {
                     type="button"
                     onClick={() => toggleService(service.id)}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition",
+                      "flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition",
                       selected
                         ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                         : "border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--gold-dim)]",
@@ -344,7 +332,7 @@ function QueueWizard() {
                   >
                     <div
                       className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
                         selected
                           ? "bg-[var(--gold)] text-[#0c0b09]"
                           : "bg-[var(--bg-muted)] text-[var(--text-muted)]",
@@ -381,7 +369,7 @@ function QueueWizard() {
                     setPreferredStaffId(null);
                   }}
                   className={cn(
-                    "rounded-xl border p-4 text-left transition",
+                    "rounded-2xl border p-4 text-left transition",
                     barberMode === "any"
                       ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                       : "border-[var(--border)] hover:border-[var(--gold-dim)]",
@@ -398,7 +386,7 @@ function QueueWizard() {
                   onClick={() => setBarberMode("preferred")}
                   disabled={barbers.length === 0}
                   className={cn(
-                    "rounded-xl border p-4 text-left transition disabled:opacity-40",
+                    "rounded-2xl border p-4 text-left transition disabled:opacity-40",
                     barberMode === "preferred"
                       ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                       : "border-[var(--border)] hover:border-[var(--gold-dim)]",
@@ -420,7 +408,7 @@ function QueueWizard() {
                       type="button"
                       onClick={() => setPreferredStaffId(barber.id)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition",
+                        "flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition",
                         preferredStaffId === barber.id
                           ? "border-[var(--gold)]/50 bg-[var(--gold)]/10"
                           : "border-[var(--border)] hover:border-[var(--gold-dim)]",

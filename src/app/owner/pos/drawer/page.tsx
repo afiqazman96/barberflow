@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { StatCard } from "@/components/domain/stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { useAppStore, drawerExpected } from "@/lib/store/app-store";
 import { DRAWER_VARIANCE_TOLERANCE, NOTE_DENOMINATIONS, COINS_KEY } from "@/lib/drawer";
 import type { DrawerSession } from "@/lib/types";
@@ -125,37 +125,33 @@ export default function OwnerCashDrawerPage() {
             </div>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-4">
-            <StatCard
-              label="Shifts closed"
-              value={String(closed.length)}
-              change={openHere ? "1 open now" : "None open"}
-              trend="neutral"
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
               icon={Wallet}
+              chip="mint"
+              value={String(closed.length)}
+              label={openHere ? "Shifts closed · 1 open now" : "Shifts closed · none open"}
               delay={0}
             />
-            <StatCard
-              label="Needs review"
-              value={String(pending)}
-              change={pending > 0 ? "Open a row to review" : "All clear"}
-              trend={pending > 0 ? "down" : "neutral"}
+            <StatTile
               icon={TriangleAlert}
+              chip="amber"
+              value={String(pending)}
+              label={pending > 0 ? "Needs review · open a row" : "Needs review · all clear"}
               delay={0.05}
             />
-            <StatCard
-              label="Total short"
-              value={formatCurrency(gross.short)}
-              change="Across shifts shown"
-              trend={gross.short > 0 ? "down" : "neutral"}
+            <StatTile
               icon={TriangleAlert}
+              chip="coral"
+              value={formatCurrency(gross.short)}
+              label="Total short"
               delay={0.1}
             />
-            <StatCard
-              label="Total over"
-              value={formatCurrency(gross.over)}
-              change="Across shifts shown"
-              trend={gross.over > 0 ? "up" : "neutral"}
+            <StatTile
               icon={TriangleAlert}
+              chip="sky"
+              value={formatCurrency(gross.over)}
+              label="Total over"
               delay={0.15}
             />
           </div>

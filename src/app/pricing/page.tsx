@@ -96,14 +96,14 @@ export default function PricingPage() {
             required for the prototype.
           </p>
 
-          <div className="mt-6 inline-flex rounded-xl bg-[var(--bg-muted)] p-1">
+          <div className="mt-6 inline-flex rounded-full bg-[var(--bg-muted)] p-1">
             <button
               type="button"
               onClick={() => setBilling("monthly")}
               className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition",
+                "rounded-full px-4 py-2 text-sm font-medium transition",
                 billing === "monthly"
-                  ? "bg-[var(--bg-card)] text-[var(--gold-soft)]"
+                  ? "bg-[var(--bg-card)] text-[var(--gold-soft)] shadow-[var(--shadow-soft)]"
                   : "text-[var(--text-faint)]",
               )}
             >
@@ -113,9 +113,9 @@ export default function PricingPage() {
               type="button"
               onClick={() => setBilling("yearly")}
               className={cn(
-                "rounded-lg px-4 py-2 text-sm font-medium transition",
+                "rounded-full px-4 py-2 text-sm font-medium transition",
                 billing === "yearly"
-                  ? "bg-[var(--bg-card)] text-[var(--gold-soft)]"
+                  ? "bg-[var(--bg-card)] text-[var(--gold-soft)] shadow-[var(--shadow-soft)]"
                   : "text-[var(--text-faint)]",
               )}
             >

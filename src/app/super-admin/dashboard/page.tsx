@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
-import { StatCard } from "@/components/domain/stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { SalesChart } from "@/components/domain/charts";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,13 @@ function planVariant(plan: string): "gold" | "info" | "default" {
   if (plan === "Growth") return "info";
   return "default";
 }
+
+/** Left-edge accent colour per tenant status — read at a glance down the table. */
+const ROW_ACCENT: Record<string, string> = {
+  active: "var(--success)",
+  trial: "var(--info)",
+  suspended: "var(--danger)",
+};
 
 export default function SuperAdminDashboardPage() {
   const tenants = usePlatformStore((s) => s.tenants);
@@ -86,37 +93,37 @@ export default function SuperAdminDashboardPage() {
             </Button>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label="Total Tenants"
-              value={String(liveTenants.length)}
-              change={`${activeTenants} active`}
-              trend="up"
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile
               icon={Building2}
+              chip="mint"
+              value={String(liveTenants.length)}
+              label={`Tenants · ${activeTenants} active`}
               delay={0}
             />
-            <StatCard
-              label="MRR"
-              value={formatCurrency(mrr)}
-              change={`Avg ${formatCurrency(avgMrr)}/tenant`}
-              trend="up"
+            <StatTile
               icon={DollarSign}
+              chip="amber"
+              value={formatCurrency(mrr)}
+              label={`MRR · avg ${formatCurrency(avgMrr)}/tenant`}
               delay={0.05}
             />
-            <StatCard
-              label="Active Trials"
-              value={String(trials)}
-              change={expiredTrials > 0 ? `${expiredTrials} expired — needs follow-up` : "Pre-conversion"}
-              trend="neutral"
+            <StatTile
               icon={FlaskConical}
+              chip="sky"
+              value={String(trials)}
+              label={
+                expiredTrials > 0
+                  ? `Trials · ${expiredTrials} expired`
+                  : "Trials · pre-conversion"
+              }
               delay={0.1}
             />
-            <StatCard
-              label="Open Tickets"
-              value={String(openTickets)}
-              change="Needs attention"
-              trend={openTickets > 2 ? "down" : "neutral"}
+            <StatTile
               icon={HeadphonesIcon}
+              chip="coral"
+              value={String(openTickets)}
+              label="Open tickets · needs attention"
               delay={0.15}
             />
           </div>
@@ -187,7 +194,7 @@ export default function SuperAdminDashboardPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-left text-xs uppercase tracking-wider text-[var(--text-faint)]">
-                    <th className="pb-3 pr-4 font-medium">Tenant</th>
+                    <th className="pb-3 pl-3 pr-4 font-medium">Tenant</th>
                     <th className="pb-3 pr-4 font-medium">Owner</th>
                     <th className="pb-3 pr-4 font-medium">Plan</th>
                     <th className="pb-3 pr-4 font-medium">Status</th>
@@ -200,8 +207,11 @@ export default function SuperAdminDashboardPage() {
                     <tr
                       key={tenant.id}
                       className="border-b border-[var(--border)]/50 last:border-0"
+                      style={{
+                        boxShadow: `inset 3px 0 0 ${ROW_ACCENT[tenant.status] ?? "transparent"}`,
+                      }}
                     >
-                      <td className="py-3.5 pr-4">
+                      <td className="py-3.5 pl-3 pr-4">
                         <div>
                           <p className="font-medium">{tenant.name}</p>
                           <p className="text-xs text-[var(--text-faint)]">

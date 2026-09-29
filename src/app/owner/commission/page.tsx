@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
-import { StatCard } from "@/components/domain/stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -178,29 +178,26 @@ export default function OwnerCommissionPage() {
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard
-              label="Total Commission"
-              value={formatCurrency(totalCommission)}
-              change={`${sales.length} transactions`}
-              trend="up"
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile
               icon={DollarSign}
+              chip="mint"
+              value={formatCurrency(totalCommission)}
+              label={`Total commission · ${sales.length} txn${sales.length === 1 ? "" : "s"}`}
               delay={0}
             />
-            <StatCard
-              label="Active Rules"
-              value={String(activeRules)}
-              change={`${commissionRules.length} total configured`}
-              trend="neutral"
+            <StatTile
               icon={Percent}
+              chip="sky"
+              value={String(activeRules)}
+              label={`Active rules · ${commissionRules.length} configured`}
               delay={0.05}
             />
-            <StatCard
-              label="Top Earner"
-              value={leaderboard[0]?.staff.name.split(" ")[0] ?? "—"}
-              change={formatCurrency(leaderboard[0]?.commission ?? 0)}
-              trend="up"
+            <StatTile
               icon={Trophy}
+              chip="amber"
+              value={leaderboard[0]?.staff.name.split(" ")[0] ?? "—"}
+              label={`Top earner · ${formatCurrency(leaderboard[0]?.commission ?? 0)}`}
               delay={0.1}
             />
           </div>
@@ -222,10 +219,10 @@ export default function OwnerCommissionPage() {
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.04 }}
-                      className={`rounded-xl border p-4 transition ${
+                      className={`card-surface border-l-4 p-4 transition ${
                         rule.active
-                          ? "border-[var(--gold)]/20 bg-[var(--gold)]/5"
-                          : "border-[var(--border)] bg-[var(--bg-muted)]/40 opacity-70"
+                          ? "border-l-[var(--gold)] bg-[var(--gold)]/5"
+                          : "border-l-[var(--border)] bg-[var(--bg-muted)]/40 opacity-70"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -308,7 +305,7 @@ export default function OwnerCommissionPage() {
                     initial={{ opacity: 0, x: 8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.05 }}
-                    className="flex items-center gap-4 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-muted)]/50 p-3"
+                    className="flex items-center gap-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-muted)]/50 p-3"
                   >
                     <span
                       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-display text-sm font-bold ${

@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Wallet, TrendingUp, Info, Receipt } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { StatCard } from "@/components/domain/stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { COMMISSION_RULES } from "@/lib/mock/data";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { formatCurrency, formatDateTime, todayIso } from "@/lib/utils";
@@ -44,20 +44,18 @@ export default function StaffCommissionPage() {
       </motion.header>
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard
-          label="Today"
-          value={formatCurrency(staff.todayCommission)}
-          change={`${formatCurrency(todayCommissionTotal)} live`}
-          trend="up"
+        <StatTile
           icon={Wallet}
+          chip="amber"
+          value={formatCurrency(staff.todayCommission)}
+          label={`Today · live ${formatCurrency(todayCommissionTotal)}`}
           delay={0.05}
         />
-        <StatCard
-          label="This Month"
-          value={formatCurrency(staff.monthlyCommission)}
-          change={`${formatCurrency(staff.monthlySales)} sales`}
-          trend="up"
+        <StatTile
           icon={TrendingUp}
+          chip="sky"
+          value={formatCurrency(staff.monthlyCommission)}
+          label={`This month · ${formatCurrency(staff.monthlySales)} sales`}
           delay={0.1}
         />
       </div>

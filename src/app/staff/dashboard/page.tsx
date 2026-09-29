@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -22,14 +22,23 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
-import { StatCard } from "@/components/domain/stat-card";
+import { HeroStatCard } from "@/components/domain/hero-stat-card";
+import { StatTile } from "@/components/domain/stat-tile";
 import { QueueCard } from "@/components/domain/queue-card";
 import { MyShiftCard } from "@/components/domain/shift-cards";
 import { findNextQueueTicket, useStaffPortal } from "@/hooks/use-staff-portal";
 import { useNow } from "@/hooks/use-now";
 import { useAppStore } from "@/lib/store/app-store";
 import { isRosteredOn, localIso } from "@/lib/roster";
-import { cn, formatCurrency } from "@/lib/utils";
+import { weeklyTrend } from "@/lib/analytics";
+import { cn, formatCurrency, formatDateCompact, todayIso } from "@/lib/utils";
+
+/** "Good morning" / "Good afternoon" / "Good evening", by the visitor's clock. */
+function greetingFor(hour: number): string {
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function StaffDashboardPage() {
   const {
@@ -39,6 +48,7 @@ export default function StaffDashboardPage() {
     chair,
     chairs,
     currentTicket,
+    staffSales,
     queue,
     updateStaffStatus,
     updateQueueTicket,
@@ -64,6 +74,17 @@ export default function StaffDashboardPage() {
   const targetPct = staff?.monthlyTarget
     ? Math.min(100, Math.round((staff.monthlySales / staff.monthlyTarget) * 100))
     : 0;
+
+  // Static "now" for display only (greeting, date pill, trend bucketing) —
+  // mirrors the cashier dashboard's own approach rather than the live-ticking
+  // clock used above for the stale-shift check.
+  const nowStatic = useMemo(() => new Date(), []);
+  const today = todayIso();
+  const todaySalesList = useMemo(
+    () => staffSales.filter((s) => !s.voided && s.createdAt.slice(0, 10) === today),
+    [staffSales, today],
+  );
+  const trend = useMemo(() => weeklyTrend(staffSales, nowStatic), [staffSales, nowStatic]);
 
   const availableChairs = chairs.filter(
     (c) =>
@@ -172,18 +193,33 @@ export default function StaffDashboardPage() {
         className="flex items-start justify-between gap-3"
       >
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">
-            Staff Portal
+          <p className="text-sm text-[var(--text-muted)]">
+            {greetingFor(nowStatic.getHours())},
           </p>
-          <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">
-            Hey, {staff.name.split(" ")[0]}
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            {staff.name.split(" ")[0]}
           </h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
             {staff.specialty}
           </p>
         </div>
-        <StatusBadge status={status} />
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className="rounded-full bg-[var(--bg-muted)] px-3 py-1.5 text-xs font-medium text-[var(--text-muted)]">
+            {formatDateCompact(nowStatic)}
+          </span>
+          <StatusBadge status={status} />
+        </div>
       </motion.header>
+
+      <HeroStatCard
+        label="Today's sales"
+        value={formatCurrency(staff.todaySales)}
+        pill={`${todaySalesList.length} sale${todaySalesList.length === 1 ? "" : "s"}`}
+        bars={trend.map((t, i) => ({
+          label: i === trend.length - 1 ? "Today" : t.day,
+          value: t.sales,
+        }))}
+      />
 
       {isBusy && currentTicket && (
         <motion.div
@@ -200,28 +236,32 @@ export default function StaffDashboardPage() {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard
-          label="Today's Customers"
-          value={String(staff.todayCustomers)}
+        <StatTile
           icon={Users}
+          chip="mint"
+          value={String(staff.todayCustomers)}
+          label="Today's customers"
           delay={0.05}
         />
-        <StatCard
-          label="Today's Sales"
-          value={formatCurrency(staff.todaySales)}
-          icon={DollarSign}
+        <StatTile
+          icon={Wallet}
+          chip="amber"
+          value={formatCurrency(staff.todayCommission)}
+          label="Today's commission"
           delay={0.1}
         />
-        <StatCard
-          label="Today's Commission"
-          value={formatCurrency(staff.todayCommission)}
+        <StatTile
           icon={TrendingUp}
+          chip="sky"
+          value={formatCurrency(staff.monthlyCommission)}
+          label="Monthly commission"
           delay={0.15}
         />
-        <StatCard
-          label="Monthly Commission"
-          value={formatCurrency(staff.monthlyCommission)}
-          icon={Wallet}
+        <StatTile
+          icon={DollarSign}
+          chip="coral"
+          value={formatCurrency(staff.monthlySales)}
+          label="Monthly sales"
           delay={0.2}
         />
       </div>

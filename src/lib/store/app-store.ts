@@ -29,6 +29,9 @@ import type {
 } from "@/lib/types";
 import { computeCharges, DEFAULT_TAX_CONFIG } from "@/lib/pos-pricing";
 import { isPrivateOrigin, publicOrigin } from "@/lib/public-origin";
+import { releasePreferredBarber } from "@/lib/queue/actions";
+import { pushTicketPatch } from "@/lib/queue/client";
+import type { QueueSnapshot } from "@/lib/queue/dto";
 
 export { isPrivateOrigin, publicOrigin };
 import {
@@ -55,7 +58,6 @@ import {
   CUSTOMERS,
   MEMBERSHIP_PLANS,
   PRODUCTS,
-  QUEUE,
   SALES,
   SERVICES,
   STAFF,
@@ -171,8 +173,18 @@ interface AppState {
   updateCustomer: (id: string, patch: Partial<Customer>) => void;
   addProduct: (product: Omit<Product, "id">) => Product;
   updateProduct: (id: string, patch: Partial<Product>) => void;
+  /**
+   * Replace the queue for the branches a server snapshot covers. The database
+   * is the source of truth for tickets; this store is a read-through mirror
+   * kept live by `<QueueSync>`.
+   */
+  hydrateQueue: (snapshot: QueueSnapshot) => void;
+  /** Mirror a ticket the server has just issued. */
   addQueueTicket: (ticket: QueueTicket) => void;
+  /** Apply a change locally and persist it (staff screens). */
   updateQueueTicket: (id: string, patch: Partial<QueueTicket>) => void;
+  /** Apply a change locally only — the caller has already persisted it. */
+  applyQueueTicketPatch: (id: string, patch: Partial<QueueTicket>) => void;
   addBooking: (booking: Booking) => void;
   updateBooking: (id: string, patch: Partial<Booking>) => void;
   setPosItems: (items: PosItem[]) => void;
@@ -401,7 +413,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     cancelHours: 4,
     slotInterval: 30,
   },
-  queue: QUEUE,
+  // Filled by `<QueueSync>` from the database — never from mock data, so a
+  // lobby screen cannot flash tickets that do not exist.
+  queue: [],
   bookings: BOOKINGS,
   sales: SALES,
   staff: STAFF.map((s) => ({ ...s })),
@@ -538,6 +552,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false, error: "Close the cash drawer first" };
     }
     set((st) => closeShiftPatch(st, staffId, opts?.by ?? "self", opts?.note));
+    // The same release `closeShiftPatch` just made locally, for everyone else.
+    void releasePreferredBarber(staffId).catch(() => {});
     return { ok: true };
   },
 
@@ -802,17 +818,66 @@ export const useAppStore = create<AppState>((set, get) => ({
       products: s.products.map((p) => (p.id === id ? { ...p, ...patch } : p)),
     })),
 
-  addQueueTicket: (ticket) =>
-    set((s) => ({
-      queue: [ticket, ...s.queue],
-      branches: s.branches.map((b) =>
-        b.id === ticket.branchId
-          ? { ...b, queueCount: b.queueCount + 1 }
-          : b,
-      ),
-    })),
+  hydrateQueue: ({ tickets, branchIds, ownTicketId }) =>
+    set((s) => {
+      const covered = new Set(branchIds);
+      const known = new Map(s.queue.map((q) => [q.id, q]));
+      const incoming = tickets.map((t) => {
+        // Bookings are not in the database yet, so the link from a checked-in
+        // ticket back to its booking only exists on the device that made it.
+        const bookingId = t.bookingId ?? known.get(t.id)?.bookingId;
+        return bookingId ? { ...t, bookingId } : t;
+      });
+      const queue = [
+        ...incoming,
+        ...s.queue.filter((q) => !covered.has(q.branchId)),
+      ];
+      // Anyone who held or now holds a ticket may have changed busy/available.
+      const barbers = new Set(
+        [...s.queue, ...queue].map((q) => q.assignedStaffId),
+      );
+      return {
+        queue,
+        branches: s.branches.map((b) =>
+          covered.has(b.id)
+            ? {
+                ...b,
+                queueCount: queue.filter(
+                  (q) =>
+                    q.branchId === b.id &&
+                    (q.status === "waiting" || q.status === "called"),
+                ).length,
+              }
+            : b,
+        ),
+        ...(ownTicketId ? { trackingTicketId: ownTicketId } : {}),
+        ...barberSyncPatch(s, queue, barbers),
+      };
+    }),
 
-  updateQueueTicket: (id, patch) =>
+  addQueueTicket: (ticket) =>
+    set((s) => {
+      // The Realtime poke for this same ticket may have landed first.
+      if (s.queue.some((q) => q.id === ticket.id)) {
+        return { queue: s.queue.map((q) => (q.id === ticket.id ? ticket : q)) };
+      }
+      return {
+        queue: [ticket, ...s.queue],
+        branches: s.branches.map((b) =>
+          b.id === ticket.branchId
+            ? { ...b, queueCount: b.queueCount + 1 }
+            : b,
+        ),
+      };
+    }),
+
+  updateQueueTicket: (id, patch) => {
+    if (!get().queue.some((q) => q.id === id)) return;
+    get().applyQueueTicketPatch(id, patch);
+    pushTicketPatch(id, patch);
+  },
+
+  applyQueueTicketPatch: (id, patch) =>
     set((s) => {
       const before = s.queue.find((q) => q.id === id);
       if (!before) return {};
@@ -845,13 +910,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         return { bookings };
       }
       const status = patch.status;
+      const released = s.queue.filter(
+        (q) =>
+          q.bookingId === id && (q.status === "waiting" || q.status === "called"),
+      );
+      // Only staff may move a ticket; a customer cancelling their own booking
+      // has no checked-in ticket to take with it.
+      if (s.session) {
+        for (const q of released) pushTicketPatch(q.id, { status });
+      }
       return {
         bookings,
-        queue: s.queue.map((q) =>
-          q.bookingId === id && (q.status === "waiting" || q.status === "called")
-            ? { ...q, status }
-            : q,
-        ),
+        queue: s.queue.map((q) => (released.includes(q) ? { ...q, status } : q)),
       };
     }),
 
@@ -1239,6 +1309,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         queue: settledQueue,
       };
     });
+
+    // Payment taken: close the ticket for every other screen too.
+    if (
+      ticket &&
+      (ticket.status === "awaiting-payment" || ticket.status === "in-service")
+    ) {
+      pushTicketPatch(ticket.id, { status: "completed" });
+    }
 
     return sale;
   },

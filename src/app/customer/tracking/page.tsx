@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { leaveQueue } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import { byQueueOrder, cn, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -28,7 +29,7 @@ export default function TrackingPage() {
   const chairs = useAppStore((s) => s.chairs);
   const trackingTicketId = useAppStore((s) => s.trackingTicketId);
   const trackingBookingId = useAppStore((s) => s.trackingBookingId);
-  const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
+  const applyQueueTicketPatch = useAppStore((s) => s.applyQueueTicketPatch);
   const updateBooking = useAppStore((s) => s.updateBooking);
 
   const [pulse, setPulse] = useState(false);
@@ -92,9 +93,18 @@ export default function TrackingPage() {
       )
     : 0;
 
-  function handleLeave() {
+  async function handleLeave() {
     if (!ticket) return;
-    updateQueueTicket(ticket.id, { status: "cancelled" });
+    // The server knows which ticket is this device's from its cookie.
+    const result = await leaveQueue().catch(() => null);
+    if (!result?.ok) {
+      setLeaveOpen(false);
+      toast.error("Couldn't leave the queue", {
+        description: result?.error ?? "Check your connection and try again",
+      });
+      return;
+    }
+    applyQueueTicketPatch(ticket.id, { status: "cancelled" });
     setLeaveOpen(false);
     toast.success("You've left the queue", {
       description: `Ticket ${ticket.number} cancelled`,

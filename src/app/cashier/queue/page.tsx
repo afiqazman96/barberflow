@@ -25,6 +25,7 @@ import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PillTabs } from "@/components/ui/pill-tabs";
+import { registerWalkIn } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import type { QueueStatus, QueueTicket } from "@/lib/types";
 import { formatTime } from "@/lib/utils";
@@ -38,14 +39,6 @@ const STATUS_FILTERS: { value: QueueStatus | "all"; label: string }[] = [
   { value: "completed", label: "Completed" },
   { value: "no-show", label: "No Show" },
 ];
-
-function nextQueueNumber(queue: QueueTicket[]) {
-  const nums = queue
-    .map((q) => parseInt(q.number.replace(/\D/g, ""), 10))
-    .filter((n) => !isNaN(n));
-  const max = nums.length ? Math.max(...nums) : 15;
-  return `A${String(max + 1).padStart(3, "0")}`;
-}
 
 function QueuePageContent() {
   const confirm = useConfirm();
@@ -75,6 +68,7 @@ function QueuePageContent() {
 
   const [filter, setFilter] = useState<QueueStatus | "all">("all");
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [registering, setRegistering] = useState(false);
   const [detailTicket, setDetailTicket] = useState<QueueTicket | null>(null);
 
   const [name, setName] = useState("");
@@ -142,7 +136,7 @@ function QueuePageContent() {
     };
   });
 
-  function handleRegister(e: React.FormEvent) {
+  async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !phone.trim()) {
       toast.error("Name and phone are required");
@@ -150,25 +144,29 @@ function QueuePageContent() {
     }
     const service = services.find((s) => s.id === serviceId);
     if (!service) return;
+    if (registering) return;
 
-    const ticket: QueueTicket = {
-      id: `q-${Date.now()}`,
-      number: nextQueueNumber(queue),
+    // The server issues the ticket — its number comes from a per-branch
+    // counter, so two counters registering at once cannot collide.
+    setRegistering(true);
+    const result = await registerWalkIn({
       branchId,
-      customerId: `walk-${Date.now()}`,
-      customerName: name.trim(),
-      customerPhone: phone.trim(),
-      customerEmail: email.trim() || undefined,
+      name,
+      phone,
+      email,
       serviceIds: [service.id],
-      serviceNames: [service.name],
       preferredStaffId: barberPref === "any" ? null : barberPref,
-      assignedStaffId: null,
-      chairId: null,
-      status: "waiting",
       estimatedWaitMins: 15 + Math.floor(Math.random() * 20),
-      createdAt: new Date().toISOString(),
       source: "cashier",
-    };
+    }).catch(() => null);
+    setRegistering(false);
+    if (!result?.ok) {
+      toast.error("Couldn't register the walk-in", {
+        description: result?.error ?? "Check your connection and try again",
+      });
+      return;
+    }
+    const { ticket } = result.data;
 
     addQueueTicket(ticket);
     toast.success("Walk-in registered", {

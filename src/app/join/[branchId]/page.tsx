@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CalendarClock, Clock, QrCode, Ticket, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { QueueSync } from "@/components/domain/queue-sync";
 import { useAppStore } from "@/lib/store/app-store";
 
 /**
@@ -25,6 +26,7 @@ export default function JoinBranchPage() {
 
   return (
     <div className="app-bg flex min-h-dvh flex-col items-center justify-center px-6 py-10 text-center">
+      {branch && <QueueSync scope="public" branchId={branch.id} />}
       <div className="w-full max-w-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

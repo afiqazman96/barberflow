@@ -19,22 +19,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { StepIndicator } from "@/components/domain/step-indicator";
+import { joinQueue } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import { findCustomerByPhone } from "@/lib/mock/data";
 import { closingMins, minsOfDay, openingMins } from "@/lib/roster";
-import type { QueueTicket } from "@/lib/types";
 import { cn, formatCurrency, initials } from "@/lib/utils";
 import { toast } from "sonner";
 
 const STEPS = ["Your details", "Services", "Barber"];
-
-function nextQueueNumber(queue: QueueTicket[]): string {
-  const nums = queue
-    .map((q) => parseInt(q.number.replace(/\D/g, ""), 10))
-    .filter((n) => !Number.isNaN(n));
-  const max = nums.length ? Math.max(...nums) : 0;
-  return `A${String(max + 1).padStart(3, "0")}`;
-}
 
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -51,7 +43,6 @@ function QueueWizard() {
   const branchIdParam = params.get("branch") ?? "b1";
   const fromQr = params.get("source") === "qr";
 
-  const queue = useAppStore((s) => s.queue);
   const maxWaitMins = useAppStore((s) => s.opsRules.maxWaitMins);
   const branches = useAppStore((s) => s.branches);
   const services = useAppStore((s) => s.services);
@@ -59,7 +50,6 @@ function QueueWizard() {
   const customers = useAppStore((s) => s.customers);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
-  const trackingTicketId = useAppStore((s) => s.trackingTicketId);
   const setBranchId = useAppStore((s) => s.setBranchId);
 
   const branch = branches.find((b) => b.id === branchIdParam) ?? branches[0];
@@ -70,6 +60,7 @@ function QueueWizard() {
   const barbers = branchBarbers.filter((s) => s.status !== "off-duty");
 
   const [step, setStep] = useState(0);
+  const [joining, setJoining] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -140,7 +131,8 @@ function QueueWizard() {
     return false;
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
+    if (joining) return;
     if (!contactOk) {
       toast.error("A valid email is required for your receipt");
       return;
@@ -152,57 +144,47 @@ function QueueWizard() {
       return;
     }
 
-    // One spot per person: the same email or phone already waiting here is a
-    // double-tap or a second device, not a second customer.
-    const emailKey = email.trim().toLowerCase();
-    const phoneKey = phone.replace(/[^0-9]/g, "");
-    const already = queue.find(
-      (q) =>
-        q.branchId === branch.id &&
-        (q.status === "waiting" || q.status === "called" || q.status === "in-service") &&
-        ((q.customerEmail ?? "").trim().toLowerCase() === emailKey ||
-          (phoneKey.length >= 8 &&
-            (q.customerPhone ?? "").replace(/[^0-9]/g, "") === phoneKey)),
-    );
-    if (already) {
+    // The server issues the ticket and its number, and is where "one spot per
+    // person" is enforced — this device only ever sees a masked queue.
+    setJoining(true);
+    const result = await joinQueue({
+      branchId: branch.id,
+      name,
+      phone,
+      email,
+      serviceIds,
+      preferredStaffId: barberMode === "preferred" ? preferredStaffId : null,
+      estimatedWaitMins: estWaitMins,
+    }).catch(() => null);
+    setJoining(false);
+
+    if (!result?.ok) {
+      const duplicate = result?.duplicate;
       // Only this device's own ticket may be reopened. Anyone else typing a
       // stored email or phone must not be handed that person's tracking view.
-      if (already.id === trackingTicketId) {
-        toast.message(`You're already in the queue — ticket ${already.number}`);
+      if (duplicate?.own) {
+        toast.message(`You're already in the queue — ticket ${duplicate.number}`);
         router.push("/customer/tracking");
-      } else {
+      } else if (duplicate) {
         toast.error("Already in the queue with these details", {
           description:
             "If that's you, reopen the page on the phone you joined with, or ask at the counter.",
+        });
+      } else {
+        toast.error("We couldn't add you to the queue", {
+          description: result?.error ?? "Check your connection and try again",
         });
       }
       return;
     }
 
-    const number = nextQueueNumber(queue);
+    const { ticket } = result.data;
+    const { number } = ticket;
     // A returning customer who joins on their own phone should still be
     // recognised — matched by phone number, not asked to "log in".
     const matched = phone.trim()
       ? findCustomerByPhone(customers, phone)
       : undefined;
-    const ticket: QueueTicket = {
-      id: `q-${Date.now()}`,
-      number,
-      branchId: branch.id,
-      customerId: matched?.id ?? "guest",
-      customerName: name.trim(),
-      customerPhone: phone.trim(),
-      customerEmail: email.trim(),
-      serviceIds,
-      serviceNames: selectedServices.map((s) => s.name),
-      preferredStaffId: barberMode === "preferred" ? preferredStaffId : null,
-      assignedStaffId: null,
-      chairId: null,
-      status: "waiting",
-      estimatedWaitMins: estWaitMins,
-      createdAt: new Date().toISOString(),
-      source: "qr",
-    };
 
     addQueueTicket(ticket);
     setTrackingTicketId(ticket.id);

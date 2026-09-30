@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Armchair } from "lucide-react";
+import { QueueSync } from "@/components/domain/queue-sync";
 import { useAppStore } from "@/lib/store/app-store";
 import { StatusBadge } from "@/components/ui/badge";
 import { byQueueOrder, maskName } from "@/lib/utils";
@@ -64,6 +65,7 @@ function QueueDisplay() {
 
   return (
     <div className="app-bg min-h-dvh p-6 md:p-10">
+      <QueueSync scope="public" branchId={branch.id} />
       <div className="mx-auto flex max-w-7xl flex-col gap-8">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex items-center gap-4">

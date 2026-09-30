@@ -10,17 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
+import { registerWalkIn } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Booking, QueueTicket } from "@/lib/types";
 import { cn, formatWeekdayShort, todayIso } from "@/lib/utils";
-
-function nextQueueNumber(queue: QueueTicket[]) {
-  const nums = queue
-    .map((q) => parseInt(q.number.replace(/\D/g, ""), 10))
-    .filter((n) => !isNaN(n));
-  const max = nums.length ? Math.max(...nums) : 15;
-  return `A${String(max + 1).padStart(3, "0")}`;
-}
 
 /** 7 local dates, `before` days ahead of `after` days behind today. */
 function weekAround(before: number, after: number) {
@@ -45,7 +38,6 @@ const BORDER_BY_STATUS: Record<string, string> = {
 
 export default function CashierAppointmentPage() {
   const bookings = useAppStore((s) => s.bookings);
-  const queue = useAppStore((s) => s.queue);
   const updateBooking = useAppStore((s) => s.updateBooking);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
 
@@ -54,6 +46,7 @@ export default function CashierAppointmentPage() {
   const [showFilter, setShowFilter] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [selected, setSelected] = useState<Booking | null>(null);
+  const [checkingIn, setCheckingIn] = useState(false);
 
   const today = todayIso();
   const week = useMemo(() => weekAround(3, 3), []);
@@ -77,28 +70,33 @@ export default function CashierAppointmentPage() {
     (b) => b.date === today && b.status === "confirmed",
   ).length;
 
-  function handleCheckIn(booking: Booking) {
-    updateBooking(booking.id, { status: "checked-in" });
+  async function handleCheckIn(booking: Booking) {
+    if (checkingIn) return;
 
-    const ticket: QueueTicket = {
-      id: `q-bk-${Date.now()}`,
-      number: nextQueueNumber(queue),
+    setCheckingIn(true);
+    const result = await registerWalkIn({
       branchId: booking.branchId,
       customerId: booking.customerId,
-      customerName: booking.customerName,
-      customerPhone: booking.customerPhone,
-      customerEmail: booking.customerEmail,
-      bookingId: booking.id,
+      name: booking.customerName,
+      phone: booking.customerPhone,
+      email: booking.customerEmail,
       serviceIds: booking.serviceIds,
-      serviceNames: booking.serviceNames,
       preferredStaffId: booking.staffId,
-      assignedStaffId: null,
-      chairId: null,
-      status: "waiting",
       estimatedWaitMins: 10,
-      createdAt: new Date().toISOString(),
       source: "booking",
-    };
+    }).catch(() => null);
+    setCheckingIn(false);
+    if (!result?.ok) {
+      toast.error("Couldn't check in", {
+        description: result?.error ?? "Check your connection and try again",
+      });
+      return;
+    }
+
+    updateBooking(booking.id, { status: "checked-in" });
+    // Bookings are not in the database yet, so the link back to this one is
+    // kept on the ticket here; the store preserves it across queue refreshes.
+    const ticket: QueueTicket = { ...result.data.ticket, bookingId: booking.id };
 
     addQueueTicket(ticket);
     toast.success("Checked in", {

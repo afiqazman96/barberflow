@@ -2,6 +2,7 @@
 
 import { CalendarClock, Home, Ticket, User } from "lucide-react";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { QueueSync } from "@/components/domain/queue-sync";
 import { PageTransition } from "@/components/layout/page-transition";
 
 const navItems = [
@@ -18,6 +19,7 @@ export default function CustomerLayout({
 }) {
   return (
     <div className="app-bg min-h-dvh">
+      <QueueSync scope="public" />
       <main className="mx-auto max-w-lg px-4 pb-24 pt-6 safe-top">
         <PageTransition>{children}</PageTransition>
       </main>

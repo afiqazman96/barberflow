@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { QueueSync } from "@/components/domain/queue-sync";
 import { CashierShiftBanner } from "@/components/domain/cashier-shift";
 import { useAppStore } from "@/lib/store/app-store";
 
@@ -53,6 +54,7 @@ export function PortalShell({
       }
       bottomNav={<BottomNav items={bottomNavItems} />}
     >
+      <QueueSync scope="staff" />
       <CashierShiftBanner />
       {children}
     </AppShell>

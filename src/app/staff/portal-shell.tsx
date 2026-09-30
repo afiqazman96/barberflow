@@ -7,6 +7,7 @@ import {
   History,
   User,
 } from "lucide-react";
+import { QueueSync } from "@/components/domain/queue-sync";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { PageTransition } from "@/components/layout/page-transition";
 
@@ -25,6 +26,7 @@ export function PortalShell({
 }) {
   return (
     <div className="app-bg min-h-dvh">
+      <QueueSync scope="staff" />
       <main className="safe-top mx-auto max-w-lg px-4 pb-32 pt-6">
         <PageTransition>{children}</PageTransition>
       </main>

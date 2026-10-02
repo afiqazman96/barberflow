@@ -14,6 +14,8 @@ import {
   queueTopic,
   STAFF_CHANGED_EVENT,
 } from "@/lib/queue/dto";
+import { fetchShopSnapshot } from "@/lib/shop/client";
+import { SHOP_CHANGED_EVENT } from "@/lib/shop/dto";
 import { useAppStore } from "@/lib/store/app-store";
 import { createClient } from "@/lib/supabase/client";
 
@@ -68,13 +70,16 @@ function createRefetcher<T>(
   };
 }
 
-type Schedulers = { queue: () => void; bookings: () => void };
+type Schedulers = { queue: () => void; bookings: () => void; shop: () => void };
+
+const IDLE: Schedulers = { queue: () => {}, bookings: () => {}, shop: () => {} };
 
 /**
- * Keeps `store.queue` — and, when asked, `store.bookings` — equal to the
- * database.
+ * Keeps `store.queue`, the shop's set-up (rules, roster, leave, shifts,
+ * chairs) and — when asked — `store.bookings` equal to the database.
  *
- * Realtime only ever says "this branch's queue / staff / bookings changed".
+ * Realtime only ever says "this branch's queue / staff / bookings / set-up
+ * changed".
  * The data itself is re-read from our own server, which is where the session
  * and tenant checks live — so nothing about a customer travels over the
  * socket, and the `public` schema stays closed to the browser key.
@@ -89,9 +94,10 @@ export function useQueueSync(
 ) {
   const hydrateQueue = useAppStore((s) => s.hydrateQueue);
   const hydrateBookings = useAppStore((s) => s.hydrateBookings);
+  const hydrateShop = useAppStore((s) => s.hydrateShop);
   // The branches the last snapshot covered, i.e. the topics to listen on.
   const [topics, setTopics] = useState<string[]>([]);
-  const schedule = useRef<Schedulers>({ queue: () => {}, bookings: () => {} });
+  const schedule = useRef<Schedulers>(IDLE);
 
   useEffect(() => {
     const scope: QueueScope =
@@ -119,18 +125,26 @@ export function useQueueSync(
           isCancelled,
         )
       : null;
+    const shop = createRefetcher(
+      () => fetchShopSnapshot(scope),
+      hydrateShop,
+      isCancelled,
+    );
 
     const all = () => {
       queue.schedule();
       bookings?.schedule();
+      shop.schedule();
     };
     schedule.current = {
       queue: queue.schedule,
       bookings: bookings ? bookings.schedule : () => {},
+      shop: shop.schedule,
     };
 
     void queue.run();
     void bookings?.run();
+    void shop.run();
 
     const poll = setInterval(all, POLL_MS);
     // A phone that was asleep in a pocket has missed every poke since.
@@ -145,13 +159,14 @@ export function useQueueSync(
       cancelled = true;
       queue.stop();
       bookings?.stop();
+      shop.stop();
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", all);
       unregister();
-      schedule.current = { queue: () => {}, bookings: () => {} };
+      schedule.current = IDLE;
     };
-  }, [kind, branchId, withBookings, hydrateQueue, hydrateBookings]);
+  }, [kind, branchId, withBookings, hydrateQueue, hydrateBookings, hydrateShop]);
 
   const topicKey = topics.join();
   useEffect(() => {
@@ -177,12 +192,16 @@ export function useQueueSync(
         .on("broadcast", { event: BOOKINGS_CHANGED_EVENT }, () =>
           schedule.current.bookings(),
         )
+        .on("broadcast", { event: SHOP_CHANGED_EVENT }, () =>
+          schedule.current.shop(),
+        )
         .subscribe((status) => {
           // Also fires on every re-join after a dropped connection, which is
           // exactly when pokes will have been missed.
           if (status === "SUBSCRIBED") {
             schedule.current.queue();
             schedule.current.bookings();
+            schedule.current.shop();
           }
         }),
     );

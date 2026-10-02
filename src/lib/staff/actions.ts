@@ -79,21 +79,22 @@ export async function setStaffStatus(
 }
 
 /**
- * A staff member records their own status: clocking in (`available`), taking
- * or ending a break, clocking out (`off-duty`).
+ * A staff member on shift takes or ends a break. Going on or off duty is a
+ * clock-in / clock-out (`shop/actions.ts`), which also opens or closes the
+ * shift, so it is not a bare status change here.
  *
  * Always the caller's own row — the id comes from the session, never the
  * client. `busy` is not stored: every screen derives it from the ticket in
  * service. Owners do not clock in, so there is nothing for them to record.
  */
 export async function setMyStatus(
-  status: Extract<StaffStatus, "available" | "break" | "off-duty">,
+  status: Extract<StaffStatus, "available" | "break">,
 ): Promise<ActionResult> {
   const { staff: me } = await requireShopSession();
   if (me.role === "OWNER") {
     return { ok: false, error: "Owners do not clock in" };
   }
-  if (status !== "available" && status !== "break" && status !== "off-duty") {
+  if (status !== "available" && status !== "break") {
     return { ok: false, error: "Unknown status" };
   }
 
@@ -104,7 +105,7 @@ export async function setMyStatus(
   if (!current?.active) {
     return { ok: false, error: "This account is disabled" };
   }
-  if (current.status === "OFF_DUTY" && status === "break") {
+  if (current.status === "OFF_DUTY") {
     return { ok: false, error: "Start your shift first" };
   }
 

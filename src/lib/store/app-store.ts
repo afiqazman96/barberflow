@@ -29,12 +29,20 @@ import type {
 } from "@/lib/types";
 import { computeCharges, DEFAULT_TAX_CONFIG } from "@/lib/pos-pricing";
 import { isPrivateOrigin, publicOrigin } from "@/lib/public-origin";
-import { releasePreferredBarber } from "@/lib/queue/actions";
 import { pushTicketPatch } from "@/lib/queue/client";
 import type { QueueSnapshot } from "@/lib/queue/dto";
 import { pushBookingStatus } from "@/lib/bookings/client";
 import type { BookingsSnapshot } from "@/lib/bookings/dto";
 import { pushOwnStatus } from "@/lib/staff/client";
+import {
+  pushClockIn,
+  pushClockOut,
+  pushLeave,
+  pushOpsRules,
+  pushRemoveLeave,
+  pushRosterDay,
+} from "@/lib/shop/client";
+import type { ShopSnapshot } from "@/lib/shop/dto";
 
 export { isPrivateOrigin, publicOrigin };
 import {
@@ -46,7 +54,6 @@ import {
   openShiftOf,
   parseIso,
 } from "@/lib/roster";
-import { LEAVES, ROSTER, SHIFTS } from "@/lib/mock/roster-data";
 import { DRAWER_HISTORY } from "@/lib/mock/drawer-data";
 import {
   CASHIER_PAYOUT_LIMIT,
@@ -189,6 +196,8 @@ interface AppState {
   applyQueueTicketPatch: (id: string, patch: Partial<QueueTicket>) => void;
   /** Replace the covered branches' appointments with the database's. */
   hydrateBookings: (snapshot: BookingsSnapshot) => void;
+  /** Rules, roster, leave, shifts and chairs from the database. */
+  hydrateShop: (snapshot: ShopSnapshot) => void;
   /** Add a booking the server has just created. */
   addBooking: (booking: Booking) => void;
   /** Apply a status change locally and persist it (staff screens). */
@@ -469,11 +478,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   products: PRODUCTS.map((p) => ({ ...p })),
   customers: CUSTOMERS.map((c) => ({ ...c })),
   staffStatuses: initialStatuses,
-  shifts: SHIFTS.map((x) => ({ ...x })),
-  roster: Object.fromEntries(
-    Object.entries(ROSTER).map(([id, days]) => [id, days.map((d) => ({ ...d }))]),
-  ),
-  leaves: LEAVES.map((l) => ({ ...l })),
+  // Shifts, roster and leave are filled by `<QueueSync>` from the database.
+  shifts: [],
+  roster: {},
+  leaves: [],
   posItems: [],
   posDiscount: 0,
   posDiscountMode: "amount",
@@ -525,8 +533,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   updateTaxConfig: (patch) =>
     set((s) => ({ taxConfig: { ...s.taxConfig, ...patch } })),
-  updateOpsRules: (patch) =>
-    set((s) => ({ opsRules: { ...s.opsRules, ...patch } })),
+  updateOpsRules: (patch) => {
+    set((s) => ({ opsRules: { ...s.opsRules, ...patch } }));
+    pushOpsRules(get().opsRules);
+  },
 
   updateStaffStatus: (staffId, status) => {
     const before = get().staffStatuses[staffId];
@@ -545,7 +555,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     });
     const after = get().staffStatuses[staffId];
-    if (after !== before && isOwnStatus(get(), staffId)) pushOwnStatus(after);
+    if (after !== before && isOwnStatus(get(), staffId)) {
+      // Going off duty here is ending the shift (`closeShiftPatch` above).
+      if (after === "off-duty") pushClockOut(staffId, { self: true });
+      else pushOwnStatus(after);
+    }
   },
 
   startShift: (staffId, opts) => {
@@ -563,7 +577,11 @@ export const useAppStore = create<AppState>((set, get) => ({
             x.id === staffId ? { ...x, status: "available" as const } : x,
           ),
         }));
-        if (isOwnStatus(get(), staffId)) pushOwnStatus("available");
+        pushClockIn(staffId, {
+          self: get().session?.staffId === staffId,
+          chairId: opts?.chairId,
+          note: opts?.note,
+        });
       }
       return { ok: true };
     }
@@ -597,7 +615,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
     if (chairId) get().assignChair(chairId, staffId);
-    if (isOwnStatus(get(), staffId)) pushOwnStatus("available");
+    pushClockIn(staffId, {
+      self: get().session?.staffId === staffId,
+      chairId,
+      note: opts?.note,
+    });
     return { ok: true };
   },
 
@@ -612,9 +634,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false, error: "Close the cash drawer first" };
     }
     set((st) => closeShiftPatch(st, staffId, opts?.by ?? "self", opts?.note));
-    if (isOwnStatus(get(), staffId)) pushOwnStatus("off-duty");
-    // The same release `closeShiftPatch` just made locally, for everyone else.
-    void releasePreferredBarber(staffId).catch(() => {});
+    // The server makes the same release of customers who asked for them.
+    pushClockOut(staffId, {
+      self: get().session?.staffId === staffId,
+      note: opts?.note,
+    });
     return { ok: true };
   },
 
@@ -649,7 +673,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  setRosterDay: (staffId, weekday, patch) =>
+  setRosterDay: (staffId, weekday, patch) => {
     set((s) => ({
       roster: {
         ...s.roster,
@@ -657,17 +681,27 @@ export const useAppStore = create<AppState>((set, get) => ({
           i === weekday ? { ...d, ...patch } : d,
         ),
       },
-    })),
+    }));
+    const day = get().roster[staffId]?.[weekday];
+    if (day) pushRosterDay(staffId, weekday, day);
+  },
 
-  addLeave: (input) =>
+  addLeave: (input) => {
     set((s) => ({
       leaves: [
         { id: `lv-${Date.now()}`, ...input },
         ...s.leaves.filter((l) => !(l.staffId === input.staffId && l.date === input.date)),
       ],
-    })),
+    }));
+    pushLeave(input);
+  },
 
-  removeLeave: (id) => set((s) => ({ leaves: s.leaves.filter((l) => l.id !== id) })),
+  removeLeave: (id) => {
+    const leave = get().leaves.find((l) => l.id === id);
+    set((s) => ({ leaves: s.leaves.filter((l) => l.id !== id) }));
+    // By person and date: a leave added a moment ago still has its local id.
+    if (leave) pushRemoveLeave(leave.staffId, leave.date);
+  },
 
   setStaffPassword: (staffId, password, opts) =>
     set((s) => ({
@@ -975,6 +1009,45 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
         ],
         ...(ownBookingId ? { trackingBookingId: ownBookingId } : {}),
+      };
+    }),
+
+  hydrateShop: ({ opsRules, roster, leaves, shifts, staffChairs, branchIds }) =>
+    set((s) => {
+      const covered = new Set(branchIds);
+      // Everyone the snapshot speaks for, rostered or not.
+      const people = new Set(Object.keys(staffChairs));
+
+      const nextRoster = Object.fromEntries(
+        Object.entries(s.roster).filter(([id]) => !people.has(id)),
+      );
+      Object.assign(nextRoster, roster);
+
+      // The chairs the database has people at; a chair nobody holds is free.
+      const holderOf = new Map<string, string>();
+      for (const [staffId, chairId] of Object.entries(staffChairs)) {
+        if (chairId) holderOf.set(chairId, staffId);
+      }
+
+      return {
+        opsRules,
+        roster: nextRoster,
+        leaves: [...leaves, ...s.leaves.filter((l) => !people.has(l.staffId))],
+        // A public snapshot carries no shifts; keep whatever this device has.
+        shifts:
+          shifts.length > 0 || s.session
+            ? [...shifts, ...s.shifts.filter((sh) => !covered.has(sh.branchId))]
+            : s.shifts,
+        staff: s.staff.map((m) =>
+          people.has(m.id) && m.chairId !== staffChairs[m.id]
+            ? { ...m, chairId: staffChairs[m.id] }
+            : m,
+        ),
+        chairs: s.chairs.map((c) =>
+          covered.has(c.branchId) && c.staffId !== (holderOf.get(c.id) ?? null)
+            ? { ...c, staffId: holderOf.get(c.id) ?? null }
+            : c,
+        ),
       };
     }),
 

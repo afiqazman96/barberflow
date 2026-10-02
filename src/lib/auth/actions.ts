@@ -315,12 +315,23 @@ export async function setStaffActive(
     });
   }
 
-  await prisma.staff.update({
-    where: { id: staffId },
-    data: active
-      ? { active: true }
-      : { active: false, status: "OFF_DUTY", chairId: null },
-  });
+  await prisma.$transaction([
+    prisma.staff.update({
+      where: { id: staffId },
+      data: active
+        ? { active: true }
+        : { active: false, status: "OFF_DUTY", chairId: null },
+    }),
+    // A disabled account cannot still be on the clock.
+    ...(active
+      ? []
+      : [
+          prisma.shift.updateMany({
+            where: { staffId, endedAt: null },
+            data: { endedAt: new Date(), endedBy: "OWNER", note: "Account disabled" },
+          }),
+        ]),
+  ]);
 
   revalidatePath("/owner/settings");
   revalidatePath("/owner/staff");

@@ -12,8 +12,9 @@ import { setMyStatus } from "./actions";
  * device goes back to what everyone else sees.
  */
 export function pushOwnStatus(status: StaffStatus): void {
-  // Derived from the ticket in service on every screen; never stored.
-  if (status === "busy") return;
+  // `busy` is derived from the ticket in service on every screen, and going
+  // on or off duty is a clock-in / clock-out (`shop/client.ts`).
+  if (status !== "available" && status !== "break") return;
 
   const failed = (description?: string) => {
     toast.error("Couldn't update your status", { description });

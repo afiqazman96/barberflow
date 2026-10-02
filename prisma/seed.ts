@@ -464,12 +464,42 @@ async function seedTenant(authUsers: Map<string, string>): Promise<void> {
   }
 }
 
+/**
+ * The demo team's weekly roster (index 0 = Sunday), as the prototype had it.
+ * Only created, never overwritten — an owner's edits survive a re-seed.
+ * Without a roster nobody is bookable, so the booking form offers no slots.
+ */
+async function seedRoster(): Promise<void> {
+  const tenantId = "t1";
+  const work = (start: string, end: string) => ({ off: false, start, end });
+  const rest = { off: true, start: "10:00", end: "19:00" };
+  const sixDays = (start: string, end: string) => [rest, ...Array.from({ length: 6 }, () => work(start, end))];
+
+  const roster: Record<string, { off: boolean; start: string; end: string }[]> = {
+    c1: sixDays("10:00", "19:00"),
+    s1: sixDays("10:00", "19:00"),
+    s2: [work("11:00", "20:00"), rest, rest, work("11:00", "20:00"), work("11:00", "20:00"), work("11:00", "20:00"), work("11:00", "20:00")],
+    s3: [work("12:00", "21:00"), work("12:00", "21:00"), rest, rest, work("12:00", "21:00"), work("12:00", "21:00"), work("12:00", "21:00")],
+  };
+
+  for (const [staffId, week] of Object.entries(roster)) {
+    for (const [weekday, day] of week.entries()) {
+      await prisma.rosterDay.upsert({
+        where: { staffId_weekday: { staffId, weekday } },
+        update: {},
+        create: { tenantId, staffId, weekday, ...day },
+      });
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const authUsers = await existingAuthUsersByEmail();
 
   await seedPackages();
   await seedPlatformAdmin(authUsers);
   await seedTenant(authUsers);
+  await seedRoster();
 
   console.log("Seeded packages, platform admin, and the Fade House tenant.");
   console.log(`Shop logins: rizal@fadehouse.my (owner), siti@fadehouse.my (cashier), adam@fadehouse.my (barber)`);

@@ -73,6 +73,14 @@ enum StaffStatus {
   BREAK
 }
 
+/// Who opened or closed a shift: the person themselves, the owner on their
+/// behalf, or the end-of-day close-out.
+enum ShiftActor {
+  SELF
+  OWNER
+  AUTO
+}
+
 enum MembershipTier {
   NONE
   SILVER
@@ -216,6 +224,9 @@ model Tenant {
   bookings        Booking[]
   sales           Sale[]
   supportTickets  SupportTicket[]
+  shifts          Shift[]
+  rosterDays      RosterDay[]
+  staffLeaves     StaffLeave[]
 
   @@index([packageId])
   @@index([status])
@@ -236,6 +247,14 @@ model TenantSettings {
   currency               String  @default("MYR")
   /// Default minutes a late booking is held before auto no-show.
   defaultGracePeriodMins Int     @default(10)
+  /// Waiting longer than this is flagged on the counter's queue screen.
+  maxWaitMins            Int     @default(45)
+  /// How many days ahead customers can book.
+  advanceDays            Int     @default(7)
+  /// Customers can't cancel their own booking inside this many hours.
+  cancelHours            Int     @default(4)
+  /// Gap between bookable time slots, in minutes.
+  slotInterval           Int     @default(30)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -283,6 +302,7 @@ model Branch {
   bookings      Booking[]
   sales         Sale[]
   queueCounters QueueCounter[]
+  shifts        Shift[]
 
   @@index([tenantId])
   @@map("branches")
@@ -298,6 +318,7 @@ model Chair {
   /// A chair holds at most one staff member; `Staff.chairId` is the unique side.
   staff        Staff?
   queueTickets QueueTicket[]
+  shifts       Shift[]
 
   @@unique([branchId, number])
   @@map("chairs")
@@ -346,10 +367,84 @@ model Staff {
   sales                Sale[]
   commissionRules      CommissionRule[]
   preferredByCustomers Customer[]
+  shifts               Shift[]
+  rosterDays           RosterDay[]
+  leaves               StaffLeave[]
 
   @@index([tenantId])
   @@index([branchId, status])
   @@map("staff")
+}
+
+/// One clock-in → clock-out. Owners aren't tracked.
+///
+/// At most one open shift (`endedAt` null) per staff member — enforced by the
+/// partial unique index `shifts_one_open_per_staff` in the migration, which
+/// Prisma cannot express.
+model Shift {
+  id        String      @id @default(cuid())
+  tenantId  String
+  branchId  String
+  staffId   String
+  /// The shop-local date the shift started on.
+  date      DateTime    @db.Date
+  startedAt DateTime
+  endedAt   DateTime?
+  chairId   String?
+  startedBy ShiftActor
+  endedBy   ShiftActor?
+  /// Why an owner clocked someone in/out for them, or why it auto-closed.
+  note      String?
+  createdAt DateTime    @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  chair  Chair? @relation(fields: [chairId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, date])
+  @@index([staffId, endedAt])
+  @@map("shifts")
+}
+
+/// One weekday of a staff member's weekly roster. A missing row reads as
+/// "no roster set" for that day.
+model RosterDay {
+  id        String   @id @default(cuid())
+  tenantId  String
+  staffId   String
+  /// 0 = Sunday … 6 = Saturday.
+  weekday   Int
+  off       Boolean  @default(true)
+  /// 24h "HH:MM", shop-local. Ignored when `off`.
+  start     String   @default("10:00")
+  end       String   @default("19:00")
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, weekday])
+  @@index([tenantId])
+  @@map("roster_days")
+}
+
+/// A day a rostered staff member is away (annual leave, MC, ...).
+model StaffLeave {
+  id        String   @id @default(cuid())
+  tenantId  String
+  staffId   String
+  /// Shop-local date.
+  date      DateTime @db.Date
+  reason    String
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, date])
+  @@index([tenantId, date])
+  @@map("staff_leaves")
 }
 
 // ---------------------------------------------------------------------------

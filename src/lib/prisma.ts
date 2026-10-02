@@ -37,8 +37,18 @@ function createPrismaClient() {
   });
 }
 
+// So is the client class itself. `prisma generate` after a schema change
+// rewrites `src/generated/prisma`, and the dev server reloads it — but a
+// cached instance of the *old* class still validates queries against the old
+// schema, rejecting every new column until the server is restarted.
 const cachedIsStale =
-  globalForPrisma.prismaConnectionString !== process.env.DATABASE_URL;
+  globalForPrisma.prismaConnectionString !== process.env.DATABASE_URL ||
+  !(globalForPrisma.prisma instanceof PrismaClient);
+
+if (cachedIsStale && globalForPrisma.prisma) {
+  // Hand the old pool's connections back rather than leaking them.
+  void globalForPrisma.prisma.$disconnect().catch(() => {});
+}
 
 export const prisma =
   globalForPrisma.prisma && !cachedIsStale

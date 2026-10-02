@@ -5,6 +5,8 @@ import { requireRole } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
 import { resolveCustomerId } from "@/lib/customers/resolve";
 import { prisma } from "@/lib/prisma";
+import { closingMins, hhmmToMins, openingMins } from "@/lib/roster";
+import { addDays, dateColumn, opsRulesFor, shopToday } from "@/lib/shop/queries";
 
 import { readOwnBookingId, rememberOwnBooking } from "./cookie";
 import type {
@@ -44,9 +46,59 @@ const MAX_GRACE_MINS = 120;
 type CreateArgs = {
   tenantId: string;
   input: BookingInput;
-  /** Customers may only book ahead; the counter may record one after the fact. */
+  /**
+   * Customers are held to the shop's rules: ahead of now, inside the booking
+   * window, during opening hours, with a barber rostered on and not on leave.
+   * The counter may book outside them (after the fact, a favour, a walk-in
+   * recorded late) — that is the owner's or cashier's call.
+   */
   allowPast: boolean;
 };
+
+/**
+ * The barbers rostered on at `time` on `date`, and not on leave — the same
+ * rule the booking form greys slots out by. Null when the shop is closed then.
+ */
+async function barbersWorkingAt(
+  branchId: string,
+  barberIds: string[],
+  date: string,
+  time: string,
+  slotMins: number,
+): Promise<Set<string> | null> {
+  const branch = await prisma.branch.findUnique({
+    where: { id: branchId },
+    select: { openHours: true },
+  });
+  const hours = { openHours: branch?.openHours ?? "" };
+  const start = hhmmToMins(time);
+  if (start < openingMins(hours) || start + slotMins > closingMins(hours)) {
+    return null;
+  }
+
+  const weekday = dateColumn(date).getUTCDay();
+  const [days, away] = await Promise.all([
+    prisma.rosterDay.findMany({
+      where: { staffId: { in: barberIds }, weekday, off: false },
+      select: { staffId: true, start: true, end: true },
+    }),
+    prisma.staffLeave.findMany({
+      where: { staffId: { in: barberIds }, date: dateColumn(date) },
+      select: { staffId: true },
+    }),
+  ]);
+  const onLeave = new Set(away.map((l) => l.staffId));
+  return new Set(
+    days
+      .filter(
+        (d) =>
+          !onLeave.has(d.staffId) &&
+          start >= hhmmToMins(d.start) &&
+          start + slotMins <= hhmmToMins(d.end),
+      )
+      .map((d) => d.staffId),
+  );
+}
 
 async function createBooking({
   tenantId,
@@ -86,15 +138,41 @@ async function createBooking({
   }
   const ordered = serviceIds.map((id) => services.find((s) => s.id === id)!);
 
-  const barbers = await prisma.staff.findMany({
+  const branchBarbers = await prisma.staff.findMany({
     where: { tenantId, branchId: input.branchId, role: "BARBER", active: true },
     select: { id: true, name: true },
   });
   const barber = input.staffId
-    ? barbers.find((b) => b.id === input.staffId)
+    ? branchBarbers.find((b) => b.id === input.staffId)
     : null;
   if (input.staffId && !barber) {
     return { ok: false, error: "That barber isn't at this branch" };
+  }
+
+  let barbers = branchBarbers;
+  const rules = await opsRulesFor(tenantId);
+  if (!allowPast) {
+    const today = shopToday(timeZone);
+    if (input.date > addDays(today, rules.advanceDays)) {
+      return {
+        ok: false,
+        error: `Bookings open ${rules.advanceDays} days ahead`,
+      };
+    }
+    const working = await barbersWorkingAt(
+      input.branchId,
+      branchBarbers.map((b) => b.id),
+      input.date,
+      input.time,
+      rules.slotInterval,
+    );
+    if (!working) {
+      return { ok: false, error: "The shop is closed at that time" };
+    }
+    if (barber && !working.has(barber.id)) {
+      return { ok: false, error: `${barber.name} isn't working at ${input.time}` };
+    }
+    barbers = branchBarbers.filter((b) => working.has(b.id));
   }
 
   // The same rule the booking form greys slots out by, checked again here
@@ -110,13 +188,11 @@ async function createBooking({
     return { ok: false, error: `${input.time} is fully booked` };
   }
 
-  const settings = await prisma.tenantSettings.findUnique({
-    where: { tenantId },
-    select: { defaultGracePeriodMins: true },
-  });
-  const gracePeriodMins = Number.isFinite(input.gracePeriodMins)
-    ? Math.min(MAX_GRACE_MINS, Math.max(0, Math.round(input.gracePeriodMins!)))
-    : (settings?.defaultGracePeriodMins ?? 10);
+  // A customer gets the shop's grace period; the counter may set another.
+  const gracePeriodMins =
+    allowPast && Number.isFinite(input.gracePeriodMins)
+      ? Math.min(MAX_GRACE_MINS, Math.max(0, Math.round(input.gracePeriodMins!)))
+      : rules.gracePeriodMins;
 
   const customerId = await resolveCustomerId(tenantId, { name, phone, email });
 
@@ -250,17 +326,29 @@ export async function cancelMyBooking(): Promise<ActionResult> {
     return { ok: false, error: "We couldn't find your booking on this device" };
   }
 
+  const booking = await prisma.booking.findUnique({
+    where: { id: bookingId },
+    select: { tenantId: true, branch: { select: { phone: true } } },
+  });
+  if (!booking) {
+    return { ok: false, error: "We couldn't find your booking on this device" };
+  }
+  const { cancelHours } = await opsRulesFor(booking.tenantId);
+
   const cancelled = await prisma.booking.updateMany({
     where: {
       id: bookingId,
       // Once checked in they are in the queue — leaving is done from there.
       status: "CONFIRMED",
-      scheduledAt: { gt: new Date() },
+      scheduledAt: { gt: new Date(Date.now() + cancelHours * 3600_000) },
     },
     data: { status: "CANCELLED" },
   });
   if (cancelled.count === 0) {
-    return { ok: false, error: "This booking can no longer be cancelled online" };
+    return {
+      ok: false,
+      error: `Cancellations close ${cancelHours}h before the appointment — please call ${booking.branch.phone ?? "the shop"}`,
+    };
   }
 
   return { ok: true };

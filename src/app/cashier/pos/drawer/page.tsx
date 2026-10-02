@@ -67,13 +67,13 @@ export default function CashierDrawerPage() {
   );
   const countedTotal = denominationTotal(countRecord);
 
-  function handleOpen() {
+  async function handleOpen() {
     const f = Number(float);
     if (float === "" || Number.isNaN(f) || f < 0) {
       toast.error("Count your opening float first");
       return;
     }
-    const res = openDrawer({
+    const res = await openDrawer({
       cashierId: myStaffId || session.authUserId,
       cashierName: session.name,
       openingFloat: f,
@@ -95,7 +95,7 @@ export default function CashierDrawerPage() {
     setMoveCategory("");
   }
 
-  function handleAddMovement() {
+  async function handleAddMovement() {
     const amt = Number(moveAmount) || 0;
     if (amt <= 0) {
       toast.error("Enter an amount");
@@ -110,7 +110,7 @@ export default function CashierDrawerPage() {
       return;
     }
     const note = moveNote.trim() ? `${moveCategory} · ${moveNote.trim()}` : moveCategory;
-    const res = addCashMovement({
+    const res = await addCashMovement({
       type: moveType!,
       amount: amt,
       note,
@@ -133,7 +133,7 @@ export default function CashierDrawerPage() {
     setRecounted(false);
   }
 
-  function handleClose() {
+  async function handleClose() {
     if (countedTotal <= 0) {
       toast.error("Count the cash in the drawer first");
       return;
@@ -144,7 +144,7 @@ export default function CashierDrawerPage() {
       });
       return;
     }
-    const res = closeDrawer({
+    const res = await closeDrawer({
       countedAmount: countedTotal,
       denominations: countRecord,
       closingNote: closeNote,

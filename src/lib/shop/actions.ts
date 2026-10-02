@@ -1,12 +1,13 @@
 "use server";
 
 import type { ShiftActor, Staff } from "@/generated/prisma/client";
+import type { CommissionScope, CommissionType } from "@/generated/prisma/enums";
 import { requireRole, requireShopSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
 import { timezoneForTenant } from "@/lib/bookings/queries";
 import { isUniqueViolation } from "@/lib/customers/resolve";
 import { prisma } from "@/lib/prisma";
-import type { OpsRules } from "@/lib/types";
+import type { CommissionRule, OpsRules, TaxConfig } from "@/lib/types";
 
 import type { RosterDayInput } from "./dto";
 import { dateColumn, shopToday } from "./queries";
@@ -112,6 +113,10 @@ async function endShiftFor(
     where: { assignedStaffId: target.id, status: "IN_SERVICE" },
   });
   if (serving > 0) return { ok: false, error: "Finish the current service first" };
+  const till = await prisma.drawerSession.count({
+    where: { cashierId: target.id, closedAt: null },
+  });
+  if (till > 0) return { ok: false, error: "Close the cash drawer first" };
 
   await prisma.$transaction([
     prisma.shift.updateMany({
@@ -268,5 +273,110 @@ export async function saveOpsRules(rules: OpsRules): Promise<ActionResult> {
     create: { tenantId: owner.tenantId, ...data },
     update: data,
   });
+  return { ok: true };
+}
+
+/** The owner sets the service charge and SST every bill is worked out with. */
+export async function saveTaxConfig(config: TaxConfig): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const rate = (n: unknown) => typeof n === "number" && Number.isFinite(n) && n >= 0 && n <= 100;
+  if (!rate(config.serviceChargeRate) || !rate(config.sstRate)) {
+    return { ok: false, error: "Rates must be from 0 to 100%" };
+  }
+  if (config.applyTo !== "services" && config.applyTo !== "all") {
+    return { ok: false, error: "Unknown charge base" };
+  }
+
+  const data = {
+    serviceChargeEnabled: !!config.serviceChargeEnabled,
+    serviceChargeRate: Math.round(config.serviceChargeRate * 100) / 100,
+    sstEnabled: !!config.sstEnabled,
+    sstRate: Math.round(config.sstRate * 100) / 100,
+    sstRegNo: String(config.sstRegNo ?? "").trim().slice(0, 60),
+    taxAppliesTo: config.applyTo,
+  };
+  await prisma.tenantSettings.upsert({
+    where: { tenantId: owner.tenantId },
+    create: { tenantId: owner.tenantId, ...data },
+    update: data,
+  });
+  return { ok: true };
+}
+
+const RULE_TYPE_TO_PRISMA = {
+  fixed: "FIXED",
+  percentage: "PERCENTAGE",
+  "service-based": "SERVICE_BASED",
+  "product-based": "PRODUCT_BASED",
+} as const satisfies Record<CommissionRule["type"], CommissionType>;
+
+const RULE_SCOPE_TO_PRISMA = {
+  all: "ALL",
+  service: "SERVICE",
+  product: "PRODUCT",
+} as const satisfies Record<CommissionRule["appliesTo"], CommissionScope>;
+
+/** The owner adds a commission rule. Returns its id, so the screen can keep it. */
+export async function createCommissionRule(
+  input: Omit<CommissionRule, "id">,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const name = input.name?.trim().slice(0, 80);
+  if (!name) return { ok: false, error: "Rule name is required" };
+  const type = RULE_TYPE_TO_PRISMA[input.type];
+  const appliesTo = RULE_SCOPE_TO_PRISMA[input.appliesTo];
+  if (!type || !appliesTo) return { ok: false, error: "Unknown rule type" };
+  // A share of the sale can't be more than the sale; a flat bonus has no cap.
+  const max = input.type === "fixed" ? 10_000 : 100;
+  if (!Number.isFinite(input.value) || input.value < 0 || input.value > max) {
+    return { ok: false, error: `Value must be from 0 to ${max}` };
+  }
+
+  // Whatever the rule points at must be this shop's own.
+  const [service, product, staff] = await Promise.all([
+    input.serviceId
+      ? prisma.service.findFirst({ where: { id: input.serviceId, tenantId: owner.tenantId } })
+      : null,
+    input.productId
+      ? prisma.product.findFirst({ where: { id: input.productId, tenantId: owner.tenantId } })
+      : null,
+    input.staffId
+      ? prisma.staff.findFirst({ where: { id: input.staffId, tenantId: owner.tenantId } })
+      : null,
+  ]);
+  if ((input.serviceId && !service) || (input.productId && !product) || (input.staffId && !staff)) {
+    return { ok: false, error: "That service, product or barber isn't in this shop" };
+  }
+
+  const rule = await prisma.commissionRule.create({
+    data: {
+      tenantId: owner.tenantId,
+      name,
+      type,
+      value: Math.round(input.value * 100) / 100,
+      appliesTo,
+      serviceId: service?.id ?? null,
+      productId: product?.id ?? null,
+      staffId: staff?.id ?? null,
+      active: input.active !== false,
+    },
+    select: { id: true },
+  });
+  return { ok: true, data: { id: rule.id } };
+}
+
+/** The owner switches a commission rule on or off. */
+export async function setCommissionRuleActive(
+  ruleId: string,
+  active: boolean,
+): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+  const updated = await prisma.commissionRule.updateMany({
+    where: { id: ruleId, tenantId: owner.tenantId },
+    data: { active: !!active },
+  });
+  if (updated.count === 0) return { ok: false, error: "Rule not found" };
   return { ok: true };
 }

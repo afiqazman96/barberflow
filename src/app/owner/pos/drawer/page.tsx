@@ -84,8 +84,8 @@ export default function OwnerCashDrawerPage() {
   const pending = closed.filter((s) => s.status === "needs-review").length;
   const openHere = drawerSession && drawerSession.branchId === branchId ? drawerSession : null;
 
-  function handleReview(id: string) {
-    const res = reviewDrawer(id, reviewNote);
+  async function handleReview(id: string) {
+    const res = await reviewDrawer(id, reviewNote);
     if (!res.ok) {
       toast.error("Couldn't record the review", { description: res.error });
       return;
@@ -94,13 +94,13 @@ export default function OwnerCashDrawerPage() {
     setReviewNote("");
   }
 
-  function handleOwnerClose() {
+  async function handleOwnerClose() {
     const c = Number(ownerCount);
     if (ownerCount === "" || Number.isNaN(c) || c < 0) {
       toast.error("Enter the counted cash");
       return;
     }
-    const res = closeDrawer({ countedAmount: c, closingNote: ownerReason });
+    const res = await closeDrawer({ countedAmount: c, closingNote: ownerReason });
     if (res.result !== "closed") {
       toast.error("Couldn't close the drawer", { description: res.message });
       return;

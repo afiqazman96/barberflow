@@ -254,6 +254,16 @@ export interface Booking {
   notes?: string;
 }
 
+/** A line on the bill being rung up, priced from the catalogue. */
+export interface PosItem {
+  /** The service or product id. */
+  id: string;
+  type: "service" | "product";
+  name: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 export interface Sale {
   id: string;
   branchId: string;

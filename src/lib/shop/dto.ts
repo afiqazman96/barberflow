@@ -1,4 +1,11 @@
-import type { LeaveEntry, OpsRules, RosterDay, ShiftRecord } from "@/lib/types";
+import type {
+  CommissionRule,
+  LeaveEntry,
+  OpsRules,
+  RosterDay,
+  ShiftRecord,
+  TaxConfig,
+} from "@/lib/types";
 
 /**
  * What crosses to the browser about how the shop runs: its rules, who is
@@ -23,6 +30,12 @@ export type ShopSnapshot = {
   staffChairs: Record<string, string | null>;
   /** Every branch this snapshot speaks for. */
   branchIds: string[];
+  /**
+   * Staff snapshots only: the service charge and SST, and the commission
+   * rules — what the POS previews a bill with, and the server charges it by.
+   */
+  taxConfig?: TaxConfig;
+  commissionRules?: CommissionRule[];
 };
 
 export type RosterDayInput = Pick<RosterDay, "off" | "start" | "end">;

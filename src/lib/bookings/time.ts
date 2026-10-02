@@ -65,6 +65,17 @@ export function shopTimeToInstant(
   return new Date(naive.getTime() - second * 60_000);
 }
 
+/**
+ * The instant → `2026-10-02T14:30:05` on the shop's clock, no zone. The shape
+ * the sales screens group by (`createdAt.slice(0, 10)` is the shop's day), so
+ * a sale at 00:30 lands on the shop's date, not on UTC's.
+ */
+export function instantToShopIso(instant: Date, timeZone: string): string {
+  const p = partsIn(instant, timeZone);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}:${pad(p.second)}`;
+}
+
 /** The instant → the shop's `date` and `time`, as the screens show them. */
 export function instantToShopTime(
   instant: Date,

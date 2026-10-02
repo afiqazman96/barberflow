@@ -91,7 +91,7 @@ export default function CashierPaymentPage() {
 
   const TIP_PCTS = [0, 10, 15, 20];
 
-  function handlePay() {
+  async function handlePay() {
     if (!method) {
       toast.error("Select a payment method");
       return;
@@ -108,29 +108,32 @@ export default function CashierPaymentPage() {
     }
 
     setProcessing(true);
-    setTimeout(() => {
-      // completePayment records the sale, frees the barber and closes the
-      // queue ticket in one step.
-      const sale = completePayment(
-        method,
-        method === "card"
-          ? {
-              scheme: card.scheme || undefined,
-              last4: card.last4.trim() || undefined,
-              approvalCode: card.approvalCode.trim() || undefined,
-            }
-          : undefined,
-      );
-      setPaid(true);
-      setProcessing(false);
-      toast.success("Payment complete!", {
-        description: `Receipt ${sale.receiptNo}`,
-      });
-      // The receipt goes to the address the customer gave when they joined.
-      if (sale.customerEmail) {
-        void sendReceiptEmail(sale, sale.customerEmail, { auto: true });
-      }
-    }, 800);
+    // completePayment records the sale on the server, frees the barber and
+    // closes the queue ticket in one step.
+    const result = await completePayment(
+      method,
+      method === "card"
+        ? {
+            scheme: card.scheme || undefined,
+            last4: card.last4.trim() || undefined,
+            approvalCode: card.approvalCode.trim() || undefined,
+          }
+        : undefined,
+    );
+    setProcessing(false);
+    if (!result.ok) {
+      toast.error("Payment not taken", { description: result.error });
+      return;
+    }
+    const { sale } = result;
+    setPaid(true);
+    toast.success("Payment complete!", {
+      description: `Receipt ${sale.receiptNo}`,
+    });
+    // The receipt goes to the address the customer gave when they joined.
+    if (sale.customerEmail) {
+      void sendReceiptEmail(sale, sale.customerEmail, { auto: true });
+    }
   }
 
   function handleNewSale() {

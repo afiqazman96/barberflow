@@ -1,12 +1,20 @@
 import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
-import type { ShiftActor } from "@/generated/prisma/enums";
+import type { CommissionScope, CommissionType, ShiftActor } from "@/generated/prisma/enums";
 import { requireShopSession } from "@/lib/auth/session";
 import { timezoneForTenant } from "@/lib/bookings/queries";
 import { instantToShopTime } from "@/lib/bookings/time";
+import { DEFAULT_TAX_CONFIG } from "@/lib/pos-pricing";
 import { prisma } from "@/lib/prisma";
-import type { LeaveEntry, OpsRules, RosterDay, ShiftRecord } from "@/lib/types";
+import type {
+  CommissionRule,
+  LeaveEntry,
+  OpsRules,
+  RosterDay,
+  ShiftRecord,
+  TaxConfig,
+} from "@/lib/types";
 
 import type { ShopSnapshot } from "./dto";
 import { closeStaleShifts } from "./housekeeping";
@@ -57,6 +65,62 @@ export async function opsRulesFor(tenantId: string): Promise<OpsRules> {
     cancelHours: settings.cancelHours,
     slotInterval: settings.slotInterval,
   };
+}
+
+/** The shop's service charge and SST; everything off for a shop without settings. */
+export async function taxConfigFor(tenantId: string): Promise<TaxConfig> {
+  const settings = await prisma.tenantSettings.findUnique({
+    where: { tenantId },
+    select: {
+      serviceChargeEnabled: true,
+      serviceChargeRate: true,
+      sstEnabled: true,
+      sstRate: true,
+      sstRegNo: true,
+      taxAppliesTo: true,
+    },
+  });
+  if (!settings) return { ...DEFAULT_TAX_CONFIG };
+  return {
+    serviceChargeEnabled: settings.serviceChargeEnabled,
+    serviceChargeRate: Number(settings.serviceChargeRate),
+    sstEnabled: settings.sstEnabled,
+    sstRate: Number(settings.sstRate),
+    sstRegNo: settings.sstRegNo,
+    applyTo: settings.taxAppliesTo === "all" ? "all" : "services",
+  };
+}
+
+const RULE_TYPE = {
+  FIXED: "fixed",
+  PERCENTAGE: "percentage",
+  SERVICE_BASED: "service-based",
+  PRODUCT_BASED: "product-based",
+} as const satisfies Record<CommissionType, CommissionRule["type"]>;
+
+const RULE_SCOPE = {
+  ALL: "all",
+  SERVICE: "service",
+  PRODUCT: "product",
+} as const satisfies Record<CommissionScope, CommissionRule["appliesTo"]>;
+
+/** Every commission rule, on or off — the owner's screen lists both. */
+export async function commissionRulesFor(tenantId: string): Promise<CommissionRule[]> {
+  const rows = await prisma.commissionRule.findMany({
+    where: { tenantId },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: RULE_TYPE[r.type],
+    value: Number(r.value),
+    appliesTo: RULE_SCOPE[r.appliesTo],
+    serviceId: r.serviceId ?? undefined,
+    productId: r.productId ?? undefined,
+    staffId: r.staffId ?? undefined,
+    active: r.active,
+  }));
 }
 
 const ACTOR: Record<ShiftActor, "self" | "owner" | "auto"> = {
@@ -151,8 +215,10 @@ export async function staffShopSnapshot(): Promise<ShopSnapshot> {
   const since = dateColumn(addDays(shopToday(timeZone), -HISTORY_DAYS));
   const { ids, chairs } = await staffChairsAt(branchIds);
 
-  const [opsRules, rosterRows, leaveRows, shiftRows] = await Promise.all([
+  const [opsRules, taxConfig, commissionRules, rosterRows, leaveRows, shiftRows] = await Promise.all([
     opsRulesFor(staff.tenantId),
+    taxConfigFor(staff.tenantId),
+    commissionRulesFor(staff.tenantId),
     prisma.rosterDay.findMany({
       where: { tenantId: staff.tenantId, staffId: { in: ids } },
       select: { staffId: true, weekday: true, off: true, start: true, end: true },
@@ -178,6 +244,8 @@ export async function staffShopSnapshot(): Promise<ShopSnapshot> {
     shifts: shiftRows.map(toShiftDto),
     staffChairs: chairs,
     branchIds,
+    taxConfig,
+    commissionRules,
   };
 }
 

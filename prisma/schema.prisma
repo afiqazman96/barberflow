@@ -137,6 +137,19 @@ enum SaleItemType {
   PRODUCT
 }
 
+enum CashMovementType {
+  SALE
+  REFUND
+  PAY_IN
+  PAY_OUT
+}
+
+enum DrawerStatus {
+  CLOSED
+  NEEDS_REVIEW
+  REVIEWED
+}
+
 // ---------------------------------------------------------------------------
 // Platform (Super Admin)
 // ---------------------------------------------------------------------------
@@ -144,9 +157,9 @@ enum SaleItemType {
 /// Super Admin console login. Deliberately separate from `Staff` so platform
 /// accounts can never authenticate through the shop-facing login.
 model PlatformAdmin {
-  id    String @id @default(cuid())
-  email String @unique
-  name  String
+  id         String   @id @default(cuid())
+  email      String   @unique
+  name       String
   /// Supabase `auth.users.id`. Credentials live in Supabase Auth, not here.
   /// Null means the row exists but nobody can sign in as it yet.
   authUserId String?  @unique @db.Uuid
@@ -256,6 +269,15 @@ model TenantSettings {
   /// Gap between bookable time slots, in minutes.
   slotInterval           Int     @default(30)
 
+  /// Service charge and SST, applied by `computeCharges` (src/lib/pos-pricing.ts).
+  serviceChargeEnabled Boolean @default(false)
+  serviceChargeRate    Decimal @default(10) @db.Decimal(5, 2)
+  sstEnabled           Boolean @default(false)
+  sstRate              Decimal @default(8) @db.Decimal(5, 2)
+  sstRegNo             String  @default("")
+  /// What the charges are levied on: "services" or "all".
+  taxAppliesTo         String  @default("services")
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_settings")
@@ -295,14 +317,16 @@ model Branch {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  chairs        Chair[]
-  staff         Staff[]
-  queueTickets  QueueTicket[]
-  bookings      Booking[]
-  sales         Sale[]
-  queueCounters QueueCounter[]
-  shifts        Shift[]
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chairs         Chair[]
+  staff          Staff[]
+  queueTickets   QueueTicket[]
+  bookings       Booking[]
+  sales          Sale[]
+  queueCounters  QueueCounter[]
+  shifts         Shift[]
+  receiptCounter ReceiptCounter?
+  drawerSessions DrawerSession[]
 
   @@index([tenantId])
   @@map("branches")
@@ -330,10 +354,10 @@ model Staff {
   tenantId           String
   /// Null for owners, who span every branch under the tenant.
   branchId           String?
-  name  String
+  name               String
   /// Globally unique, because Supabase Auth keys accounts on email. One login
   /// therefore maps to exactly one staff row and one tenant.
-  email String @unique
+  email              String    @unique
   /// Supabase `auth.users.id`. Credentials live in Supabase Auth, not here.
   /// Null means the row exists but nobody can sign in as it yet.
   authUserId         String?   @unique @db.Uuid
@@ -368,6 +392,7 @@ model Staff {
   commissionRules      CommissionRule[]
   preferredByCustomers Customer[]
   shifts               Shift[]
+  drawerSessions       DrawerSession[]
   rosterDays           RosterDay[]
   leaves               StaffLeave[]
 
@@ -592,6 +617,80 @@ model QueueCounter {
   @@map("queue_counters")
 }
 
+/// A cashier's shift at the till, from opening float to close-out. At most one
+/// open per branch (`drawer_sessions_one_open_per_branch`, a partial index
+/// Prisma can't express).
+model DrawerSession {
+  id            String   @id @default(cuid())
+  tenantId      String
+  branchId      String
+  cashierId     String?
+  cashierName   String
+  openedAt      DateTime @default(now())
+  openingFloat  Decimal  @db.Decimal(10, 2)
+  /// Opening float minus the previous close's count, when they differed.
+  floatMismatch Decimal? @db.Decimal(10, 2)
+
+  closedAt        DateTime?
+  closedById      String?
+  closedByName    String?
+  closedByOwner   Boolean       @default(false)
+  /// The final count, its notes and coins, and every attempt before it.
+  countedAmount   Decimal?      @db.Decimal(10, 2)
+  denominations   Json?
+  counts          Json          @default("[]")
+  /// Frozen at close so later changes can't move it. Never shown to cashiers.
+  expectedAtClose Decimal?      @db.Decimal(10, 2)
+  variance        Decimal?      @db.Decimal(10, 2)
+  status          DrawerStatus?
+  closingNote     String?
+  varianceReason  String?
+
+  reviewedById   String?
+  reviewedByName String?
+  reviewedAt     DateTime?
+  reviewNote     String?
+
+  branch    Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  cashier   Staff?         @relation(fields: [cashierId], references: [id], onDelete: SetNull)
+  movements CashMovement[]
+
+  @@index([branchId, openedAt])
+  @@map("drawer_sessions")
+}
+
+/// One line in a drawer's log. Signed: positive puts cash in, negative takes it out.
+model CashMovement {
+  id       String           @id @default(cuid())
+  drawerId String
+  /// Copied from the drawer so the Realtime trigger can name the branch.
+  branchId String
+  type     CashMovementType
+  amount   Decimal          @db.Decimal(10, 2)
+  note     String
+  category String?
+  saleId   String?
+  byId     String?
+  byName   String?
+  at       DateTime         @default(now())
+
+  drawer DrawerSession @relation(fields: [drawerId], references: [id], onDelete: Cascade)
+
+  @@index([drawerId, at])
+  @@map("cash_movements")
+}
+
+/// Per-branch allocator for receipt numbers. Increment inside the same
+/// transaction as the sale, like `QueueCounter`.
+model ReceiptCounter {
+  branchId   String @id
+  lastNumber Int    @default(0)
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@map("receipt_counters")
+}
+
 model QueueTicket {
   id        String   @id @default(cuid())
   tenantId  String
@@ -733,19 +832,46 @@ model Sale {
 
   receiptNo String
 
-  subtotal Decimal @db.Decimal(10, 2)
-  discount Decimal @default(0) @db.Decimal(10, 2)
-  voucher  Decimal @default(0) @db.Decimal(10, 2)
-  total    Decimal @db.Decimal(10, 2)
+  /// Snapshots for the receipt: a walk-in has no customer row, and names change.
+  customerName     String  @default("Walk-in Customer")
+  customerEmail    String?
+  staffName        String?
+  /// The membership plan sold on this visit, if any.
+  membershipPlanId String?
 
-  paymentMethod PaymentMethod
+  subtotal          Decimal @db.Decimal(10, 2)
+  discount          Decimal @default(0) @db.Decimal(10, 2)
+  discountReason    String?
+  voucher           Decimal @default(0) @db.Decimal(10, 2)
+  serviceCharge     Decimal @default(0) @db.Decimal(10, 2)
+  serviceChargeRate Decimal @default(0) @db.Decimal(5, 2)
+  tax               Decimal @default(0) @db.Decimal(10, 2)
+  taxRate           Decimal @default(0) @db.Decimal(5, 2)
+  /// Paid through to the barber, on top of the goods.
+  tip               Decimal @default(0) @db.Decimal(10, 2)
+  total             Decimal @db.Decimal(10, 2)
+
+  paymentMethod    PaymentMethod
+  cardScheme       String?
+  cardLast4        String?
+  cardApprovalCode String?
   /// Recomputed server-side at payment time — never trusted from the client (§8).
-  commission    Decimal       @default(0) @db.Decimal(10, 2)
+  commission       Decimal       @default(0) @db.Decimal(10, 2)
 
   /// Client-supplied key making checkout retries safe (§8).
   idempotencyKey String?
   paidAt         DateTime @default(now())
   createdAt      DateTime @default(now())
+  /// Who rang it up. Plain ids with name snapshots: an audit trail outlives staff rows.
+  rungById       String?
+  rungByName     String?
+
+  voidedAt      DateTime?
+  voidedById    String?
+  voidedByName  String?
+  voidReason    String?
+  /// A cash sale was voided with no drawer open to pay the refund from.
+  refundPending Boolean   @default(false)
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch      Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)

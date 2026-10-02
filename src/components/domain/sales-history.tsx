@@ -45,13 +45,17 @@ export function SalesHistory() {
     ? (sales.find((s) => s.id === selectedId) ?? null)
     : null;
 
-  function handleVoid() {
+  async function handleVoid() {
     if (!selected) return;
     if (!voidReason) {
       toast.error("Pick a reason for the void");
       return;
     }
-    voidSale(selected.id, voidReason, session.name);
+    const result = await voidSale(selected.id, voidReason, session.name);
+    if (!result.ok) {
+      toast.error("Couldn't void the sale", { description: result.error });
+      return;
+    }
     toast.success("Sale voided", {
       description: `${selected.receiptNo} · ${voidReason}`,
     });

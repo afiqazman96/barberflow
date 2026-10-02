@@ -143,7 +143,18 @@ export function OwnerSettingsScreen({
     logoUrl: businessProfile.logoUrl,
   });
 
-  const [tax, setTax] = useState(taxConfig);
+  // Edits only; the rest follows the store as it fills from the database
+  // (the same reason as `ruleEdits` below).
+  const [taxEdits, setTaxEdits] = useState<Partial<typeof taxConfig>>({});
+  const tax = { ...taxConfig, ...taxEdits };
+  const setTax = (next: typeof taxConfig) =>
+    setTaxEdits(
+      Object.fromEntries(
+        (Object.keys(next) as (keyof typeof taxConfig)[])
+          .filter((k) => next[k] !== taxConfig[k])
+          .map((k) => [k, next[k]]),
+      ),
+    );
 
   const [branchDrafts, setBranchDrafts] = useState<Record<string, BranchDraft>>(
     {},

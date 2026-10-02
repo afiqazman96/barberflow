@@ -3,17 +3,20 @@ import { toast } from "sonner";
 import type { ActionResult } from "@/lib/auth/types";
 import type { QueueScope } from "@/lib/queue/client";
 import { requestQueueRefetch } from "@/lib/queue/client";
-import type { OpsRules } from "@/lib/types";
+import type { CommissionRule, OpsRules, TaxConfig } from "@/lib/types";
 
 import {
   clockIn,
   clockOut,
+  createCommissionRule,
   deleteLeave,
   ownerClockIn,
   ownerClockOut,
   saveLeave,
   saveOpsRules,
   saveRosterDay,
+  saveTaxConfig,
+  setCommissionRuleActive,
 } from "./actions";
 import type { RosterDayInput, ShopSnapshot } from "./dto";
 
@@ -91,4 +94,20 @@ export function pushRemoveLeave(staffId: string, date: string): void {
 
 export function pushOpsRules(rules: OpsRules): void {
   persist("Couldn't save the rules", () => saveOpsRules(rules));
+}
+
+export function pushTaxConfig(config: TaxConfig): void {
+  persist("Couldn't save tax & charges", () => saveTaxConfig(config));
+}
+
+/**
+ * The rule shows straight away under a temporary id; the refetch its write
+ * triggers swaps in the stored one.
+ */
+export function pushNewCommissionRule(rule: Omit<CommissionRule, "id">): void {
+  persist("Couldn't add the rule", () => createCommissionRule(rule));
+}
+
+export function pushCommissionRuleActive(id: string, active: boolean): void {
+  persist("Couldn't update the rule", () => setCommissionRuleActive(id, active));
 }

@@ -227,7 +227,7 @@ export default function OwnerPosPage() {
     setPayOpen(true);
   }
 
-  function handlePay() {
+  async function handlePay() {
     if (!method) {
       toast.error("Select a payment method");
       return;
@@ -239,26 +239,29 @@ export default function OwnerPosPage() {
       return;
     }
     setProcessing(true);
-    setTimeout(() => {
-      const sale = completePayment(
-        method,
-        method === "card"
-          ? {
-              scheme: card.scheme || undefined,
-              last4: card.last4.trim() || undefined,
-              approvalCode: card.approvalCode.trim() || undefined,
-            }
-          : undefined,
-      );
-      setPaid(true);
-      setProcessing(false);
-      toast.success("Payment complete!", {
-        description: `Receipt ${sale.receiptNo}`,
-      });
-      if (sale.customerEmail) {
-        void sendReceiptEmail(sale, sale.customerEmail, { auto: true });
-      }
-    }, 800);
+    const result = await completePayment(
+      method,
+      method === "card"
+        ? {
+            scheme: card.scheme || undefined,
+            last4: card.last4.trim() || undefined,
+            approvalCode: card.approvalCode.trim() || undefined,
+          }
+        : undefined,
+    );
+    setProcessing(false);
+    if (!result.ok) {
+      toast.error("Payment not taken", { description: result.error });
+      return;
+    }
+    const { sale } = result;
+    setPaid(true);
+    toast.success("Payment complete!", {
+      description: `Receipt ${sale.receiptNo}`,
+    });
+    if (sale.customerEmail) {
+      void sendReceiptEmail(sale, sale.customerEmail, { auto: true });
+    }
   }
 
   function handleClosePayment() {

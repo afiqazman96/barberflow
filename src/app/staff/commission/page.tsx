@@ -6,7 +6,7 @@ import { Wallet, TrendingUp, Info, Receipt } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatTile } from "@/components/domain/stat-tile";
-import { COMMISSION_RULES } from "@/lib/mock/data";
+import { useAppStore } from "@/lib/store/app-store";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { formatCurrency, formatDateTime, todayIso } from "@/lib/utils";
 
@@ -23,7 +23,8 @@ export default function StaffCommissionPage() {
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
   const todayCommissionTotal = todaySales.reduce((sum, s) => sum + s.commission, 0);
 
-  const activeRules = COMMISSION_RULES.filter((r) => r.active);
+  const commissionRules = useAppStore((s) => s.commissionRules);
+  const activeRules = commissionRules.filter((r) => r.active);
   const hasOverride = activeRules.some((r) => r.staffId === staff.id);
 
   return (

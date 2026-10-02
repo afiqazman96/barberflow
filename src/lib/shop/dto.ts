@@ -1,9 +1,17 @@
 import type {
+  Branch,
+  BusinessProfile,
+  Chair,
   CommissionRule,
+  Customer,
   LeaveEntry,
+  MembershipPlan,
+  Product,
+  Service,
   OpsRules,
   RosterDay,
   ShiftRecord,
+  StaffMember,
   TaxConfig,
 } from "@/lib/types";
 
@@ -36,6 +44,28 @@ export type ShopSnapshot = {
    */
   taxConfig?: TaxConfig;
   commissionRules?: CommissionRule[];
+  /** What the shop sells; public snapshots carry the services too. */
+  services: Service[];
+  /** Staff snapshots only. */
+  products?: Product[];
+  /** Public snapshots carry them too, for the customer's profile screen. */
+  membershipPlans?: MembershipPlan[];
+  /**
+   * The owner's and the counter's only — never a barber's, never a
+   * customer's: phone numbers and emails stay with the people who serve.
+   */
+  customers?: Customer[];
+  /**
+   * Who works here. The owner gets the whole team with contact details; the
+   * counter and barbers their branch without; a customer the barbers only.
+   * Sales figures on each member are zero here — `hydrateSales` fills them.
+   */
+  team: StaffMember[];
+  /** Every branch in the shop, with today's line at each. */
+  branches: Branch[];
+  /** The chairs at the branches this snapshot speaks for. */
+  chairs: Chair[];
+  businessProfile: BusinessProfile;
 };
 
 export type RosterDayInput = Pick<RosterDay, "off" | "start" | "end">;

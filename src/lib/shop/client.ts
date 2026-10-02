@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import type { ActionResult } from "@/lib/auth/types";
 import type { QueueScope } from "@/lib/queue/client";
 import { requestQueueRefetch } from "@/lib/queue/client";
-import type { CommissionRule, OpsRules, TaxConfig } from "@/lib/types";
+import type { BusinessProfile, CommissionRule, OpsRules, TaxConfig } from "@/lib/types";
 
 import {
   clockIn,
@@ -13,6 +13,7 @@ import {
   ownerClockIn,
   ownerClockOut,
   saveLeave,
+  saveBusinessProfile,
   saveOpsRules,
   saveRosterDay,
   saveTaxConfig,
@@ -110,4 +111,10 @@ export function pushNewCommissionRule(rule: Omit<CommissionRule, "id">): void {
 
 export function pushCommissionRuleActive(id: string, active: boolean): void {
   persist("Couldn't update the rule", () => setCommissionRuleActive(id, active));
+}
+
+export function pushBusinessProfile(
+  profile: Omit<BusinessProfile, "logoUrl"> & { logoUrl?: string | null },
+): void {
+  persist("Couldn't save the business profile", () => saveBusinessProfile(profile));
 }

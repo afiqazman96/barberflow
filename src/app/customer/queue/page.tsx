@@ -20,8 +20,9 @@ import { Card } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
 import { StepIndicator } from "@/components/domain/step-indicator";
 import { joinQueue } from "@/lib/queue/actions";
+import { QueueSync } from "@/components/domain/queue-sync";
+import { placeholderBranch } from "@/lib/branches/placeholder";
 import { useAppStore } from "@/lib/store/app-store";
-import { findCustomerByPhone } from "@/lib/mock/data";
 import { closingMins, minsOfDay, openingMins } from "@/lib/roster";
 import { cn, formatCurrency, initials } from "@/lib/utils";
 import { toast } from "sonner";
@@ -47,12 +48,13 @@ function QueueWizard() {
   const branches = useAppStore((s) => s.branches);
   const services = useAppStore((s) => s.services);
   const staff = useAppStore((s) => s.staff);
-  const customers = useAppStore((s) => s.customers);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
   const setBranchId = useAppStore((s) => s.setBranchId);
+  const selectedBranchId = useAppStore((s) => s.branchId);
 
-  const branch = branches.find((b) => b.id === branchIdParam) ?? branches[0];
+  const branch =
+    branches.find((b) => b.id === branchIdParam) ?? placeholderBranch(branchIdParam);
   const branchBarbers = staff.filter(
     (s) => s.role === "barber" && s.branchId === branch.id && s.active,
   );
@@ -180,18 +182,16 @@ function QueueWizard() {
 
     const { ticket } = result.data;
     const { number } = ticket;
-    // A returning customer who joins on their own phone should still be
-    // recognised — matched by phone number, not asked to "log in".
-    const matched = phone.trim()
-      ? findCustomerByPhone(customers, phone)
-      : undefined;
+    // A returning customer who joins on their own phone is recognised by the
+    // server — matched by phone or email, not asked to "log in".
+    const { member } = result.data;
 
     addQueueTicket(ticket);
     setTrackingTicketId(ticket.id);
     setBranchId(branch.id);
     // Deliberately generic: a phone number isn't proof of identity, so the
     // name and tier of whoever it matches must not be read back to a stranger.
-    if (matched && matched.membership !== "none") {
+    if (member) {
       toast.success("Member pricing applied", {
         description: "The counter will confirm your membership",
       });
@@ -204,6 +204,8 @@ function QueueWizard() {
 
   return (
     <div className="space-y-6">
+      {/* The layout follows the selected branch; this one may be another. */}
+      {branch.id !== selectedBranchId && <QueueSync scope="public" branchId={branch.id} />}
       <Link
         href={`/customer/shop/${branch.id}`}
         className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"

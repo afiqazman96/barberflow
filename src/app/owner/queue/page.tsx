@@ -17,6 +17,7 @@ import { PillTabs } from "@/components/ui/pill-tabs";
 import { registerWalkIn } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import { findCustomerByPhone } from "@/lib/mock/data";
+import { assignStaffChair } from "@/lib/staff/actions";
 import type { QueueStatus } from "@/lib/types";
 import { initials } from "@/lib/utils";
 
@@ -80,10 +81,20 @@ function OwnerQueueContent() {
     [branchQueue, filter],
   );
 
-  function handleReassign(chairId: string, staffId: string) {
+  async function handleReassign(chairId: string, staffId: string) {
+    const chair = chairs.find((c) => c.id === chairId);
+    // Seat the barber picked, or — for "Unassigned" — unseat whoever was there.
+    const target = staffId || chair?.staffId;
+    if (!target) return;
+    const result = await assignStaffChair(target, staffId ? chairId : null).catch(() => null);
+    if (!result?.ok) {
+      toast.error("Could not update the chair", {
+        description: result?.error ?? "Check your connection and try again",
+      });
+      return;
+    }
     assignChair(chairId, staffId || null);
     const member = staff.find((s) => s.id === staffId);
-    const chair = chairs.find((c) => c.id === chairId);
     toast.success("Chair reassigned", {
       description: `${chair?.label} → ${member?.name ?? "Unassigned"}`,
     });

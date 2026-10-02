@@ -15,7 +15,7 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
-import { MEMBERSHIP_PLANS } from "@/lib/mock/data";
+import { useAppStore } from "@/lib/store/app-store";
 import type { Customer, MembershipPlan } from "@/lib/types";
 import { cn, formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ const STORAGE_KEY = "barberflow-guest-profile";
 type StoredMembership = Customer["membership"];
 
 export default function ProfilePage() {
+  const membershipPlans = useAppStore((s) => s.membershipPlans);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [membership, setMembership] = useState<StoredMembership>("none");
@@ -156,7 +157,7 @@ export default function ProfilePage() {
           </h2>
         </div>
         <div className="space-y-3">
-          {MEMBERSHIP_PLANS.map((plan, i) => (
+          {membershipPlans.map((plan, i) => (
             <motion.div
               key={plan.id}
               initial={{ opacity: 0, y: 8 }}

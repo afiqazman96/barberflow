@@ -65,7 +65,17 @@ export type WalkInInput = TicketInput & {
 };
 
 export type CreateTicketResult =
-  | { ok: true; data: { ticket: QueueTicket } }
+  | {
+      ok: true;
+      data: {
+        ticket: QueueTicket;
+        /**
+         * Self-service joins only: the phone or email matched a member, so the
+         * screen can say member pricing will apply. Never who it matched.
+         */
+        member?: boolean;
+      };
+    }
   | {
       ok: false;
       error: string;

@@ -41,12 +41,24 @@ import {
   pushLeave,
   pushOpsRules,
   pushRemoveLeave,
+  pushBusinessProfile,
   pushCommissionRuleActive,
   pushNewCommissionRule,
   pushRosterDay,
   pushTaxConfig,
 } from "@/lib/shop/client";
 import type { ShopSnapshot } from "@/lib/shop/dto";
+import {
+  pushMembershipPlan,
+  pushNewProduct,
+  pushNewService,
+  pushProductPatch,
+  pushRemoveMembershipPlan,
+  pushServicePatch,
+  pushStockChange,
+  saveCustomerPatch,
+  saveNewCustomer,
+} from "@/lib/catalog/client";
 import { checkout, voidSale as voidSaleOnServer } from "@/lib/sales/actions";
 import {
   addCashMovement as addCashMovementOnServer,
@@ -58,17 +70,6 @@ import type { CloseDrawerResult, SalesSnapshot } from "@/lib/sales/dto";
 
 export { isPrivateOrigin, publicOrigin };
 import { emptyWeek, localIso, openShiftOf } from "@/lib/roster";
-import {
-  BRANCHES,
-  CHAIRS,
-  COMMISSION_RULES,
-  CUSTOMERS,
-  MEMBERSHIP_PLANS,
-  PRODUCTS,
-  SERVICES,
-  STAFF,
-  TENANT,
-} from "@/lib/mock/data";
 
 interface AppState {
   /**
@@ -172,8 +173,14 @@ interface AppState {
   addMembershipPlan: (plan: Omit<MembershipPlan, "id">) => MembershipPlan;
   updateMembershipPlan: (id: string, patch: Partial<MembershipPlan>) => void;
   deleteMembershipPlan: (id: string) => void;
-  addCustomer: (customer: Omit<Customer, "id" | "visits" | "totalSpent"> & Partial<Customer>) => Customer;
-  updateCustomer: (id: string, patch: Partial<Customer>) => void;
+  /** Saved on the server before it appears; a duplicate phone or email is refused. */
+  addCustomer: (
+    customer: Omit<Customer, "id" | "visits" | "totalSpent"> & Partial<Customer>,
+  ) => Promise<{ ok: true; customer: Customer } | { ok: false; error: string }>;
+  updateCustomer: (
+    id: string,
+    patch: Partial<Customer>,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
   addProduct: (product: Omit<Product, "id">) => Product;
   updateProduct: (id: string, patch: Partial<Product>) => void;
   /**
@@ -261,9 +268,6 @@ interface AppState {
 // The commission maths lives with the server's copy of the same rules.
 export { calcCommission } from "@/lib/commission";
 
-const initialStatuses = Object.fromEntries(
-  STAFF.map((s) => [s.id, s.status]),
-) as Record<string, StaffStatus>;
 
 export type { CloseDrawerResult } from "@/lib/sales/dto";
 
@@ -366,13 +370,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   session: null,
   staffId: null,
   branchId: "b1",
-  businessProfile: {
-    name: TENANT.name,
-    phone: "+60 3-2141 8890",
-    email: "hello@fadehouse.my",
-    address: "88 Jalan Bukit Bintang, Lot 12, KL",
-    taxId: "W10-1808-32000123",
-  },
+  // From the database (`hydrateShop`), like the team, branches and chairs.
+  businessProfile: { name: "", phone: "", email: "", address: "", taxId: "" },
   taxConfig: { ...DEFAULT_TAX_CONFIG },
   opsRules: {
     gracePeriodMins: 10,
@@ -388,23 +387,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   bookings: [],
   // From the database (`hydrateSales`); nothing until the first snapshot.
   sales: [],
-  // Takings and commission come from real sales (`hydrateSales`), not the fixtures.
-  staff: STAFF.map((s) => ({
-    ...s,
-    todaySales: 0,
-    todayCommission: 0,
-    todayCustomers: 0,
-    monthlySales: 0,
-    monthlyCommission: 0,
-  })),
-  branches: BRANCHES.map((b) => ({ ...b })),
-  chairs: CHAIRS.map((c) => ({ ...c })),
-  commissionRules: COMMISSION_RULES.map((r) => ({ ...r })),
-  services: SERVICES.map((s) => ({ ...s })),
-  membershipPlans: MEMBERSHIP_PLANS.map((p) => ({ ...p })),
-  products: PRODUCTS.map((p) => ({ ...p })),
-  customers: CUSTOMERS.map((c) => ({ ...c })),
-  staffStatuses: initialStatuses,
+  staff: [],
+  branches: [],
+  chairs: [],
+  // From the database (`hydrateShop`); nothing until the first snapshot.
+  commissionRules: [],
+  services: [],
+  membershipPlans: [],
+  products: [],
+  customers: [],
+  staffStatuses: {},
   // Shifts, roster and leave are filled by `<QueueSync>` from the database.
   shifts: [],
   roster: {},
@@ -456,10 +448,18 @@ export const useAppStore = create<AppState>((set, get) => ({
             drawerSession: s.openDrawers.find((d) => d.branchId === branchId) ?? null,
           },
     ),
-  updateBusinessProfile: (patch) =>
+  updateBusinessProfile: (patch) => {
     set((s) => ({
       businessProfile: { ...s.businessProfile, ...patch },
-    })),
+    }));
+    const profile = get().businessProfile;
+    pushBusinessProfile({
+      ...profile,
+      // Removed on the screen is `undefined`; over the wire that reads as
+      // "unchanged", so send `null`.
+      logoUrl: "logoUrl" in patch ? (patch.logoUrl ?? null) : profile.logoUrl,
+    });
+  },
   updateTaxConfig: (patch) => {
     set((s) => ({ taxConfig: { ...s.taxConfig, ...patch } }));
     pushTaxConfig(get().taxConfig);
@@ -761,61 +761,92 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (patch.active !== undefined) pushCommissionRuleActive(id, patch.active);
   },
 
+  // The catalogue and customers are the database's; each change shows here at
+  // once and is persisted (`catalog/client.ts`). A new row carries a temporary
+  // id until the refetch its write triggers brings the stored one.
   addService: (service) => {
     const created: Service = { ...service, id: `sv-${Date.now()}` };
     set((s) => ({ services: [...s.services, created] }));
+    pushNewService(service);
     return created;
   },
 
-  updateService: (id, patch) =>
+  updateService: (id, patch) => {
     set((s) => ({
       services: s.services.map((sv) => (sv.id === id ? { ...sv, ...patch } : sv)),
-    })),
+    }));
+    pushServicePatch(id, patch);
+  },
 
   addMembershipPlan: (plan) => {
     const created: MembershipPlan = { ...plan, id: `m-${Date.now()}` };
     set((s) => ({ membershipPlans: [...s.membershipPlans, created] }));
+    pushMembershipPlan(null, plan);
     return created;
   },
 
-  updateMembershipPlan: (id, patch) =>
+  updateMembershipPlan: (id, patch) => {
     set((s) => ({
       membershipPlans: s.membershipPlans.map((p) =>
         p.id === id ? { ...p, ...patch } : p,
       ),
-    })),
+    }));
+    const plan = get().membershipPlans.find((p) => p.id === id);
+    if (plan) pushMembershipPlan(id, plan);
+  },
 
-  deleteMembershipPlan: (id) =>
+  deleteMembershipPlan: (id) => {
     set((s) => ({
       membershipPlans: s.membershipPlans.filter((p) => p.id !== id),
-    })),
+    }));
+    pushRemoveMembershipPlan(id);
+  },
 
-  addCustomer: (customer) => {
+  // Unlike the rest of the catalogue, saved first and shown after: see
+  // `saveNewCustomer`.
+  addCustomer: async (customer) => {
+    const result = await saveNewCustomer(customer);
+    if (!result.ok) return result;
     const created: Customer = {
-      id: `cust-${Date.now()}`,
+      id: result.data.id,
       visits: 0,
       totalSpent: 0,
       ...customer,
     };
-    set((s) => ({ customers: [created, ...s.customers] }));
-    return created;
+    set((s) => ({
+      customers: [created, ...s.customers.filter((c) => c.id !== created.id)],
+    }));
+    return { ok: true, customer: created };
   },
 
-  updateCustomer: (id, patch) =>
+  updateCustomer: async (id, patch) => {
+    const result = await saveCustomerPatch(id, patch);
+    if (!result.ok) return result;
     set((s) => ({
       customers: s.customers.map((c) => (c.id === id ? { ...c, ...patch } : c)),
-    })),
+    }));
+    return { ok: true };
+  },
 
   addProduct: (product) => {
     const created: Product = { ...product, id: `p-${Date.now()}` };
     set((s) => ({ products: [...s.products, created] }));
+    pushNewProduct(product);
     return created;
   },
 
-  updateProduct: (id, patch) =>
+  updateProduct: (id, patch) => {
+    const before = get().products.find((p) => p.id === id);
     set((s) => ({
       products: s.products.map((p) => (p.id === id ? { ...p, ...patch } : p)),
-    })),
+    }));
+    const { stock, ...details } = patch;
+    // Stock goes up as a change, not a total, so it can't undo a sale.
+    if (stock !== undefined && before && stock !== before.stock) {
+      pushStockChange(id, stock - before.stock);
+    }
+    if (Object.keys(details).length > 0) pushProductPatch(id, details);
+  },
 
   hydrateQueue: ({ tickets, branchIds, ownTicketId, staffStatuses }) =>
     set((st) => {
@@ -925,9 +956,51 @@ export const useAppStore = create<AppState>((set, get) => ({
     branchIds,
     taxConfig,
     commissionRules,
+    services,
+    products,
+    membershipPlans,
+    customers,
+    team,
+    branches,
+    chairs,
+    businessProfile,
   }) =>
     set((s) => {
       const covered = new Set(branchIds);
+
+      // The team the snapshot speaks for replaces this device's copy. Sales
+      // figures stay (they are `hydrateSales`'s), and so does a status the
+      // queue snapshot recorded — `busy` is derived there, not stored.
+      const before = new Map(s.staff.map((m) => [m.id, m]));
+      const incoming = new Set((team ?? []).map((m) => m.id));
+      const nextStaff = team
+        ? [
+            ...team.map((m) => {
+              const old = before.get(m.id);
+              return {
+                ...m,
+                status: s.staffStatuses[m.id] ?? old?.status ?? m.status,
+                todaySales: old?.todaySales ?? 0,
+                todayCommission: old?.todayCommission ?? 0,
+                todayCustomers: old?.todayCustomers ?? 0,
+                monthlySales: old?.monthlySales ?? 0,
+                monthlyCommission: old?.monthlyCommission ?? 0,
+              };
+            }),
+            // Elsewhere in the shop, for a snapshot that speaks for one branch.
+            ...s.staff.filter(
+              (m) => !incoming.has(m.id) && m.branchId !== "" && !covered.has(m.branchId),
+            ),
+          ]
+        : s.staff;
+      const nextChairs = chairs
+        ? [...chairs, ...s.chairs.filter((c) => !covered.has(c.branchId))]
+        : s.chairs;
+      // An owner looking at a branch that no longer exists moves to the first.
+      const branchId =
+        branches?.length && !branches.some((b) => b.id === s.branchId) && s.session?.role === "owner"
+          ? branches[0].id
+          : s.branchId;
       // Everyone the snapshot speaks for, rostered or not.
       const people = new Set(Object.keys(staffChairs));
 
@@ -944,9 +1017,22 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       return {
         opsRules,
+        ...(branches ? { branches } : {}),
+        ...(businessProfile ? { businessProfile } : {}),
+        ...(branchId !== s.branchId
+          ? {
+              branchId,
+              drawerSession: s.openDrawers.find((d) => d.branchId === branchId) ?? null,
+            }
+          : {}),
         // Staff snapshots only; a customer's screen keeps the defaults.
         ...(taxConfig ? { taxConfig } : {}),
         ...(commissionRules ? { commissionRules } : {}),
+        // Older snapshots in flight during a deploy may lack it.
+        ...(services ? { services } : {}),
+        ...(products ? { products } : {}),
+        ...(membershipPlans ? { membershipPlans } : {}),
+        ...(customers ? { customers } : {}),
         roster: nextRoster,
         leaves: [...leaves, ...s.leaves.filter((l) => !people.has(l.staffId))],
         // A public snapshot carries no shifts; keep whatever this device has.
@@ -954,12 +1040,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           shifts.length > 0 || s.session
             ? [...shifts, ...s.shifts.filter((sh) => !covered.has(sh.branchId))]
             : s.shifts,
-        staff: s.staff.map((m) =>
+        staff: nextStaff.map((m) =>
           people.has(m.id) && m.chairId !== staffChairs[m.id]
             ? { ...m, chairId: staffChairs[m.id] }
             : m,
         ),
-        chairs: s.chairs.map((c) =>
+        chairs: nextChairs.map((c) =>
           covered.has(c.branchId) && c.staffId !== (holderOf.get(c.id) ?? null)
             ? { ...c, staffId: holderOf.get(c.id) ?? null }
             : c,

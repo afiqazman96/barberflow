@@ -247,10 +247,15 @@ export async function bookAppointment(
     input,
     allowPast: false,
   });
-  if (result.ok) {
-    await rememberOwnBooking(result.data.booking.id);
-  }
-  return result;
+  if (!result.ok) return result;
+
+  await rememberOwnBooking(result.data.booking.id);
+  const row = await prisma.booking.findUnique({
+    where: { id: result.data.booking.id },
+    select: { customer: { select: { membership: true } } },
+  });
+  const member = !!row?.customer && row.customer.membership !== "NONE";
+  return { ok: true, data: { ...result.data, member } };
 }
 
 /** The owner or counter books someone in by phone or at the desk. */

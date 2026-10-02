@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Badge } from "@/components/ui/badge";
-import { SERVICES } from "@/lib/mock/data";
+import { useAppStore } from "@/lib/store/app-store";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { formatCurrency, formatTime } from "@/lib/utils";
 
@@ -62,13 +62,14 @@ export default function CurrentServicePage() {
     updateStaffStatus,
     updateQueueTicket,
   } = useStaffPortal();
+  const catalog = useAppStore((s) => s.services);
 
   const services = useMemo(() => {
     if (!currentTicket) return [];
     return currentTicket.serviceIds
-      .map((id) => SERVICES.find((s) => s.id === id))
+      .map((id) => catalog.find((s) => s.id === id))
       .filter(Boolean);
-  }, [currentTicket]);
+  }, [currentTicket, catalog]);
 
   const totalDuration = services.reduce((sum, s) => sum + (s?.durationMins ?? 0), 0);
   const timer = useElapsedTimer(currentTicket?.startedAt, totalDuration || undefined);

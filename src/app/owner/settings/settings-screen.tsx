@@ -134,14 +134,18 @@ export function OwnerSettingsScreen({
   const taxConfig = useAppStore((s) => s.taxConfig);
   const updateTaxConfig = useAppStore((s) => s.updateTaxConfig);
 
-  const [profile, setProfile] = useState({
-    name: businessProfile.name,
-    phone: businessProfile.phone,
-    email: businessProfile.email,
-    address: businessProfile.address,
-    taxId: businessProfile.taxId,
-    logoUrl: businessProfile.logoUrl,
-  });
+  // Edits only, like `ruleEdits` below: the profile arrives from the database
+  // after mount. A removed logo is a key set to `undefined`, which still wins.
+  const [profileEdits, setProfileEdits] = useState<Partial<typeof businessProfile>>({});
+  const profile = { ...businessProfile, ...profileEdits };
+  const setProfile = (next: typeof businessProfile) =>
+    setProfileEdits(
+      Object.fromEntries(
+        (Object.keys(next) as (keyof typeof businessProfile)[])
+          .filter((k) => next[k] !== businessProfile[k])
+          .map((k) => [k, next[k]]),
+      ),
+    );
 
   // Edits only; the rest follows the store as it fills from the database
   // (the same reason as `ruleEdits` below).

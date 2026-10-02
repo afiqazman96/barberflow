@@ -38,7 +38,8 @@ export type BookingInput = {
 };
 
 export type CreateBookingResult =
-  | { ok: true; data: { booking: Booking } }
+  /** `member`: a customer's own booking matched a member (see `CreateTicketResult`). */
+  | { ok: true; data: { booking: Booking; member?: boolean } }
   | { ok: false; error: string };
 
 /** The statuses a staff screen may set directly; check-in has its own action. */

@@ -14,7 +14,8 @@ import { byQueueOrder } from "@/lib/utils";
  * pick a barber at random.
  */
 export function useStaffPortal() {
-  const staffId = useSession().staffId ?? "";
+  const session = useSession();
+  const staffId = session.staffId ?? "";
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const queue = useAppStore((s) => s.queue);
   const sales = useAppStore((s) => s.sales);
@@ -24,12 +25,31 @@ export function useStaffPortal() {
   const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
   const assignChair = useAppStore((s) => s.assignChair);
 
+  // Until the shop snapshot lands, "me" is who the session says — never
+  // somebody else from the list.
   const staff: StaffMember = useMemo(
     () =>
-      staffList.find((s) => s.id === staffId) ??
-      staffList.find((s) => s.role === "barber") ??
-      staffList[0],
-    [staffId, staffList],
+      staffList.find((s) => s.id === staffId) ?? {
+        id: staffId,
+        branchId: session.branchId ?? "",
+        name: session.name,
+        role: "barber",
+        phone: "",
+        email: "",
+        password: "",
+        active: true,
+        status: "off-duty",
+        chairId: null,
+        specialty: "",
+        todaySales: 0,
+        todayCommission: 0,
+        todayCustomers: 0,
+        monthlySales: 0,
+        monthlyCommission: 0,
+        monthlyTarget: 0,
+        rating: 0,
+      },
+    [staffId, staffList, session.branchId, session.name],
   );
 
   const status: StaffStatus = staffStatuses[staffId] ?? staff?.status ?? "off-duty";

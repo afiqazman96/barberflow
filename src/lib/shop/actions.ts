@@ -380,3 +380,58 @@ export async function setCommissionRuleActive(
   if (updated.count === 0) return { ok: false, error: "Rule not found" };
   return { ok: true };
 }
+
+const LOGO_DATA_URL = /^data:image\/(?:png|jpe?g|webp|gif|avif);base64,[A-Za-z0-9+/=]+$/;
+
+/**
+ * The owner's business details, as printed on every receipt. The logo is a
+ * data URL from the upload control, our own `/api/catalog/image/logo/...`
+ * link when unchanged, or null when removed.
+ */
+export async function saveBusinessProfile(input: {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  taxId: string;
+  logoUrl?: string | null;
+}): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const name = String(input.name ?? "").trim().slice(0, 120);
+  if (!name) return { ok: false, error: "Business name is required" };
+  const email = String(input.email ?? "").trim().toLowerCase().slice(0, 200);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false, error: "Check the email address" };
+  }
+
+  let logoUrl: string | null | undefined;
+  if (input.logoUrl === undefined || input.logoUrl?.startsWith("/api/catalog/image/")) {
+    logoUrl = undefined;
+  } else if (!input.logoUrl) {
+    logoUrl = null;
+  } else if (input.logoUrl.length <= 1_000_000 && LOGO_DATA_URL.test(input.logoUrl)) {
+    logoUrl = input.logoUrl;
+  } else if (/^https:\/\/\S+$/i.test(input.logoUrl) && input.logoUrl.length <= 2000) {
+    logoUrl = input.logoUrl;
+  } else {
+    return { ok: false, error: "That logo can't be used" };
+  }
+
+  const data = {
+    phone: String(input.phone ?? "").trim().slice(0, 40) || null,
+    email: email || null,
+    address: String(input.address ?? "").trim().slice(0, 300) || null,
+    taxId: String(input.taxId ?? "").trim().slice(0, 60) || null,
+    ...(logoUrl !== undefined ? { logoUrl } : {}),
+  };
+  await prisma.$transaction([
+    prisma.tenant.update({ where: { id: owner.tenantId }, data: { name } }),
+    prisma.tenantSettings.upsert({
+      where: { tenantId: owner.tenantId },
+      create: { tenantId: owner.tenantId, ...data },
+      update: data,
+    }),
+  ]);
+  return { ok: true };
+}

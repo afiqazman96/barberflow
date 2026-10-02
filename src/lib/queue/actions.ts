@@ -266,10 +266,15 @@ export async function joinQueue(input: TicketInput): Promise<CreateTicketResult>
     source: "QR",
     rejectDuplicates: true,
   });
-  if (result.ok) {
-    await rememberOwnTicket(result.data.ticket.id);
-  }
-  return result;
+  if (!result.ok) return result;
+
+  await rememberOwnTicket(result.data.ticket.id);
+  const row = await prisma.queueTicket.findUnique({
+    where: { id: result.data.ticket.id },
+    select: { customer: { select: { membership: true } } },
+  });
+  const member = !!row?.customer && row.customer.membership !== "NONE";
+  return { ok: true, data: { ...result.data, member } };
 }
 
 /** The counter registers a walk-in, or checks a booking in to the line. */

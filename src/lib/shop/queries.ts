@@ -5,6 +5,12 @@ import type { CommissionScope, CommissionType, ShiftActor } from "@/generated/pr
 import { requireShopSession } from "@/lib/auth/session";
 import { timezoneForTenant } from "@/lib/bookings/queries";
 import { instantToShopTime } from "@/lib/bookings/time";
+import {
+  customersFor,
+  membershipPlansFor,
+  productsFor,
+  servicesFor,
+} from "@/lib/catalog/queries";
 import { DEFAULT_TAX_CONFIG } from "@/lib/pos-pricing";
 import { prisma } from "@/lib/prisma";
 import type {
@@ -18,6 +24,7 @@ import type {
 
 import type { ShopSnapshot } from "./dto";
 import { closeStaleShifts } from "./housekeeping";
+import { branchesFor, businessProfileFor, chairsAt, teamFor } from "./team";
 
 /** How far back staff screens see shifts and leave (attendance, history). */
 const HISTORY_DAYS = 62;
@@ -213,12 +220,38 @@ export async function staffShopSnapshot(): Promise<ShopSnapshot> {
   await closeStaleShifts(staff.tenantId, timeZone);
 
   const since = dateColumn(addDays(shopToday(timeZone), -HISTORY_DAYS));
-  const { ids, chairs } = await staffChairsAt(branchIds);
+  const { ids, chairs: seats } = await staffChairsAt(branchIds);
 
-  const [opsRules, taxConfig, commissionRules, rosterRows, leaveRows, shiftRows] = await Promise.all([
+  const seesCustomers = staff.role === "OWNER" || staff.role === "CASHIER";
+  const isOwner = staff.role === "OWNER";
+  const [team, branches, chairs, businessProfile] = await Promise.all([
+    teamFor(staff.tenantId, {
+      branchIds: isOwner ? undefined : branchIds,
+      withContacts: isOwner,
+    }),
+    branchesFor(staff.tenantId, shopToday(timeZone)),
+    chairsAt(branchIds),
+    businessProfileFor(staff.tenantId),
+  ]);
+  const [
+    opsRules,
+    taxConfig,
+    commissionRules,
+    services,
+    products,
+    membershipPlans,
+    customers,
+    rosterRows,
+    leaveRows,
+    shiftRows,
+  ] = await Promise.all([
     opsRulesFor(staff.tenantId),
     taxConfigFor(staff.tenantId),
     commissionRulesFor(staff.tenantId),
+    servicesFor(staff.tenantId),
+    productsFor(staff.tenantId),
+    membershipPlansFor(staff.tenantId),
+    seesCustomers ? customersFor(staff.tenantId, timeZone) : undefined,
     prisma.rosterDay.findMany({
       where: { tenantId: staff.tenantId, staffId: { in: ids } },
       select: { staffId: true, weekday: true, off: true, start: true, end: true },
@@ -242,10 +275,18 @@ export async function staffShopSnapshot(): Promise<ShopSnapshot> {
       (l): LeaveEntry => ({ id: l.id, staffId: l.staffId, date: isoOf(l.date), reason: l.reason }),
     ),
     shifts: shiftRows.map(toShiftDto),
-    staffChairs: chairs,
+    staffChairs: seats,
     branchIds,
     taxConfig,
     commissionRules,
+    services,
+    products,
+    membershipPlans,
+    ...(customers ? { customers } : {}),
+    team,
+    branches,
+    chairs,
+    businessProfile,
   };
 }
 
@@ -269,9 +310,15 @@ export async function publicShopSnapshot(branchId: string | null): Promise<ShopS
   const timeZone = await timezoneForTenant(branch.tenantId);
   const opsRules = await opsRulesFor(branch.tenantId);
   const today = shopToday(timeZone);
-  const { ids, chairs } = await staffChairsAt([branch.id]);
+  const { ids, chairs: seats } = await staffChairsAt([branch.id]);
 
-  const [rosterRows, leaveRows] = await Promise.all([
+  const [services, plans, team, branches, chairs, businessProfile, rosterRows, leaveRows] = await Promise.all([
+    servicesFor(branch.tenantId),
+    membershipPlansFor(branch.tenantId),
+    teamFor(branch.tenantId, { branchIds: [branch.id], barbersOnly: true, withContacts: false }),
+    branchesFor(branch.tenantId, today),
+    chairsAt([branch.id]),
+    businessProfileFor(branch.tenantId),
     prisma.rosterDay.findMany({
       where: { staffId: { in: ids } },
       select: { staffId: true, weekday: true, off: true, start: true, end: true },
@@ -298,7 +345,14 @@ export async function publicShopSnapshot(branchId: string | null): Promise<ShopS
       reason: "Away",
     })),
     shifts: [],
-    staffChairs: chairs,
+    staffChairs: seats,
     branchIds: [branch.id],
+    services,
+    // The profile screen shows each plan's member count as social proof.
+    membershipPlans: plans,
+    team,
+    branches,
+    chairs,
+    businessProfile,
   };
 }

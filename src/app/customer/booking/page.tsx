@@ -20,7 +20,8 @@ import { Input, Label } from "@/components/ui/input";
 import { QueueSync } from "@/components/domain/queue-sync";
 import { StepIndicator } from "@/components/domain/step-indicator";
 import { bookAppointment } from "@/lib/bookings/actions";
-import { TIME_SLOTS, findCustomerByPhone } from "@/lib/mock/data";
+import { TIME_SLOTS } from "@/lib/mock/data";
+import { placeholderBranch } from "@/lib/branches/placeholder";
 import { useAppStore } from "@/lib/store/app-store";
 import { useNow } from "@/hooks/use-now";
 import {
@@ -60,7 +61,6 @@ function BookingWizard() {
   const addBooking = useAppStore((s) => s.addBooking);
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
   const setTrackingBookingId = useAppStore((s) => s.setTrackingBookingId);
-  const customers = useAppStore((s) => s.customers);
   const BRANCHES = useAppStore((s) => s.branches);
   const SERVICES = useAppStore((s) => s.services);
   const STAFF = useAppStore((s) => s.staff);
@@ -70,7 +70,7 @@ function BookingWizard() {
   const [branchId, setBranchId] = useState(
     paramBranchId ?? BRANCHES[0]?.id ?? "b1",
   );
-  const branch = BRANCHES.find((b) => b.id === branchId) ?? BRANCHES[0];
+  const branch = BRANCHES.find((b) => b.id === branchId) ?? placeholderBranch(branchId);
   const branchBarbers = STAFF.filter(
     (s) => s.role === "barber" && s.branchId === branch.id && s.active,
   );
@@ -168,10 +168,6 @@ function BookingWizard() {
   async function handleConfirm() {
     if (!service || submitting) return;
 
-    // A returning customer booking on their own should still be recognised
-    // by phone, so their membership pricing carries through to checkout.
-    const matched = findCustomerByPhone(customers, phone);
-
     // The server re-checks the slot at the moment of booking — the barber may
     // have been taken while this form was open.
     setSubmitting(true);
@@ -204,7 +200,9 @@ function BookingWizard() {
 
     // Deliberately generic: a phone number isn't proof of identity, so the
     // name and tier of whoever it matches must not be read back to a stranger.
-    if (matched && matched.membership !== "none") {
+    // A returning customer is recognised by the server from their phone or
+    // email, so their membership pricing carries through to checkout.
+    if (result.data.member) {
       toast.success("Member pricing applied", {
         description: "The counter will confirm your membership",
       });

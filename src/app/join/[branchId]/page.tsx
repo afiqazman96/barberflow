@@ -26,7 +26,8 @@ export default function JoinBranchPage() {
 
   return (
     <div className="app-bg flex min-h-dvh flex-col items-center justify-center px-6 py-10 text-center">
-      {branch && <QueueSync scope="public" branchId={branch.id} />}
+      {/* By the id in the link: the branch itself arrives with this sync. */}
+      <QueueSync scope="public" branchId={branch?.id ?? params.branchId} />
       <div className="w-full max-w-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

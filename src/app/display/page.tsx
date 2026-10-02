@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Armchair } from "lucide-react";
 import { QueueSync } from "@/components/domain/queue-sync";
+import { placeholderBranch } from "@/lib/branches/placeholder";
 import { useAppStore } from "@/lib/store/app-store";
 import { StatusBadge } from "@/components/ui/badge";
 import { byQueueOrder, maskName } from "@/lib/utils";
@@ -25,6 +26,7 @@ function QueueDisplay() {
   const chairs = useAppStore((s) => s.chairs);
   const staffList = useAppStore((s) => s.staff);
   const branches = useAppStore((s) => s.branches);
+  const selectedBranchId = useAppStore((s) => s.branchId);
   const [clock, setClock] = useState("");
 
   useEffect(() => {
@@ -42,7 +44,12 @@ function QueueDisplay() {
     return () => clearInterval(id);
   }, []);
 
-  const branch = branches.find((b) => b.id === params.get("branch")) ?? branches[0];
+  const requested = params.get("branch");
+  const branch =
+    branches.find((b) => b.id === requested) ??
+    (requested ? placeholderBranch(requested) : undefined) ??
+    branches[0] ??
+    placeholderBranch(selectedBranchId);
   const queue = useMemo(
     () => allQueue.filter((q) => q.branchId === branch.id),
     [allQueue, branch.id],

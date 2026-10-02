@@ -22,7 +22,6 @@ import { MyShiftCard, WeekSchedule } from "@/components/domain/shift-cards";
 import { useSession } from "@/components/auth/session-provider";
 import { Badge } from "@/components/ui/badge";
 import { useAppStore } from "@/lib/store/app-store";
-import { STAFF } from "@/lib/mock/data";
 import { weeklyTrend } from "@/lib/analytics";
 import { formatCurrency, formatDateCompact, todayIso } from "@/lib/utils";
 
@@ -52,6 +51,7 @@ export default function CashierDashboardPage() {
     [allBookings, activeBranchId],
   );
   const customers = useAppStore((s) => s.customers);
+  const STAFF = useAppStore((s) => s.staff);
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const myStaffId = session.staffId ?? "";
 

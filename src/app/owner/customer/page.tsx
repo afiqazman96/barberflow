@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -28,7 +28,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PillTabs } from "@/components/ui/pill-tabs";
 import { StatTile } from "@/components/domain/stat-tile";
-import { STAFF } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Customer } from "@/lib/types";
 import { formatCurrency, formatDate, initials, todayIso } from "@/lib/utils";
@@ -45,6 +44,7 @@ const emptyNewCustomer = () => ({
 export default function OwnerCustomerPage() {
   const router = useRouter();
   const CUSTOMERS = useAppStore((s) => s.customers);
+  const STAFF = useAppStore((s) => s.staff);
   const addCustomer = useAppStore((s) => s.addCustomer);
   const updateCustomer = useAppStore((s) => s.updateCustomer);
 
@@ -54,6 +54,8 @@ export default function OwnerCustomerPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"table" | "cards">("table");
   const [addOpen, setAddOpen] = useState(false);
+  // A second tap while the first save is in flight must not save twice.
+  const saving = useRef(false);
   const [newCustomer, setNewCustomer] = useState(emptyNewCustomer);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState(emptyNewCustomer);
@@ -141,13 +143,15 @@ export default function OwnerCustomerPage() {
     router.push(`/owner/queue?${params.toString()}`);
   }
 
-  function handleAddCustomer(e: React.FormEvent) {
+  async function handleAddCustomer(e: React.FormEvent) {
     e.preventDefault();
+    if (saving.current) return;
     if (!newCustomer.name.trim() || !newCustomer.phone.trim()) {
       toast.error("Name and phone are required");
       return;
     }
-    const created = addCustomer({
+    saving.current = true;
+    const result = await addCustomer({
       name: newCustomer.name.trim(),
       phone: newCustomer.phone.trim(),
       email: newCustomer.email.trim() || undefined,
@@ -155,7 +159,13 @@ export default function OwnerCustomerPage() {
       lastVisit: "",
       notes: newCustomer.notes.trim() || undefined,
     });
-    toast.success("Customer added", { description: created.name });
+    saving.current = false;
+    if (!result.ok) {
+      // The form stays open so the details can be corrected.
+      toast.error("Couldn't add the customer", { description: result.error });
+      return;
+    }
+    toast.success("Customer added", { description: result.customer.name });
     setAddOpen(false);
     setNewCustomer(emptyNewCustomer());
   }
@@ -171,20 +181,26 @@ export default function OwnerCustomerPage() {
     setEditing(true);
   }
 
-  function handleSaveEdit(e: React.FormEvent) {
+  async function handleSaveEdit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected) return;
+    if (!selected || saving.current) return;
     if (!editForm.name.trim() || !editForm.phone.trim()) {
       toast.error("Name and phone are required");
       return;
     }
-    updateCustomer(selected.id, {
+    saving.current = true;
+    const result = await updateCustomer(selected.id, {
       name: editForm.name.trim(),
       phone: editForm.phone.trim(),
       email: editForm.email.trim() || undefined,
       membership: editForm.membership,
       notes: editForm.notes.trim() || undefined,
     });
+    saving.current = false;
+    if (!result.ok) {
+      toast.error("Couldn't save the customer", { description: result.error });
+      return;
+    }
     toast.success("Customer updated", { description: editForm.name.trim() });
     setEditing(false);
   }

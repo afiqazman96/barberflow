@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
-import { registerWalkIn } from "@/lib/queue/actions";
+import { checkInBooking } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
-import type { Booking, QueueTicket } from "@/lib/types";
+import type { Booking } from "@/lib/types";
 import { cn, formatWeekdayShort, todayIso } from "@/lib/utils";
 
 /** 7 local dates, `before` days ahead of `after` days behind today. */
@@ -38,7 +38,7 @@ const BORDER_BY_STATUS: Record<string, string> = {
 
 export default function CashierAppointmentPage() {
   const bookings = useAppStore((s) => s.bookings);
-  const updateBooking = useAppStore((s) => s.updateBooking);
+  const applyBookingPatch = useAppStore((s) => s.applyBookingPatch);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
 
   const [search, setSearch] = useState("");
@@ -74,17 +74,9 @@ export default function CashierAppointmentPage() {
     if (checkingIn) return;
 
     setCheckingIn(true);
-    const result = await registerWalkIn({
-      branchId: booking.branchId,
-      customerId: booking.customerId,
-      name: booking.customerName,
-      phone: booking.customerPhone,
-      email: booking.customerEmail,
-      serviceIds: booking.serviceIds,
-      preferredStaffId: booking.staffId,
-      estimatedWaitMins: 10,
-      source: "booking",
-    }).catch(() => null);
+    // One server call claims the booking and issues its ticket, so two
+    // counters checking the same person in cannot make two tickets.
+    const result = await checkInBooking(booking.id, 10).catch(() => null);
     setCheckingIn(false);
     if (!result?.ok) {
       toast.error("Couldn't check in", {
@@ -93,11 +85,8 @@ export default function CashierAppointmentPage() {
       return;
     }
 
-    updateBooking(booking.id, { status: "checked-in" });
-    // Bookings are not in the database yet, so the link back to this one is
-    // kept on the ticket here; the store preserves it across queue refreshes.
-    const ticket: QueueTicket = { ...result.data.ticket, bookingId: booking.id };
-
+    applyBookingPatch(booking.id, { status: "checked-in" });
+    const ticket = result.data.ticket;
     addQueueTicket(ticket);
     toast.success("Checked in", {
       description: `${booking.customerName} · Queue ${ticket.number}`,

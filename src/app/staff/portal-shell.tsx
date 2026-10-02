@@ -26,7 +26,7 @@ export function PortalShell({
 }) {
   return (
     <div className="app-bg min-h-dvh">
-      <QueueSync scope="staff" />
+      <QueueSync scope="staff" bookings />
       <main className="safe-top mx-auto max-w-lg px-4 pb-32 pt-6">
         <PageTransition>{children}</PageTransition>
       </main>

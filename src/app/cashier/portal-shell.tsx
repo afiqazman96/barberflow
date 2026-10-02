@@ -54,7 +54,7 @@ export function PortalShell({
       }
       bottomNav={<BottomNav items={bottomNavItems} />}
     >
-      <QueueSync scope="staff" />
+      <QueueSync scope="staff" bookings />
       <CashierShiftBanner />
       {children}
     </AppShell>

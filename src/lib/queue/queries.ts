@@ -8,6 +8,8 @@ import type { QueueTicket, StaffStatus } from "@/lib/types";
 import { appStatusFor } from "@/lib/staff/status";
 import { maskName } from "@/lib/utils";
 
+import { readOwnBookingId } from "@/lib/bookings/cookie";
+
 import { readOwnTicketId } from "./cookie";
 import type { QueueSnapshot } from "./dto";
 import { appQueueSourceFor, appQueueStatusFor } from "./status";
@@ -181,7 +183,19 @@ export async function staffQueueSnapshot(): Promise<QueueSnapshot> {
 export async function publicQueueSnapshot(
   branchId: string | null,
 ): Promise<QueueSnapshot> {
-  const ownId = await readOwnTicketId();
+  // A booked customer holds the booking's cookie, not a ticket's: once the
+  // counter checks them in, the ticket linked to that booking is theirs.
+  const ownBookingId = await readOwnBookingId();
+  const ownId =
+    (await readOwnTicketId()) ??
+    (ownBookingId
+      ? ((
+          await prisma.booking.findUnique({
+            where: { id: ownBookingId },
+            select: { queueTicketId: true },
+          })
+        )?.queueTicketId ?? null)
+      : null);
   const own = ownId
     ? await prisma.queueTicket.findUnique({
         where: { id: ownId },

@@ -22,6 +22,7 @@ import { Modal } from "@/components/ui/modal";
 import { StatusBadge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { PillTabs } from "@/components/ui/pill-tabs";
+import { createStaffBooking } from "@/lib/bookings/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import { isRosteredOn } from "@/lib/roster";
 import type { Booking } from "@/lib/types";
@@ -72,6 +73,7 @@ export default function OwnerAppointmentPage() {
   const [selected, setSelected] = useState<Booking | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [newBooking, setNewBooking] = useState(emptyNewBooking);
   // Only barbers actually working on the chosen date can be booked.
   const bookableBarbers = barbers.filter((b) =>
@@ -165,8 +167,9 @@ export default function OwnerAppointmentPage() {
     if (next) setDateFilter(next);
   }
 
-  function handleCreateBooking(e: React.FormEvent) {
+  async function handleCreateBooking(e: React.FormEvent) {
     e.preventDefault();
+    if (creating) return;
     const service = services.find((s) => s.id === newBooking.serviceId);
     if (!newBooking.customerName.trim() || !newBooking.customerPhone.trim()) {
       toast.error("Customer name and phone are required");
@@ -177,23 +180,26 @@ export default function OwnerAppointmentPage() {
       return;
     }
     const staffMember = bookableBarbers.find((b) => b.id === newBooking.staffId);
-    addBooking({
-      id: `bk-${Date.now()}`,
+    setCreating(true);
+    const result = await createStaffBooking({
       branchId,
-      customerId: "guest",
-      customerName: newBooking.customerName.trim(),
-      customerPhone: newBooking.customerPhone.trim(),
-      customerEmail: newBooking.customerEmail.trim() || undefined,
+      name: newBooking.customerName,
+      phone: newBooking.customerPhone,
+      email: newBooking.customerEmail,
       serviceIds: [service.id],
-      serviceNames: [service.name],
       staffId: staffMember?.id ?? null,
-      staffName: staffMember?.name ?? "Any Barber",
       date: newBooking.date,
       time: newBooking.time,
-      durationMins: service.durationMins,
       gracePeriodMins: opsRules.gracePeriodMins,
-      status: "confirmed",
-    });
+    }).catch(() => null);
+    setCreating(false);
+    if (!result?.ok) {
+      toast.error("Couldn't book the appointment", {
+        description: result?.error ?? "Check your connection and try again",
+      });
+      return;
+    }
+    addBooking(result.data.booking);
     toast.success("Appointment booked", {
       description: `${newBooking.customerName} · ${formatDate(newBooking.date)} at ${newBooking.time}`,
     });
@@ -518,7 +524,7 @@ export default function OwnerAppointmentPage() {
               />
             </div>
           </div>
-          <Button type="submit" className="w-full" size="lg">
+          <Button type="submit" className="w-full" size="lg" disabled={creating}>
             Book Appointment
           </Button>
         </form>

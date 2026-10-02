@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { cancelMyBooking } from "@/lib/bookings/actions";
 import { leaveQueue } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import { byQueueOrder, cn, formatDate } from "@/lib/utils";
@@ -30,7 +31,7 @@ export default function TrackingPage() {
   const trackingTicketId = useAppStore((s) => s.trackingTicketId);
   const trackingBookingId = useAppStore((s) => s.trackingBookingId);
   const applyQueueTicketPatch = useAppStore((s) => s.applyQueueTicketPatch);
-  const updateBooking = useAppStore((s) => s.updateBooking);
+  const applyBookingPatch = useAppStore((s) => s.applyBookingPatch);
 
   const [pulse, setPulse] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -120,7 +121,7 @@ export default function TrackingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  function handleCancelBooking() {
+  async function handleCancelBooking() {
     if (!booking) return;
     const startsAt = new Date(`${booking.date}T${booking.time}:00`).getTime();
     if (startsAt - Date.now() < opsRules.cancelHours * 3600_000) {
@@ -129,7 +130,15 @@ export default function TrackingPage() {
       });
       return;
     }
-    updateBooking(booking.id, { status: "cancelled" });
+    // The server knows which booking is this device's from its cookie.
+    const result = await cancelMyBooking().catch(() => null);
+    if (!result?.ok) {
+      toast.error("Couldn't cancel", {
+        description: result?.error ?? "Check your connection and try again",
+      });
+      return;
+    }
+    applyBookingPatch(booking.id, { status: "cancelled" });
     toast.success("Appointment cancelled", {
       description: `${formatDate(booking.date)} at ${booking.time}`,
     });

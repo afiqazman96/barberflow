@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { fetchBookingsSnapshot } from "@/lib/bookings/client";
+import { BOOKINGS_CHANGED_EVENT } from "@/lib/bookings/dto";
 import {
   fetchQueueSnapshot,
   registerQueueRefetch,
@@ -25,83 +27,131 @@ const DEBOUNCE_MS = 150;
 const POLL_MS = 45_000;
 
 /**
- * Keeps `store.queue` equal to the database.
+ * One snapshot kept in step with the database: re-read on demand, debounced,
+ * never two reads in flight, and once more if asked while one was running.
+ */
+function createRefetcher<T>(
+  read: () => Promise<T | null>,
+  apply: (snapshot: T) => void,
+  isCancelled: () => boolean,
+) {
+  let inFlight = false;
+  let again = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  async function run() {
+    if (inFlight) {
+      // Something changed while we were reading; read once more after.
+      again = true;
+      return;
+    }
+    inFlight = true;
+    const snapshot = await read();
+    inFlight = false;
+    if (isCancelled()) return;
+    if (snapshot) apply(snapshot);
+    if (again) {
+      again = false;
+      void run();
+    }
+  }
+
+  return {
+    run,
+    schedule() {
+      clearTimeout(timer);
+      timer = setTimeout(run, DEBOUNCE_MS);
+    },
+    stop() {
+      clearTimeout(timer);
+    },
+  };
+}
+
+type Schedulers = { queue: () => void; bookings: () => void };
+
+/**
+ * Keeps `store.queue` — and, when asked, `store.bookings` — equal to the
+ * database.
  *
- * Realtime only ever says "this branch's queue changed". The tickets
- * themselves are re-read from our own server, which is where the session and
- * tenant checks live — so nothing about a customer travels over the socket,
- * and the `public` schema stays closed to the browser key.
+ * Realtime only ever says "this branch's queue / staff / bookings changed".
+ * The data itself is re-read from our own server, which is where the session
+ * and tenant checks live — so nothing about a customer travels over the
+ * socket, and the `public` schema stays closed to the browser key.
  *
  * `branchId` is only read for the public scope; staff get their branches from
  * their session.
  */
-export function useQueueSync(kind: QueueScope["kind"], branchId: string) {
+export function useQueueSync(
+  kind: QueueScope["kind"],
+  branchId: string,
+  withBookings: boolean,
+) {
   const hydrateQueue = useAppStore((s) => s.hydrateQueue);
+  const hydrateBookings = useAppStore((s) => s.hydrateBookings);
   // The branches the last snapshot covered, i.e. the topics to listen on.
   const [topics, setTopics] = useState<string[]>([]);
-  const schedule = useRef<() => void>(() => {});
+  const schedule = useRef<Schedulers>({ queue: () => {}, bookings: () => {} });
 
   useEffect(() => {
     const scope: QueueScope =
       kind === "staff" ? { kind } : { kind, branchId };
 
     let cancelled = false;
-    let inFlight = false;
-    let again = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    const isCancelled = () => cancelled;
 
-    async function refetch() {
-      if (inFlight) {
-        // Something changed while we were reading; read once more after.
-        again = true;
-        return;
-      }
-      inFlight = true;
-      const snapshot = await fetchQueueSnapshot(scope);
-      inFlight = false;
-      if (cancelled) return;
-
-      if (snapshot) {
+    const queue = createRefetcher(
+      () => fetchQueueSnapshot(scope),
+      (snapshot) => {
         hydrateQueue(snapshot);
         setTopics((current) =>
           current.join() === snapshot.branchIds.join()
             ? current
             : snapshot.branchIds,
         );
-      }
-      if (again) {
-        again = false;
-        void refetch();
-      }
-    }
+      },
+      isCancelled,
+    );
+    const bookings = withBookings
+      ? createRefetcher(
+          () => fetchBookingsSnapshot(scope),
+          hydrateBookings,
+          isCancelled,
+        )
+      : null;
 
-    schedule.current = () => {
-      clearTimeout(timer);
-      timer = setTimeout(refetch, DEBOUNCE_MS);
+    const all = () => {
+      queue.schedule();
+      bookings?.schedule();
+    };
+    schedule.current = {
+      queue: queue.schedule,
+      bookings: bookings ? bookings.schedule : () => {},
     };
 
-    void refetch();
+    void queue.run();
+    void bookings?.run();
 
-    const poll = setInterval(refetch, POLL_MS);
+    const poll = setInterval(all, POLL_MS);
     // A phone that was asleep in a pocket has missed every poke since.
     const onVisible = () => {
-      if (document.visibilityState === "visible") schedule.current();
+      if (document.visibilityState === "visible") all();
     };
-    const onOnline = () => schedule.current();
     document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("online", onOnline);
-    const unregister = registerQueueRefetch(() => schedule.current());
+    window.addEventListener("online", all);
+    const unregister = registerQueueRefetch(all);
 
     return () => {
       cancelled = true;
-      clearTimeout(timer);
+      queue.stop();
+      bookings?.stop();
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("online", onOnline);
+      window.removeEventListener("online", all);
       unregister();
-      schedule.current = () => {};
+      schedule.current = { queue: () => {}, bookings: () => {} };
     };
-  }, [kind, branchId, hydrateQueue]);
+  }, [kind, branchId, withBookings, hydrateQueue, hydrateBookings]);
 
   const topicKey = topics.join();
   useEffect(() => {
@@ -119,15 +169,21 @@ export function useQueueSync(kind: QueueScope["kind"], branchId: string) {
       supabase
         .channel(queueTopic(id))
         .on("broadcast", { event: QUEUE_CHANGED_EVENT }, () =>
-          schedule.current(),
+          schedule.current.queue(),
         )
         .on("broadcast", { event: STAFF_CHANGED_EVENT }, () =>
-          schedule.current(),
+          schedule.current.queue(),
+        )
+        .on("broadcast", { event: BOOKINGS_CHANGED_EVENT }, () =>
+          schedule.current.bookings(),
         )
         .subscribe((status) => {
           // Also fires on every re-join after a dropped connection, which is
           // exactly when pokes will have been missed.
-          if (status === "SUBSCRIBED") schedule.current();
+          if (status === "SUBSCRIBED") {
+            schedule.current.queue();
+            schedule.current.bookings();
+          }
         }),
     );
 

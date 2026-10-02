@@ -17,7 +17,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Label } from "@/components/ui/input";
+import { QueueSync } from "@/components/domain/queue-sync";
 import { StepIndicator } from "@/components/domain/step-indicator";
+import { bookAppointment } from "@/lib/bookings/actions";
 import { TIME_SLOTS, findCustomerByPhone } from "@/lib/mock/data";
 import { useAppStore } from "@/lib/store/app-store";
 import { useNow } from "@/hooks/use-now";
@@ -30,7 +32,6 @@ import {
   openingMins,
   rosterFor,
 } from "@/lib/roster";
-import type { Booking } from "@/lib/types";
 import { cn, formatCurrency, formatDate, initials } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -105,6 +106,10 @@ function BookingWizard() {
   const [barberMode, setBarberMode] = useState<"any" | "preferred">("any");
   const [preferredStaffId, setPreferredStaffId] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  // The layout keeps the store's selected branch live; a different branch
+  // picked here needs its own taken slots.
+  const selectedBranchId = useAppStore((s) => s.branchId);
 
   const service = SERVICES.find((s) => s.id === serviceId);
   const staff =
@@ -160,55 +165,42 @@ function BookingWizard() {
     return true;
   }
 
-  function handleConfirm() {
-    if (!service) return;
+  async function handleConfirm() {
+    if (!service || submitting) return;
 
     // A returning customer booking on their own should still be recognised
     // by phone, so their membership pricing carries through to checkout.
     const matched = findCustomerByPhone(customers, phone);
 
-    // Re-check at the moment of booking: the barber may have been taken while
-    // this form was open.
-    if (
-      staff &&
-      bookings.some(
-        (b) =>
-          b.staffId === staff.id &&
-          b.date === date &&
-          b.time === time &&
-          (b.status === "confirmed" || b.status === "checked-in"),
-      )
-    ) {
-      toast.error(`${staff.name} is already booked at ${time}`, {
-        description: "Pick another time or barber",
+    // The server re-checks the slot at the moment of booking — the barber may
+    // have been taken while this form was open.
+    setSubmitting(true);
+    const result = await bookAppointment({
+      branchId: branch.id,
+      name,
+      phone,
+      email,
+      serviceIds: [service.id],
+      staffId: staff?.id ?? null,
+      date,
+      time,
+      gracePeriodMins: opsRules.gracePeriodMins,
+    }).catch(() => null);
+    setSubmitting(false);
+    if (!result?.ok) {
+      toast.error("Couldn't book that time", {
+        description:
+          result?.error ?? "Check your connection and try again",
       });
       return;
     }
 
-    const booking: Booking = {
-      id: `bk-${Date.now()}`,
-      branchId: branch.id,
-      customerId: matched?.id ?? "guest",
-      customerName: name.trim(),
-      customerPhone: phone.trim(),
-      customerEmail: email.trim(),
-      serviceIds: [service.id],
-      serviceNames: [service.name],
-      staffId: staff?.id ?? null,
-      staffName: staff?.name ?? "Any Barber",
-      date,
-      time,
-      durationMins: service.durationMins,
-      gracePeriodMins: opsRules.gracePeriodMins,
-      status: "confirmed",
-    };
-
-    addBooking(booking);
+    addBooking(result.data.booking);
 
     // No queue ticket yet: it's created when the counter checks them in, so a
     // booking for next week doesn't sit in today's line.
     setTrackingTicketId(null);
-    setTrackingBookingId(booking.id);
+    setTrackingBookingId(result.data.booking.id);
 
     // Deliberately generic: a phone number isn't proof of identity, so the
     // name and tier of whoever it matches must not be read back to a stranger.
@@ -271,6 +263,9 @@ function BookingWizard() {
 
   return (
     <div className="space-y-6">
+      {branch.id !== selectedBranchId && (
+        <QueueSync scope="public" branchId={branch.id} bookings />
+      )}
       <Link
         href={paramBranchId ? `/customer/shop/${branch.id}` : "/customer/home"}
         className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
@@ -551,7 +546,7 @@ function BookingWizard() {
             <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (
-          <Button className="flex-1" disabled={!canProceed()} onClick={handleConfirm}>
+          <Button className="flex-1" disabled={!canProceed() || submitting} onClick={handleConfirm}>
             Confirm Booking
           </Button>
         )}

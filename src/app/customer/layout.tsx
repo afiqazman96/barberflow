@@ -19,7 +19,7 @@ export default function CustomerLayout({
 }) {
   return (
     <div className="app-bg min-h-dvh">
-      <QueueSync scope="public" />
+      <QueueSync scope="public" bookings />
       <main className="mx-auto max-w-lg px-4 pb-24 pt-6 safe-top">
         <PageTransition>{children}</PageTransition>
       </main>

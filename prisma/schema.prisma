@@ -573,6 +573,9 @@ model Booking {
   customerId    String
   customerName  String
   customerPhone String?
+  /// Where the receipt goes once checked in and paid — the address given with
+  /// this booking, which may differ from the one on the CRM record.
+  customerEmail String?
 
   /// Null means "Any Barber".
   staffId String?

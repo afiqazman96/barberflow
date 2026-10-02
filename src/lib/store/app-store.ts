@@ -32,6 +32,8 @@ import { isPrivateOrigin, publicOrigin } from "@/lib/public-origin";
 import { releasePreferredBarber } from "@/lib/queue/actions";
 import { pushTicketPatch } from "@/lib/queue/client";
 import type { QueueSnapshot } from "@/lib/queue/dto";
+import { pushBookingStatus } from "@/lib/bookings/client";
+import type { BookingsSnapshot } from "@/lib/bookings/dto";
 import { pushOwnStatus } from "@/lib/staff/client";
 
 export { isPrivateOrigin, publicOrigin };
@@ -52,7 +54,6 @@ import {
   MIN_VARIANCE_REASON,
 } from "@/lib/drawer";
 import {
-  BOOKINGS,
   BRANCHES,
   CHAIRS,
   COMMISSION_RULES,
@@ -186,8 +187,14 @@ interface AppState {
   updateQueueTicket: (id: string, patch: Partial<QueueTicket>) => void;
   /** Apply a change locally only — the caller has already persisted it. */
   applyQueueTicketPatch: (id: string, patch: Partial<QueueTicket>) => void;
+  /** Replace the covered branches' appointments with the database's. */
+  hydrateBookings: (snapshot: BookingsSnapshot) => void;
+  /** Add a booking the server has just created. */
   addBooking: (booking: Booking) => void;
+  /** Apply a status change locally and persist it (staff screens). */
   updateBooking: (id: string, patch: Partial<Booking>) => void;
+  /** Apply a change locally only — the caller has already persisted it. */
+  applyBookingPatch: (id: string, patch: Partial<Booking>) => void;
   setPosItems: (items: PosItem[]) => void;
   addPosItem: (item: PosItem) => void;
   updatePosQty: (id: string, quantity: number) => void;
@@ -450,7 +457,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Filled by `<QueueSync>` from the database — never from mock data, so a
   // lobby screen cannot flash tickets that do not exist.
   queue: [],
-  bookings: BOOKINGS,
+  // Filled by `<QueueSync bookings>` from the database, like the queue.
+  bookings: [],
   sales: SALES,
   staff: STAFF.map((s) => ({ ...s })),
   branches: BRANCHES.map((b) => ({ ...b })),
@@ -877,15 +885,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       // busy/available derivation below works from what everyone else sees.
       const s = staffStatuses ? withRecordedStatuses(st, staffStatuses) : st;
       const covered = new Set(branchIds);
-      const known = new Map(s.queue.map((q) => [q.id, q]));
-      const incoming = tickets.map((t) => {
-        // Bookings are not in the database yet, so the link from a checked-in
-        // ticket back to its booking only exists on the device that made it.
-        const bookingId = t.bookingId ?? known.get(t.id)?.bookingId;
-        return bookingId ? { ...t, bookingId } : t;
-      });
       const queue = [
-        ...incoming,
+        ...tickets,
         ...s.queue.filter((q) => !covered.has(q.branchId)),
       ];
       // Reconcile everyone at the branches this snapshot speaks for, not just
@@ -962,28 +963,48 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
     }),
 
-  addBooking: (booking) =>
-    set((s) => ({ bookings: [booking, ...s.bookings] })),
+  hydrateBookings: ({ bookings: incoming, branchIds, ownBookingId }) =>
+    set((s) => {
+      const covered = new Set(branchIds);
+      const incomingIds = new Set(incoming.map((b) => b.id));
+      return {
+        bookings: [
+          ...incoming,
+          ...s.bookings.filter(
+            (b) => !covered.has(b.branchId) && !incomingIds.has(b.id),
+          ),
+        ],
+        ...(ownBookingId ? { trackingBookingId: ownBookingId } : {}),
+      };
+    }),
 
-  updateBooking: (id, patch) =>
+  addBooking: (booking) =>
+    set((s) => ({
+      // The Realtime poke for this same booking may have landed first.
+      bookings: [booking, ...s.bookings.filter((b) => b.id !== booking.id)],
+    })),
+
+  updateBooking: (id, patch) => {
+    if (!get().bookings.some((b) => b.id === id)) return;
+    get().applyBookingPatch(id, patch);
+    // The server takes a checked-in ticket with a cancelled or missed booking.
+    if (patch.status && get().session) pushBookingStatus(id, patch.status);
+  },
+
+  applyBookingPatch: (id, patch) =>
     set((s) => {
       const bookings = s.bookings.map((b) => (b.id === id ? { ...b, ...patch } : b));
       if (patch.status !== "cancelled" && patch.status !== "no-show") {
         return { bookings };
       }
       const status = patch.status;
-      const released = s.queue.filter(
-        (q) =>
-          q.bookingId === id && (q.status === "waiting" || q.status === "called"),
-      );
-      // Only staff may move a ticket; a customer cancelling their own booking
-      // has no checked-in ticket to take with it.
-      if (s.session) {
-        for (const q of released) pushTicketPatch(q.id, { status });
-      }
       return {
         bookings,
-        queue: s.queue.map((q) => (released.includes(q) ? { ...q, status } : q)),
+        queue: s.queue.map((q) =>
+          q.bookingId === id && (q.status === "waiting" || q.status === "called")
+            ? { ...q, status }
+            : q,
+        ),
       };
     }),
 

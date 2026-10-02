@@ -2,12 +2,15 @@
 
 import type { Staff } from "@/generated/prisma/client";
 import type {
+  BookingStatus as PrismaBookingStatus,
   QueueSource,
   QueueStatus as PrismaQueueStatus,
 } from "@/generated/prisma/enums";
 import { requireRole, requireShopSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
 import { prisma } from "@/lib/prisma";
+
+import { isUniqueViolation, resolveCustomerId } from "@/lib/customers/resolve";
 
 import { readOwnTicketId, rememberOwnTicket } from "./cookie";
 import type {
@@ -50,73 +53,34 @@ const MAY_MOVE_FROM: Record<PrismaQueueStatus, PrismaQueueStatus[]> = {
   CANCELLED: ["WAITING", "CALLED"],
 };
 
+/**
+ * What happens to the booking a ticket was checked in from when the ticket
+ * moves: it follows the customer through the chair, the till, or out of the
+ * door. Only from the statuses listed, so a booking already settled stays so.
+ */
+const BOOKING_FOLLOWS: Partial<
+  Record<PrismaQueueStatus, { to: PrismaBookingStatus; from: PrismaBookingStatus[] }>
+> = {
+  IN_SERVICE: { to: "IN_SERVICE", from: ["CHECKED_IN"] },
+  COMPLETED: { to: "COMPLETED", from: ["CHECKED_IN", "IN_SERVICE"] },
+  NO_SHOW: { to: "NO_SHOW", from: ["CONFIRMED", "CHECKED_IN"] },
+  CANCELLED: { to: "CANCELLED", from: ["CONFIRMED", "CHECKED_IN"] },
+};
+
+async function bookingFollows(ticketId: string, target: PrismaQueueStatus) {
+  const rule = BOOKING_FOLLOWS[target];
+  if (!rule) return;
+  await prisma.booking.updateMany({
+    where: { queueTicketId: ticketId, status: { in: rule.from } },
+    data: { status: rule.to },
+  });
+}
+
 const MAX_ESTIMATE_MINS = 600;
 const NUMBER_RETRIES = 3;
 
 const digitsOf = (value: string | null | undefined) =>
   (value ?? "").replace(/\D/g, "");
-
-function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: unknown }).code === "P2002"
-  );
-}
-
-type Contact = { name: string; phone: string | null; email: string | null };
-
-/**
- * Customers are matched on phone or email rather than created per visit
- * (BACKEND_HANDOFF §4.5), so a returning walk-in keeps one CRM record.
- */
-async function resolveCustomerId(
-  tenantId: string,
-  contact: Contact,
-  hintId?: string,
-): Promise<string> {
-  const find = async () => {
-    if (hintId) {
-      const hinted = await prisma.customer.findFirst({
-        where: { id: hintId, tenantId },
-        select: { id: true },
-      });
-      if (hinted) return hinted.id;
-    }
-    if (contact.phone) {
-      const byPhone = await prisma.customer.findFirst({
-        where: { tenantId, phone: contact.phone },
-        select: { id: true },
-      });
-      if (byPhone) return byPhone.id;
-    }
-    if (contact.email) {
-      const byEmail = await prisma.customer.findFirst({
-        where: { tenantId, email: contact.email },
-        select: { id: true },
-      });
-      if (byEmail) return byEmail.id;
-    }
-    return null;
-  };
-
-  const existing = await find();
-  if (existing) return existing;
-
-  try {
-    const created = await prisma.customer.create({
-      data: { tenantId, ...contact },
-      select: { id: true },
-    });
-    return created.id;
-  } catch (error) {
-    // Two joins with the same contact raced; the other one made the record.
-    if (!isUniqueViolation(error)) throw error;
-    const raced = await find();
-    if (raced) return raced;
-    throw error;
-  }
-}
 
 type CreateArgs = {
   tenantId: string;
@@ -328,6 +292,85 @@ export async function registerWalkIn(
   });
 }
 
+/**
+ * The counter checks a booked customer in: their booking becomes a ticket in
+ * today's line, and the two are linked (`Booking.queueTicketId`) so each
+ * follows the other from here on.
+ *
+ * The booking is claimed first, conditionally, so two counters checking the
+ * same person in at once produce one ticket, not two.
+ */
+export async function checkInBooking(
+  bookingId: string,
+  estimatedWaitMins: number,
+): Promise<CreateTicketResult> {
+  const { staff } = await requireRole("OWNER", "CASHIER");
+
+  const booking = await prisma.booking.findFirst({
+    where: { id: bookingId, tenantId: staff.tenantId },
+    select: {
+      id: true,
+      branchId: true,
+      customerId: true,
+      customerName: true,
+      customerPhone: true,
+      customerEmail: true,
+      staffId: true,
+      status: true,
+      services: { orderBy: { id: "asc" }, select: { serviceId: true } },
+    },
+  });
+  if (!booking || (staff.branchId && staff.branchId !== booking.branchId)) {
+    return { ok: false, error: "Appointment not found" };
+  }
+
+  const claimed = await prisma.booking.updateMany({
+    where: { id: booking.id, status: "CONFIRMED", queueTicketId: null },
+    data: { status: "CHECKED_IN" },
+  });
+  if (claimed.count === 0) {
+    return { ok: false, error: "This appointment is already checked in or closed" };
+  }
+
+  let result: CreateTicketResult;
+  try {
+    result = await createTicket({
+      tenantId: staff.tenantId,
+      input: {
+        branchId: booking.branchId,
+        name: booking.customerName,
+        phone: booking.customerPhone ?? undefined,
+        email: booking.customerEmail ?? undefined,
+        serviceIds: booking.services.map((s) => s.serviceId),
+        preferredStaffId: booking.staffId,
+        estimatedWaitMins,
+      },
+      source: "BOOKING",
+      customerHintId: booking.customerId,
+      rejectDuplicates: false,
+    });
+  } catch (error) {
+    result = { ok: false, error: "Couldn't create the queue ticket" };
+    console.error("check-in failed", error);
+  }
+
+  if (!result.ok) {
+    // Give the booking back so it can be checked in again.
+    await prisma.booking.updateMany({
+      where: { id: booking.id, status: "CHECKED_IN", queueTicketId: null },
+      data: { status: "CONFIRMED" },
+    });
+    return result;
+  }
+
+  const ticket = result.data.ticket;
+  await prisma.booking.update({
+    where: { id: booking.id },
+    data: { queueTicketId: ticket.id },
+  });
+  return { ok: true, data: { ticket: { ...ticket, bookingId: booking.id } } };
+}
+
 /** What a barber may do to a ticket: take it, and hand it to the till. */
 function barberMay(target: PrismaQueueStatus): boolean {
   return target === "IN_SERVICE" || target === "AWAITING_PAYMENT";
@@ -414,6 +457,7 @@ export async function updateTicket(
     return { ok: false, error: "That ticket has already moved on" };
   }
 
+  await bookingFollows(ticket.id, target);
   return { ok: true };
 }
 
@@ -496,6 +540,7 @@ export async function leaveQueue(): Promise<ActionResult> {
     return { ok: false, error: "Your ticket can no longer be cancelled" };
   }
 
+  await bookingFollows(ticketId, "CANCELLED");
   return { ok: true };
 }
 

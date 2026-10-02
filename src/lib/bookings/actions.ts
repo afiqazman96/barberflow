@@ -153,7 +153,8 @@ async function createBooking({
   const rules = await opsRulesFor(tenantId);
   if (!allowPast) {
     const today = shopToday(timeZone);
-    if (input.date > addDays(today, rules.advanceDays)) {
+    // The window counts today, as the booking form does: 7 days is today + 6.
+    if (input.date >= addDays(today, rules.advanceDays)) {
       return {
         ok: false,
         error: `Bookings open ${rules.advanceDays} days ahead`,

@@ -42,6 +42,24 @@ export async function closeStaleShifts(tenantId: string, timeZone: string): Prom
 }
 
 async function sweep(tenantId: string, timeZone: string, now: Date) {
+  await closeShifts(tenantId, timeZone, now);
+
+  // On duty with no shift open — statuses set before shifts were recorded, or
+  // by a path that bypassed them. Every screen would show them available while
+  // the roster says they never came in. Nobody mid-service is touched.
+  await prisma.staff.updateMany({
+    where: {
+      tenantId,
+      role: { not: "OWNER" },
+      status: { not: "OFF_DUTY" },
+      shifts: { none: { endedAt: null } },
+      assignedTickets: { none: { status: "IN_SERVICE" } },
+    },
+    data: { status: "OFF_DUTY" },
+  });
+}
+
+async function closeShifts(tenantId: string, timeZone: string, now: Date) {
   const open = await prisma.shift.findMany({
     where: { tenantId, endedAt: null },
     select: {

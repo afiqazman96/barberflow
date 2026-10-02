@@ -45,15 +45,7 @@ import {
 import type { ShopSnapshot } from "@/lib/shop/dto";
 
 export { isPrivateOrigin, publicOrigin };
-import {
-  AUTO_CLOSE_GRACE_MINS,
-  closingMins,
-  emptyWeek,
-  localIso,
-  minsOfDay,
-  openShiftOf,
-  parseIso,
-} from "@/lib/roster";
+import { emptyWeek, localIso, openShiftOf } from "@/lib/roster";
 import { DRAWER_HISTORY } from "@/lib/mock/drawer-data";
 import {
   CASHIER_PAYOUT_LIMIT,
@@ -154,8 +146,6 @@ interface AppState {
     staffId: string,
     opts?: { by?: "self" | "owner"; note?: string },
   ) => { ok: boolean; error?: string };
-  /** Ends shifts left open past closing time, or from a previous day. */
-  closeStaleShifts: (now: Date) => void;
   setRosterDay: (staffId: string, weekday: number, patch: Partial<RosterDay>) => void;
   addLeave: (input: Omit<LeaveEntry, "id">) => void;
   removeLeave: (id: string) => void;
@@ -421,8 +411,8 @@ function closeShiftPatch(
   staffId: string,
   by: "self" | "owner" | "auto",
   note?: string,
-  at: string = new Date().toISOString(),
 ): Partial<AppState> {
+  const at = new Date().toISOString();
   return {
     shifts: s.shifts.map((sh) =>
       sh.staffId === staffId && !sh.endedAt
@@ -640,37 +630,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       note: opts?.note,
     });
     return { ok: true };
-  },
-
-  closeStaleShifts: (now) => {
-    const s = get();
-    const today = localIso(now);
-    const nowMins = minsOfDay(now);
-    const due: { staffId: string; at: Date }[] = [];
-    for (const sh of s.shifts) {
-      if (sh.endedAt) continue;
-      if (s.queue.some((q) => q.assignedStaffId === sh.staffId && q.status === "in-service")) continue;
-      if (s.drawerSession && !s.drawerSession.closedAt && s.drawerSession.cashierId === sh.staffId) continue;
-      const close = closingMins(s.branches.find((b) => b.id === sh.branchId));
-      // A shift started after closing (stock take, late clean-up) stays open
-      // until the next day rather than being closed with zero minutes.
-      const startedMins = minsOfDay(new Date(sh.startedAt));
-      const stale =
-        sh.date < today ||
-        (sh.date === today &&
-          startedMins < close &&
-          nowMins >= close + AUTO_CLOSE_GRACE_MINS);
-      if (!stale) continue;
-      const closeAt = parseIso(sh.date);
-      closeAt.setHours(0, close, 0, 0);
-      const started = new Date(sh.startedAt);
-      due.push({ staffId: sh.staffId, at: closeAt > started ? closeAt : started });
-    }
-    for (const d of due) {
-      set((st) =>
-        closeShiftPatch(st, d.staffId, "auto", "Auto-closed: shift was not ended", d.at.toISOString()),
-      );
-    }
   },
 
   setRosterDay: (staffId, weekday, patch) => {

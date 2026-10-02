@@ -1,7 +1,7 @@
 "use client";
 
 import { useConfirm } from "@/hooks/use-confirm";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   CalendarClock,
   CalendarOff,
@@ -77,7 +77,6 @@ export default function OwnerRosterPage() {
   const leaves = useAppStore((s) => s.leaves);
   const startShift = useAppStore((s) => s.startShift);
   const endShift = useAppStore((s) => s.endShift);
-  const closeStaleShifts = useAppStore((s) => s.closeStaleShifts);
   const setRosterDay = useAppStore((s) => s.setRosterDay);
   const addLeave = useAppStore((s) => s.addLeave);
   const removeLeave = useAppStore((s) => s.removeLeave);
@@ -95,10 +94,6 @@ export default function OwnerRosterPage() {
     date: "",
     reason: LEAVE_REASONS[0],
   });
-
-  useEffect(() => {
-    if (now) closeStaleShifts(now);
-  }, [now, closeStaleShifts]);
 
   const branch = branches.find((b) => b.id === branchId);
   const team = useMemo(

@@ -178,7 +178,19 @@ export function OwnerSettingsScreen({
 
   const opsRules = useAppStore((s) => s.opsRules);
   const updateOpsRules = useAppStore((s) => s.updateOpsRules);
-  const [rules, setRules] = useState(opsRules);
+  // Only the fields the owner has typed into; the rest follow the store, which
+  // fills from the database after mount. A full copy taken at mount would show
+  // the defaults — and saving one section would write them back over the other.
+  const [ruleEdits, setRuleEdits] = useState<Partial<typeof opsRules>>({});
+  const rules = { ...opsRules, ...ruleEdits };
+  const setRules = (next: typeof opsRules) =>
+    setRuleEdits(
+      Object.fromEntries(
+        (Object.keys(next) as (keyof typeof opsRules)[])
+          .filter((k) => next[k] !== opsRules[k])
+          .map((k) => [k, next[k]]),
+      ),
+    );
 
   function getBranchDraft(branch: BranchDetail): BranchDraft {
     return (

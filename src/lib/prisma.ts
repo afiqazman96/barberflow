@@ -29,7 +29,18 @@ function createPrismaClient() {
     // DATABASE_URL points at Supabase's transaction pooler, which already
     // multiplexes onto a small set of server connections. Keeping our own pool
     // tiny stops a handful of serverless instances from exhausting it.
-    adapter: new PrismaPg({ connectionString, max: 5 }),
+    //
+    // The timeouts make a dead connection fail instead of hang. A socket the
+    // pooler dropped while the machine slept (or the network blinked) never
+    // answers, and without a limit the query waits on it forever — five of
+    // those and every request queues behind them until a restart.
+    adapter: new PrismaPg({
+      connectionString,
+      max: 5,
+      keepAlive: true,
+      connectionTimeoutMillis: 10_000,
+      query_timeout: 30_000,
+    }),
     log:
       process.env.NODE_ENV === "development"
         ? ["query", "warn", "error"]

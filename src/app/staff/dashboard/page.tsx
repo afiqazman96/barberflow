@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -56,15 +56,9 @@ export default function StaffDashboardPage() {
 
   const startShift = useAppStore((s) => s.startShift);
   const endShift = useAppStore((s) => s.endShift);
-  const closeStaleShifts = useAppStore((s) => s.closeStaleShifts);
   const roster = useAppStore((s) => s.roster);
   const leaves = useAppStore((s) => s.leaves);
   const now = useNow();
-
-  // A shift someone forgot to end shouldn't stay open past closing time.
-  useEffect(() => {
-    if (now) closeStaleShifts(now);
-  }, [now, closeStaleShifts]);
 
   const [chairModalOpen, setChairModalOpen] = useState(false);
   const [selectedChairId, setSelectedChairId] = useState<string | null>(

@@ -1,4 +1,4 @@
-import type { QueueStatus, QueueTicket } from "@/lib/types";
+import type { QueueStatus, QueueTicket, StaffStatus } from "@/lib/types";
 
 /**
  * What crosses to the browser for the queue.
@@ -16,8 +16,14 @@ export function queueTopic(branchId: string): string {
   return `queue:branch:${branchId}`;
 }
 
-/** The broadcast event name the trigger sends. */
+/** The broadcast event name the ticket trigger sends. */
 export const QUEUE_CHANGED_EVENT = "ticket_changed";
+
+/**
+ * Sent on the same topic when someone at the branch changes status
+ * (`20261002000000_staff_status_broadcast`).
+ */
+export const STAFF_CHANGED_EVENT = "staff_changed";
 
 /**
  * Today's tickets for one or more branches, in the store's own `QueueTicket`
@@ -32,6 +38,12 @@ export type QueueSnapshot = {
    * its cookie. Other people's tickets in the same snapshot are masked.
    */
   ownTicketId?: string | null;
+  /**
+   * The recorded status of everyone working at the covered branches, so a
+   * break taken on one device shows on every other. Never `busy` — that is
+   * derived from the tickets above.
+   */
+  staffStatuses?: Record<string, StaffStatus>;
 };
 
 export type TicketInput = {

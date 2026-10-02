@@ -177,7 +177,7 @@ export const STAFF: StaffMember[] = [
     email: "adam@fadehouse.my",
     password: "demo1234",
     active: true,
-    status: "busy",
+    status: "available",
     chairId: "ch1",
     specialty: "Skin Fade · Beard",
     todaySales: 680,

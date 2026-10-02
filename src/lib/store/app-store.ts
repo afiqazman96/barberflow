@@ -32,6 +32,7 @@ import { isPrivateOrigin, publicOrigin } from "@/lib/public-origin";
 import { releasePreferredBarber } from "@/lib/queue/actions";
 import { pushTicketPatch } from "@/lib/queue/client";
 import type { QueueSnapshot } from "@/lib/queue/dto";
+import { pushOwnStatus } from "@/lib/staff/client";
 
 export { isPrivateOrigin, publicOrigin };
 import {
@@ -366,6 +367,39 @@ function barberSyncPatch(
   return statuses === s.staffStatuses ? {} : { staffStatuses: statuses, staff };
 }
 
+/**
+ * Lay the database's statuses over the store's. A recorded `available` does
+ * not demote someone this device knows is mid-service; `barberSyncPatch`
+ * settles busy against the tickets right after.
+ */
+function withRecordedStatuses(
+  s: AppState,
+  recorded: Record<string, StaffStatus>,
+): AppState {
+  let statuses = s.staffStatuses;
+  for (const [id, status] of Object.entries(recorded)) {
+    const cur = statuses[id];
+    if (cur === status || (cur === "busy" && status === "available")) continue;
+    statuses = { ...statuses, [id]: status };
+  }
+  if (statuses === s.staffStatuses) return s;
+  return {
+    ...s,
+    staffStatuses: statuses,
+    staff: s.staff.map((m) =>
+      statuses[m.id] && statuses[m.id] !== m.status
+        ? { ...m, status: statuses[m.id] }
+        : m,
+    ),
+  };
+}
+
+/** The status change is the signed-in person's own, so it is theirs to record. */
+function isOwnStatus(s: AppState, staffId: string): boolean {
+  if (!s.session || s.session.staffId !== staffId) return false;
+  return s.staff.find((m) => m.id === staffId)?.role !== "owner";
+}
+
 function closeShiftPatch(
   s: AppState,
   staffId: string,
@@ -486,7 +520,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateOpsRules: (patch) =>
     set((s) => ({ opsRules: { ...s.opsRules, ...patch } })),
 
-  updateStaffStatus: (staffId, status) =>
+  updateStaffStatus: (staffId, status) => {
+    const before = get().staffStatuses[staffId];
     set((s) => {
       const member = s.staff.find((m) => m.id === staffId);
       const current = s.staffStatuses[staffId] ?? member?.status;
@@ -500,14 +535,30 @@ export const useAppStore = create<AppState>((set, get) => ({
         staffStatuses: { ...s.staffStatuses, [staffId]: status },
         staff: s.staff.map((m) => (m.id === staffId ? { ...m, status } : m)),
       };
-    }),
+    });
+    const after = get().staffStatuses[staffId];
+    if (after !== before && isOwnStatus(get(), staffId)) pushOwnStatus(after);
+  },
 
   startShift: (staffId, opts) => {
     const s = get();
     const m = s.staff.find((x) => x.id === staffId);
     if (!m || !m.active) return { ok: false, error: "This account is disabled" };
     if (m.role === "owner") return { ok: false, error: "Owners do not clock in" };
-    if (openShiftOf(s.shifts, staffId)) return { ok: true };
+    if (openShiftOf(s.shifts, staffId)) {
+      // The shift is open on this device but the status says otherwise — it
+      // was recorded off duty elsewhere. Clocking in again puts them back.
+      if ((s.staffStatuses[staffId] ?? m.status) === "off-duty") {
+        set((st) => ({
+          staffStatuses: { ...st.staffStatuses, [staffId]: "available" },
+          staff: st.staff.map((x) =>
+            x.id === staffId ? { ...x, status: "available" as const } : x,
+          ),
+        }));
+        if (isOwnStatus(get(), staffId)) pushOwnStatus("available");
+      }
+      return { ok: true };
+    }
 
     const chairId = m.role === "barber" ? (opts?.chairId ?? m.chairId ?? null) : null;
     if (chairId) {
@@ -538,6 +589,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       ),
     }));
     if (chairId) get().assignChair(chairId, staffId);
+    if (isOwnStatus(get(), staffId)) pushOwnStatus("available");
     return { ok: true };
   },
 
@@ -552,6 +604,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: false, error: "Close the cash drawer first" };
     }
     set((st) => closeShiftPatch(st, staffId, opts?.by ?? "self", opts?.note));
+    if (isOwnStatus(get(), staffId)) pushOwnStatus("off-duty");
     // The same release `closeShiftPatch` just made locally, for everyone else.
     void releasePreferredBarber(staffId).catch(() => {});
     return { ok: true };
@@ -818,8 +871,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       products: s.products.map((p) => (p.id === id ? { ...p, ...patch } : p)),
     })),
 
-  hydrateQueue: ({ tickets, branchIds, ownTicketId }) =>
-    set((s) => {
+  hydrateQueue: ({ tickets, branchIds, ownTicketId, staffStatuses }) =>
+    set((st) => {
+      // Breaks and shifts recorded on other devices. Applied first, so the
+      // busy/available derivation below works from what everyone else sees.
+      const s = staffStatuses ? withRecordedStatuses(st, staffStatuses) : st;
       const covered = new Set(branchIds);
       const known = new Map(s.queue.map((q) => [q.id, q]));
       const incoming = tickets.map((t) => {
@@ -832,10 +888,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...incoming,
         ...s.queue.filter((q) => !covered.has(q.branchId)),
       ];
-      // Anyone who held or now holds a ticket may have changed busy/available.
-      const barbers = new Set(
-        [...s.queue, ...queue].map((q) => q.assignedStaffId),
-      );
+      // Reconcile everyone at the branches this snapshot speaks for, not just
+      // the barbers named on a ticket: someone marked busy with no ticket in
+      // service (a stale flag, or a service finished on another device) has
+      // no ticket left to be found through.
+      const barbers = new Set<string | null>([
+        ...s.staff.filter((m) => covered.has(m.branchId)).map((m) => m.id),
+        ...[...s.queue, ...queue].map((q) => q.assignedStaffId),
+      ]);
       return {
         queue,
         branches: s.branches.map((b) =>
@@ -851,6 +911,8 @@ export const useAppStore = create<AppState>((set, get) => ({
             : b,
         ),
         ...(ownTicketId ? { trackingTicketId: ownTicketId } : {}),
+        staffStatuses: s.staffStatuses,
+        staff: s.staff,
         ...barberSyncPatch(s, queue, barbers),
       };
     }),

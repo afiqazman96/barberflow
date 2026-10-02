@@ -446,8 +446,15 @@ async function startServiceData(
     return { ok: false, error: "That barber isn't at this branch" };
   }
 
+  // Today's tickets only, the same day every screen shows. A service left
+  // open on an earlier day is invisible everywhere, so nobody could ever
+  // finish it — counting it would lock the barber out for good.
   const busy = await prisma.queueTicket.count({
-    where: { assignedStaffId: barber.id, status: "IN_SERVICE" },
+    where: {
+      assignedStaffId: barber.id,
+      status: "IN_SERVICE",
+      queueDate: await queueDateForTenant(actor.tenantId),
+    },
   });
   if (busy > 0) {
     return {

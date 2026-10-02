@@ -4,7 +4,8 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { QueueStatus as PrismaQueueStatus } from "@/generated/prisma/enums";
 import { requireShopSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
-import type { QueueTicket } from "@/lib/types";
+import type { QueueTicket, StaffStatus } from "@/lib/types";
+import { appStatusFor } from "@/lib/staff/status";
 import { maskName } from "@/lib/utils";
 
 import { readOwnTicketId } from "./cookie";
@@ -114,6 +115,21 @@ export async function queueDateForTenant(tenantId: string): Promise<Date> {
 }
 
 /**
+ * Who is on the floor at these branches. Just ids and statuses — the same
+ * thing the lobby screen's chair list already shows next to each name.
+ */
+async function branchStaffStatuses(
+  branchIds: string[],
+): Promise<Record<string, StaffStatus>> {
+  if (branchIds.length === 0) return {};
+  const rows = await prisma.staff.findMany({
+    where: { branchId: { in: branchIds }, active: true, role: { not: "OWNER" } },
+    select: { id: true, status: true },
+  });
+  return Object.fromEntries(rows.map((r) => [r.id, appStatusFor(r.status)]));
+}
+
+/**
  * Today's queue for the signed-in staff member.
  *
  * Cashiers and barbers get their own branch; an owner spans every branch in
@@ -145,7 +161,11 @@ export async function staffQueueSnapshot(): Promise<QueueSnapshot> {
     select: ticketSelect,
   });
 
-  return { tickets: rows.map(toTicketDto), branchIds };
+  return {
+    tickets: rows.map(toTicketDto),
+    branchIds,
+    staffStatuses: await branchStaffStatuses(branchIds),
+  };
 }
 
 /**
@@ -214,5 +234,10 @@ export async function publicQueueSnapshot(
     tickets.unshift(toTicketDto(own));
   }
 
-  return { tickets, branchIds, ownTicketId };
+  return {
+    tickets,
+    branchIds,
+    ownTicketId,
+    staffStatuses: await branchStaffStatuses(branchIds),
+  };
 }

@@ -7,7 +7,11 @@ import {
   registerQueueRefetch,
   type QueueScope,
 } from "@/lib/queue/client";
-import { QUEUE_CHANGED_EVENT, queueTopic } from "@/lib/queue/dto";
+import {
+  QUEUE_CHANGED_EVENT,
+  queueTopic,
+  STAFF_CHANGED_EVENT,
+} from "@/lib/queue/dto";
 import { useAppStore } from "@/lib/store/app-store";
 import { createClient } from "@/lib/supabase/client";
 
@@ -115,6 +119,9 @@ export function useQueueSync(kind: QueueScope["kind"], branchId: string) {
       supabase
         .channel(queueTopic(id))
         .on("broadcast", { event: QUEUE_CHANGED_EVENT }, () =>
+          schedule.current(),
+        )
+        .on("broadcast", { event: STAFF_CHANGED_EVENT }, () =>
           schedule.current(),
         )
         .subscribe((status) => {

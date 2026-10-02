@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireRole } from "@/lib/auth/session";
+import { requireRole, requireShopSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
 import { prisma } from "@/lib/prisma";
 import type { StaffStatus } from "@/lib/types";
@@ -71,6 +71,45 @@ export async function setStaffStatus(
 
   await prisma.staff.update({
     where: { id: staffId },
+    data: { status: prismaStatusFor(status) },
+  });
+
+  revalidateStaffScreens();
+  return { ok: true };
+}
+
+/**
+ * A staff member records their own status: clocking in (`available`), taking
+ * or ending a break, clocking out (`off-duty`).
+ *
+ * Always the caller's own row — the id comes from the session, never the
+ * client. `busy` is not stored: every screen derives it from the ticket in
+ * service. Owners do not clock in, so there is nothing for them to record.
+ */
+export async function setMyStatus(
+  status: Extract<StaffStatus, "available" | "break" | "off-duty">,
+): Promise<ActionResult> {
+  const { staff: me } = await requireShopSession();
+  if (me.role === "OWNER") {
+    return { ok: false, error: "Owners do not clock in" };
+  }
+  if (status !== "available" && status !== "break" && status !== "off-duty") {
+    return { ok: false, error: "Unknown status" };
+  }
+
+  const current = await prisma.staff.findUnique({
+    where: { id: me.id },
+    select: { active: true, status: true },
+  });
+  if (!current?.active) {
+    return { ok: false, error: "This account is disabled" };
+  }
+  if (current.status === "OFF_DUTY" && status === "break") {
+    return { ok: false, error: "Start your shift first" };
+  }
+
+  await prisma.staff.update({
+    where: { id: me.id },
     data: { status: prismaStatusFor(status) },
   });
 

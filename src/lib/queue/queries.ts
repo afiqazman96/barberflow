@@ -11,6 +11,7 @@ import { maskName } from "@/lib/utils";
 import { readOwnBookingId } from "@/lib/bookings/cookie";
 
 import { readOwnTicketId } from "./cookie";
+import { closeEarlierDays } from "./housekeeping";
 import type { QueueSnapshot } from "./dto";
 import { appQueueSourceFor, appQueueStatusFor } from "./status";
 
@@ -132,7 +133,8 @@ async function branchStaffStatuses(
 }
 
 /**
- * Today's queue for the signed-in staff member.
+ * Today's queue for the signed-in staff member, plus any ticket from an
+ * earlier day that is still awaiting payment.
  *
  * Cashiers and barbers get their own branch; an owner spans every branch in
  * the shop, so they get all of them and can switch without refetching. The
@@ -151,12 +153,18 @@ export async function staffQueueSnapshot(): Promise<QueueSnapshot> {
       ).map((b) => b.id);
 
   const queueDate = await queueDateForTenant(staff.tenantId);
+  await closeEarlierDays(staff.tenantId, queueDate);
 
   const rows = await prisma.queueTicket.findMany({
     where: {
       tenantId: staff.tenantId,
       branchId: { in: branchIds },
-      queueDate,
+      OR: [
+        { queueDate },
+        // Still owed from an earlier day — kept in view until it is paid,
+        // so it cannot drop off the counter's screens unsettled.
+        { queueDate: { lt: queueDate }, status: "AWAITING_PAYMENT" },
+      ],
     },
     // Newest first — the order the store has always kept its queue in.
     orderBy: { createdAt: "desc" },

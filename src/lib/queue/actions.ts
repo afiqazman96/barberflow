@@ -13,6 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { isUniqueViolation, resolveCustomerId } from "@/lib/customers/resolve";
 
 import { readOwnTicketId, rememberOwnTicket } from "./cookie";
+import { closeEarlierDays } from "./housekeeping";
 import type {
   CreateTicketResult,
   TicketInput,
@@ -146,6 +147,8 @@ async function createTicket({
   }
 
   const queueDate = await queueDateForTenant(tenantId);
+  // A shop that only ever takes QR joins still gets yesterday settled.
+  await closeEarlierDays(tenantId, queueDate);
 
   if (rejectDuplicates) {
     // One spot per person: the same email or phone already in line here is a

@@ -122,6 +122,8 @@ export function OwnerSettingsScreen({
   const storeServices = useAppStore((s) => s.services);
   const updateBranch = useAppStore((s) => s.updateBranch);
   const assignChair = useAppStore((s) => s.assignChair);
+  const updateChair = useAppStore((s) => s.updateChair);
+  const removeChair = useAppStore((s) => s.removeChair);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const addService = useAppStore((s) => s.addService);
   const updateService = useAppStore((s) => s.updateService);
@@ -541,6 +543,7 @@ export function OwnerSettingsScreen({
       );
       if (!renamed?.ok) return;
 
+      updateChair(editingChairId, { label: chairLabel.trim() });
       toast.success("Chair renamed", { description: chairLabel.trim() });
       closeChairModal();
       return;
@@ -577,6 +580,7 @@ export function OwnerSettingsScreen({
           offline: "Chair was not removed — check your connection and try again.",
         });
         if (!result?.ok) return;
+        removeChair(chair.id);
         forgetBranchDraft(chair.branchId);
         toast.success("Chair removed", { description: chair.label });
       },

@@ -42,6 +42,7 @@ export default function CashierDrawerPage() {
   const session = useSession();
   const myStaffId = session.staffId ?? "";
   const status = useAppStore((s) => s.staffStatuses[myStaffId] ?? "off-duty");
+  const queueHydrated = useAppStore((s) => s.queueHydrated);
   const drawerSession = useAppStore((s) => s.drawerSession);
   const drawerHistory = useAppStore((s) => s.drawerHistory);
   const openDrawer = useAppStore((s) => s.openDrawer);
@@ -60,7 +61,9 @@ export default function CashierDrawerPage() {
   const [recounted, setRecounted] = useState(false);
 
   const lastClosed = drawerHistory.find((d) => d.closedAt);
-  const offDuty = status === "off-duty";
+  // Before the first queue snapshot lands, "off-duty" is a placeholder, not
+  // a confirmed status — don't flash the warning on it.
+  const offDuty = queueHydrated && status === "off-duty";
 
   const countRecord: Record<string, number> = Object.fromEntries(
     Object.entries(counts).map(([k, v]) => [k, Number(v) || 0]),

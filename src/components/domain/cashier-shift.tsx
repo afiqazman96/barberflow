@@ -12,6 +12,7 @@ import { useAppStore } from "@/lib/store/app-store";
 
 function useClockIn(staffId: string) {
   const status = useAppStore((s) => s.staffStatuses[staffId] ?? "off-duty");
+  const queueHydrated = useAppStore((s) => s.queueHydrated);
   const startShift = useAppStore((s) => s.startShift);
   const endShift = useAppStore((s) => s.endShift);
   const updateStaffStatus = useAppStore((s) => s.updateStaffStatus);
@@ -38,6 +39,7 @@ function useClockIn(staffId: string) {
 
   return {
     status,
+    queueHydrated,
     start,
     end,
     breakOn: () => updateStaffStatus(staffId, "break"),
@@ -94,8 +96,13 @@ export function CashierShiftControls() {
 export function CashierShiftBanner() {
   const session = useSession();
   const staffId = session.staffId ?? "";
-  const { status, start } = useClockIn(staffId);
-  if (session.role !== "cashier" || status !== "off-duty") return null;
+  const { status, queueHydrated, start } = useClockIn(staffId);
+  // Nothing has been heard from the database yet, so "off-duty" here is a
+  // placeholder, not a confirmed status — showing the warning on it would be
+  // a false alarm for someone who is actually clocked in.
+  if (session.role !== "cashier" || !queueHydrated || status !== "off-duty") {
+    return null;
+  }
 
   return (
     <div className="flex items-center justify-between gap-3 border-b border-[var(--warning)]/30 bg-[var(--warning)]/10 px-4 py-2 text-sm">

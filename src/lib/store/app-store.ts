@@ -103,6 +103,9 @@ interface AppState {
    * screen that resolves a customer sees the same edits. */
   customers: Customer[];
   staffStatuses: Record<string, StaffStatus>;
+  /** True once the first queue snapshot has landed, so a status read before
+   * then can be told apart from a confirmed "off-duty". */
+  queueHydrated: boolean;
   /** Clock-in/out log for barbers and cashiers, newest first. */
   shifts: ShiftRecord[];
   /** Weekly roster per staff id; index 0 = Sunday. */
@@ -165,6 +168,7 @@ interface AppState {
   updateBranch: (id: string, patch: Partial<Branch>) => void;
   addChair: (input: { branchId: string; label?: string }) => Chair;
   updateChair: (id: string, patch: Partial<Chair>) => void;
+  removeChair: (id: string) => void;
   assignChair: (chairId: string, staffId: string | null) => void;
   addCommissionRule: (rule: Omit<CommissionRule, "id">) => CommissionRule;
   updateCommissionRule: (id: string, patch: Partial<CommissionRule>) => void;
@@ -397,6 +401,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   products: [],
   customers: [],
   staffStatuses: {},
+  queueHydrated: false,
   // Shifts, roster and leave are filled by `<QueueSync>` from the database.
   shifts: [],
   roster: {},
@@ -730,6 +735,18 @@ export const useAppStore = create<AppState>((set, get) => ({
       chairs: s.chairs.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     })),
 
+  removeChair: (id) =>
+    set((s) => {
+      const chair = s.chairs.find((c) => c.id === id);
+      if (!chair) return {};
+      return {
+        chairs: s.chairs.filter((c) => c.id !== id),
+        branches: s.branches.map((b) =>
+          b.id === chair.branchId ? { ...b, chairs: Math.max(0, b.chairs - 1) } : b,
+        ),
+      };
+    }),
+
   assignChair: (chairId, staffId) =>
     set((s) => ({
       chairs: s.chairs.map((c) => {
@@ -883,6 +900,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...(ownTicketId ? { trackingTicketId: ownTicketId } : {}),
         staffStatuses: s.staffStatuses,
         staff: s.staff,
+        queueHydrated: true,
         ...barberSyncPatch(s, queue, barbers),
       };
     }),

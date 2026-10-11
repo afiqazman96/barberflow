@@ -127,6 +127,7 @@ export function OwnerSettingsScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const addService = useAppStore((s) => s.addService);
   const updateService = useAppStore((s) => s.updateService);
+  const deleteService = useAppStore((s) => s.deleteService);
   const membershipPlans = useAppStore((s) => s.membershipPlans);
   const addMembershipPlan = useAppStore((s) => s.addMembershipPlan);
   const updateMembershipPlan = useAppStore((s) => s.updateMembershipPlan);
@@ -432,6 +433,18 @@ export function OwnerSettingsScreen({
     toast.success("Service added", { description: created.name });
     setAddServiceOpen(false);
     setNewServiceForm(emptyServiceForm);
+  }
+
+  function handleDeleteService(service: Service) {
+    confirm.ask({
+      title: `Remove ${service.name}?`,
+      description: "Past sales and bookings keep their history, but it can no longer be sold.",
+      confirmLabel: "Remove service",
+      run: () => {
+        deleteService(service.id);
+        toast.success("Service removed", { description: service.name });
+      },
+    });
   }
 
   function openAddPlan() {
@@ -990,7 +1003,7 @@ export function OwnerSettingsScreen({
                         const draft = getServiceDraft(svc);
                         return (
                           <Card key={svc.id} className="p-4">
-                            <div className="mb-4">
+                            <div className="mb-4 flex items-start justify-between gap-3">
                               <ImageUpload
                                 label="Service image"
                                 value={draft.imageUrl}
@@ -998,6 +1011,15 @@ export function OwnerSettingsScreen({
                                   patchServiceDraft(svc.id, { imageUrl })
                                 }
                               />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                aria-label={`Remove ${svc.name}`}
+                                onClick={() => handleDeleteService(svc)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
                             </div>
                             <div className="grid gap-3 sm:grid-cols-5">
                               <Input

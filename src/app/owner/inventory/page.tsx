@@ -11,6 +11,7 @@ import {
   Boxes,
   Layers,
   Coins,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -22,8 +23,10 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { StatTile } from "@/components/domain/stat-tile";
+import { useConfirm } from "@/hooks/use-confirm";
 import { useAppStore } from "@/lib/store/app-store";
 import { formatCurrency } from "@/lib/utils";
+import type { Product } from "@/lib/types";
 
 const LOW_STOCK_THRESHOLD = 12;
 
@@ -31,6 +34,8 @@ export default function OwnerInventoryPage() {
   const products = useAppStore((s) => s.products);
   const updateProduct = useAppStore((s) => s.updateProduct);
   const addProduct = useAppStore((s) => s.addProduct);
+  const deleteProduct = useAppStore((s) => s.deleteProduct);
+  const confirm = useConfirm();
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -100,6 +105,18 @@ export default function OwnerInventoryPage() {
       imageUrl: undefined,
     });
     setOpenAdd(false);
+  }
+
+  function handleDeleteProduct(product: Product) {
+    confirm.ask({
+      title: `Remove ${product.name}?`,
+      description: "Past sales keep their history, but it can no longer be sold.",
+      confirmLabel: "Remove product",
+      run: () => {
+        deleteProduct(product.id);
+        toast.success("Product removed", { description: product.name });
+      },
+    });
   }
 
   function stockStatus(stock: number) {
@@ -246,7 +263,18 @@ export default function OwnerInventoryPage() {
                           </p>
                         </div>
                       </div>
-                      <Badge variant={status.variant}>{status.label}</Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge variant={status.variant}>{status.label}</Badge>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Remove ${product.name}`}
+                          onClick={() => handleDeleteProduct(product)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mb-3">
@@ -398,6 +426,8 @@ export default function OwnerInventoryPage() {
           </Button>
         </form>
       </Modal>
+
+      {confirm.node}
     </>
   );
 }

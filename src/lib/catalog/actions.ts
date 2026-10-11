@@ -117,6 +117,17 @@ export async function saveService(
   return { ok: true, data: { id: created.id } };
 }
 
+/** Stop selling a service. Past sales and queue tickets keep their record. */
+export async function removeService(serviceId: string): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+  const updated = await prisma.service.updateMany({
+    where: { id: serviceId, tenantId: owner.tenantId },
+    data: { active: false },
+  });
+  if (updated.count === 0) return { ok: false, error: "Service not found" };
+  return { ok: true };
+}
+
 // ---- Products -----------------------------------------------------------------
 
 export async function saveProduct(
@@ -210,6 +221,17 @@ export async function adjustProductStock(productId: string, delta: number): Prom
     return moved.count;
   });
   if (updated === 0) return { ok: false, error: "Product not found" };
+  return { ok: true };
+}
+
+/** Stop selling a product. Past sales keep their record; stock on hand is frozen. */
+export async function removeProduct(productId: string): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+  const updated = await prisma.product.updateMany({
+    where: { id: productId, tenantId: owner.tenantId },
+    data: { active: false },
+  });
+  if (updated.count === 0) return { ok: false, error: "Product not found" };
   return { ok: true };
 }
 

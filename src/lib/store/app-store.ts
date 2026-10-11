@@ -54,6 +54,8 @@ import {
   pushNewService,
   pushProductPatch,
   pushRemoveMembershipPlan,
+  pushRemoveProduct,
+  pushRemoveService,
   pushServicePatch,
   pushStockChange,
   saveCustomerPatch,
@@ -174,6 +176,7 @@ interface AppState {
   updateCommissionRule: (id: string, patch: Partial<CommissionRule>) => void;
   addService: (service: Omit<Service, "id">) => Service;
   updateService: (id: string, patch: Partial<Service>) => void;
+  deleteService: (id: string) => void;
   addMembershipPlan: (plan: Omit<MembershipPlan, "id">) => MembershipPlan;
   updateMembershipPlan: (id: string, patch: Partial<MembershipPlan>) => void;
   deleteMembershipPlan: (id: string) => void;
@@ -187,6 +190,7 @@ interface AppState {
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   addProduct: (product: Omit<Product, "id">) => Product;
   updateProduct: (id: string, patch: Partial<Product>) => void;
+  deleteProduct: (id: string) => void;
   /**
    * Replace the queue for the branches a server snapshot covers. The database
    * is the source of truth for tickets; this store is a read-through mirror
@@ -795,6 +799,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     pushServicePatch(id, patch);
   },
 
+  deleteService: (id) => {
+    set((s) => ({ services: s.services.filter((sv) => sv.id !== id) }));
+    pushRemoveService(id);
+  },
+
   addMembershipPlan: (plan) => {
     const created: MembershipPlan = { ...plan, id: `m-${Date.now()}` };
     set((s) => ({ membershipPlans: [...s.membershipPlans, created] }));
@@ -863,6 +872,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       pushStockChange(id, stock - before.stock);
     }
     if (Object.keys(details).length > 0) pushProductPatch(id, details);
+  },
+
+  deleteProduct: (id) => {
+    set((s) => ({ products: s.products.filter((p) => p.id !== id) }));
+    pushRemoveProduct(id);
   },
 
   hydrateQueue: ({ tickets, branchIds, ownTicketId, staffStatuses }) =>

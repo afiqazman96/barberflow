@@ -8,6 +8,8 @@ import {
   adjustProductStock,
   createCustomer,
   removeMembershipPlan,
+  removeProduct,
+  removeService,
   saveMembershipPlan,
   saveProduct,
   saveService,
@@ -51,6 +53,10 @@ export function pushServicePatch(id: string, patch: Partial<Service>): void {
   persist("Couldn't save the service", () => saveService(id, withImage(rest)));
 }
 
+export function pushRemoveService(id: string): void {
+  persist("Couldn't remove the service", () => removeService(id));
+}
+
 export function pushNewProduct(product: Omit<Product, "id">): void {
   persist("Couldn't add the product", () => saveProduct(null, withImage(product)));
 }
@@ -63,6 +69,10 @@ export function pushProductPatch(id: string, patch: Partial<Omit<Product, "stock
 
 export function pushStockChange(id: string, delta: number): void {
   persist("Couldn't update the stock", () => adjustProductStock(id, delta));
+}
+
+export function pushRemoveProduct(id: string): void {
+  persist("Couldn't remove the product", () => removeProduct(id));
 }
 
 export function pushMembershipPlan(id: string | null, plan: Omit<MembershipPlan, "id" | "members">): void {

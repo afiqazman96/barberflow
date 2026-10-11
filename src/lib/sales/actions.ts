@@ -59,6 +59,13 @@ class AlreadySettled extends Error {}
 /** Raised inside the transaction when the till closed a moment ago. */
 class NoDrawer extends Error {}
 
+/** Raised inside the transaction when a product line can't be fulfilled. */
+class OutOfStock extends Error {
+  constructor(public productName: string) {
+    super();
+  }
+}
+
 const NO_DRAWER = "Open the cash drawer before taking cash";
 
 /** Take payment for a bill, settling the ticket it came from. */
@@ -359,18 +366,15 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
         });
       }
 
+      // The decrement is conditional on there being enough left: two tills
+      // selling the last unit at once can't both succeed, and neither can
+      // one sale oversell what's on the shelf.
       for (const line of lines.filter((l) => l.type === "product")) {
-        await tx.product.updateMany({
-          where: { id: line.id, tenantId },
+        const sold = await tx.product.updateMany({
+          where: { id: line.id, tenantId, stock: { gte: line.quantity } },
           data: { stock: { decrement: line.quantity } },
         });
-      }
-      // Stock that was already miscounted stops at zero rather than going negative.
-      if (lines.some((l) => l.type === "product")) {
-        await tx.product.updateMany({
-          where: { tenantId, id: { in: lines.map((l) => l.id) }, stock: { lt: 0 } },
-          data: { stock: 0 },
-        });
+        if (sold.count === 0) throw new OutOfStock(line.name);
       }
 
       if (customer && (soldService || plan)) {
@@ -391,6 +395,9 @@ export async function checkout(input: CheckoutInput): Promise<CheckoutResult> {
     if (error instanceof NoDrawer) return { ok: false, error: NO_DRAWER };
     if (error instanceof AlreadySettled) {
       return { ok: false, error: `${ticket?.customerName ?? "This customer"} has already been paid for` };
+    }
+    if (error instanceof OutOfStock) {
+      return { ok: false, error: `Not enough ${error.productName} in stock — update the bill` };
     }
     if (isUniqueViolation(error)) {
       // The same bill landed twice at once; the first one won.

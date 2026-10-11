@@ -87,8 +87,13 @@ export default function SuperAdminTenantPage() {
     staff: number;
   } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
-  // Just-onboarded (or just-reset) tenant whose login details are on screen.
-  const [credentialsFor, setCredentialsFor] = useState<{ id: string; fresh: boolean } | null>(null);
+  // Just-onboarded (or just-reset) tenant whose login details are on screen —
+  // carries the one-time password itself, since the stored tenant never does.
+  const [credentialsFor, setCredentialsFor] = useState<{
+    tenant: Tenant;
+    tempPassword: string;
+    fresh: boolean;
+  } | null>(null);
   const [resetTarget, setResetTarget] = useState<Tenant | null>(null);
   const [addForm, setAddForm] = useState(emptyAddForm);
   const [planModal, setPlanModal] = useState<Tenant | null>(null);
@@ -141,21 +146,8 @@ export default function SuperAdminTenantPage() {
     });
   }
 
-  function saveTenant() {
+  async function saveTenant() {
     if (!selected || !editForm) return;
-    const pkg = packages.find((p) => p.id === selected.packageId);
-    if (pkg && editForm.branches > pkg.maxBranches) {
-      toast.error("Branch count exceeds plan limit", {
-        description: `${pkg.name} allows up to ${pkg.maxBranches} branches — change plan first.`,
-      });
-      return;
-    }
-    if (pkg && editForm.staff > pkg.maxStaff) {
-      toast.error("Staff count exceeds plan limit", {
-        description: `${pkg.name} allows up to ${pkg.maxStaff} staff — change plan first.`,
-      });
-      return;
-    }
     if (!editForm.name.trim()) {
       toast.error("Business name is required");
       return;
@@ -165,13 +157,20 @@ export default function SuperAdminTenantPage() {
       toast.error("Owner email", { description: emailProblem });
       return;
     }
-    updateTenant(selected.id, editForm);
-    const updated = { ...selected, ...editForm };
-    setSelected(updated);
+    const result = await updateTenant(selected.id, {
+      name: editForm.name,
+      ownerEmail: editForm.ownerEmail,
+    });
+    if (!result.ok) {
+      toast.error("Could not update tenant", { description: result.error });
+      return;
+    }
+    const fresh = usePlatformStore.getState().tenants.find((t) => t.id === selected.id);
+    if (fresh) openTenant(fresh);
     toast.success("Tenant updated", { description: editForm.name });
   }
 
-  function handleAddTenant() {
+  async function handleAddTenant() {
     if (!addForm.businessName.trim()) {
       toast.error("Business name is required");
       return;
@@ -200,22 +199,36 @@ export default function SuperAdminTenantPage() {
       });
       return;
     }
-    const tenant = addTenant({ ...addForm, packageId: pkgId });
+    const result = await addTenant({ ...addForm, packageId: pkgId });
+    if (!result.ok) {
+      toast.error("Could not onboard tenant", { description: result.error });
+      return;
+    }
+    const { tenant } = result;
     toast.success("Tenant onboarded", {
       description: `${tenant.name} · ${tenant.status === "trial" ? "Trial" : "Active"}`,
     });
     setAddOpen(false);
     setAddForm(emptyAddForm);
-    setCredentialsFor({ id: tenant.id, fresh: true });
-    if (addForm.emailOwner) void sendTenantWelcomeEmail(tenant);
+    setCredentialsFor({ tenant, tempPassword: result.tempPassword, fresh: true });
+    if (addForm.emailOwner) {
+      void sendTenantWelcomeEmail({
+        ...tenant,
+        ownerAccount: tenant.ownerAccount
+          ? { ...tenant.ownerAccount, tempPassword: result.tempPassword }
+          : undefined,
+      });
+    }
   }
 
-  function handleResetPassword(tenant: Tenant) {
-    const updated = resetOwnerPassword(tenant.id);
-    if (!updated) return;
+  async function handleResetPassword(tenant: Tenant) {
+    const result = await resetOwnerPassword(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not reset password", { description: result.error });
+      return;
+    }
     toast.success("New temporary password issued", { description: tenant.name });
-    setCredentialsFor({ id: tenant.id, fresh: false });
-    if (selected?.id === tenant.id) setSelected(updated);
+    setCredentialsFor({ tenant: result.tenant, tempPassword: result.tempPassword, fresh: false });
   }
 
   function openChangePlan(tenant: Tenant) {
@@ -223,7 +236,7 @@ export default function SuperAdminTenantPage() {
     setPlanForm({ packageId: tenant.packageId, billing: tenant.billing });
   }
 
-  function handleChangePlan() {
+  async function handleChangePlan() {
     if (!planModal) return;
     const newPkg = packages.find((p) => p.id === planForm.packageId);
     if (newPkg && planModal.branches > newPkg.maxBranches) {
@@ -238,7 +251,11 @@ export default function SuperAdminTenantPage() {
       });
       return;
     }
-    changeTenantPlan(planModal.id, planForm.packageId, planForm.billing);
+    const result = await changeTenantPlan(planModal.id, planForm.packageId, planForm.billing);
+    if (!result.ok) {
+      toast.error("Could not change plan", { description: result.error });
+      return;
+    }
     toast.success("Plan updated", { description: planModal.name });
     setPlanModal(null);
     if (selected?.id === planModal.id) {
@@ -249,8 +266,12 @@ export default function SuperAdminTenantPage() {
     }
   }
 
-  function handleConvertTrial(tenant: Tenant) {
-    convertTrialToActive(tenant.id);
+  async function handleConvertTrial(tenant: Tenant) {
+    const result = await convertTrialToActive(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not convert trial", { description: result.error });
+      return;
+    }
     toast.success("Trial converted", { description: tenant.name });
     if (selected?.id === tenant.id) {
       const fresh = usePlatformStore
@@ -260,8 +281,12 @@ export default function SuperAdminTenantPage() {
     }
   }
 
-  function handleSuspend(tenant: Tenant) {
-    suspendTenant(tenant.id);
+  async function handleSuspend(tenant: Tenant) {
+    const result = await suspendTenant(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not suspend tenant", { description: result.error });
+      return;
+    }
     toast.success("Tenant suspended", { description: tenant.name });
     if (selected?.id === tenant.id) {
       const fresh = usePlatformStore
@@ -271,8 +296,12 @@ export default function SuperAdminTenantPage() {
     }
   }
 
-  function handleArchive(tenant: Tenant) {
-    archiveTenant(tenant.id);
+  async function handleArchive(tenant: Tenant) {
+    const result = await archiveTenant(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not archive tenant", { description: result.error });
+      return;
+    }
     toast.success("Tenant archived", {
       description: `${tenant.name} moved out of the active list`,
     });
@@ -280,8 +309,12 @@ export default function SuperAdminTenantPage() {
     setEditForm(null);
   }
 
-  function handleRestore(tenant: Tenant) {
-    restoreTenant(tenant.id);
+  async function handleRestore(tenant: Tenant) {
+    const result = await restoreTenant(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not restore tenant", { description: result.error });
+      return;
+    }
     toast.success("Tenant restored", { description: tenant.name });
     if (selected?.id === tenant.id) {
       const fresh = usePlatformStore
@@ -291,8 +324,12 @@ export default function SuperAdminTenantPage() {
     }
   }
 
-  function handleActivate(tenant: Tenant) {
-    activateTenant(tenant.id);
+  async function handleActivate(tenant: Tenant) {
+    const result = await activateTenant(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not activate tenant", { description: result.error });
+      return;
+    }
     toast.success("Tenant activated", { description: tenant.name });
     if (selected?.id === tenant.id) {
       const fresh = usePlatformStore
@@ -732,39 +769,19 @@ export default function SuperAdminTenantPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label>Branches</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={editForm.branches}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      branches: Number(e.target.value) || 1,
-                    })
-                  }
-                />
+                <Input type="number" value={editForm.branches} disabled />
               </div>
               <div>
                 <Label>Staff</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={editForm.staff}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      staff: Number(e.target.value) || 1,
-                    })
-                  }
-                />
+                <Input type="number" value={editForm.staff} disabled />
               </div>
             </div>
             {(() => {
               const pkg = packages.find((p) => p.id === selected.packageId);
               return pkg ? (
                 <p className="-mt-2 text-xs text-[var(--text-faint)]">
-                  {pkg.name} allows up to {pkg.maxBranches} branches and{" "}
-                  {pkg.maxStaff} staff.
+                  Counted from this tenant's own branches and team — {pkg.name}{" "}
+                  allows up to {pkg.maxBranches} branches and {pkg.maxStaff} staff.
                 </p>
               ) : null;
             })()}
@@ -904,17 +921,22 @@ export default function SuperAdminTenantPage() {
         description="Send these to the shop owner. The password is only shown now and is not kept."
         className="max-w-md"
       >
-        {(() => {
-          const t = tenants.find((x) => x.id === credentialsFor?.id);
-          return t ? (
-            <div className="space-y-4">
-              <TenantCredentials tenant={t} onReset={() => setResetTarget(t)} />
-              <Button className="w-full" onClick={() => setCredentialsFor(null)}>
-                Done
-              </Button>
-            </div>
-          ) : null;
-        })()}
+        {credentialsFor && (
+          <div className="space-y-4">
+            <TenantCredentials
+              tenant={{
+                ...credentialsFor.tenant,
+                ownerAccount: credentialsFor.tenant.ownerAccount
+                  ? { ...credentialsFor.tenant.ownerAccount, tempPassword: credentialsFor.tempPassword }
+                  : undefined,
+              }}
+              onReset={() => setResetTarget(credentialsFor.tenant)}
+            />
+            <Button className="w-full" onClick={() => setCredentialsFor(null)}>
+              Done
+            </Button>
+          </div>
+        )}
       </Modal>
 
       <ConfirmDialog

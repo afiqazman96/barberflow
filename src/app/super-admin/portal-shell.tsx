@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   LayoutDashboard,
   Building2,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { usePlatformStore } from "@/lib/store/platform-store";
 
 const navItems = [
   { href: "/super-admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -34,6 +36,11 @@ export function PortalShell({
 }: {
   children: React.ReactNode;
 }) {
+  const refresh = usePlatformStore((s) => s.refresh);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
   return (
     <AppShell
       sidebar={

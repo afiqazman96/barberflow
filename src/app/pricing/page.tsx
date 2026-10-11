@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, ArrowRight, Sparkles } from "lucide-react";
@@ -11,8 +11,7 @@ import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { TenantCredentials } from "@/components/domain/tenant-credentials";
-import { usePlatformHydration, usePlatformStore } from "@/lib/store/platform-store";
-import { ownerEmailProblem } from "@/lib/tenant-onboarding";
+import { usePlatformStore } from "@/lib/store/platform-store";
 import type { Tenant } from "@/lib/types";
 import { formatCurrency, cn } from "@/lib/utils";
 
@@ -24,8 +23,10 @@ export default function PricingPage() {
   const router = useRouter();
   const packages = usePlatformStore((s) => s.packages);
   const addTenant = usePlatformStore((s) => s.addTenant);
-  const tenants = usePlatformStore((s) => s.tenants);
-  usePlatformHydration();
+  const loadPackages = usePlatformStore((s) => s.loadPackages);
+  useEffect(() => {
+    void loadPackages();
+  }, [loadPackages]);
   // The tenant just created, so the new owner can see how to sign in.
   const [created, setCreated] = useState<Tenant | null>(null);
 
@@ -43,19 +44,14 @@ export default function PricingPage() {
     setOpen(true);
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPkg) return;
     if (!form.businessName.trim()) {
       toast.error("Business name is required");
       return;
     }
-    const emailProblem = ownerEmailProblem(form.ownerEmail, tenants);
-    if (emailProblem) {
-      toast.error("Email", { description: emailProblem });
-      return;
-    }
-    const tenant = addTenant({
+    const result = await addTenant({
       businessName: form.businessName,
       ownerName: form.ownerName || form.businessName,
       ownerEmail: form.ownerEmail,
@@ -63,13 +59,22 @@ export default function PricingPage() {
       billing,
       startAs: "trial",
     });
+    if (!result.ok) {
+      toast.error("Could not start your trial", { description: result.error });
+      return;
+    }
     const trialDays = packages.find((p) => p.id === selectedPkg)?.trialDays ?? 14;
     toast.success(`${trialDays}-day trial started`, {
-      description: `${tenant.name} · ${tenant.plan} plan`,
+      description: `${result.tenant.name} · ${result.tenant.plan} plan`,
     });
     setOpen(false);
     setForm({ businessName: "", ownerName: "", ownerEmail: "" });
-    setCreated(tenant);
+    setCreated({
+      ...result.tenant,
+      ownerAccount: result.tenant.ownerAccount
+        ? { ...result.tenant.ownerAccount, tempPassword: result.tempPassword }
+        : undefined,
+    });
   }
 
   const pkg = packages.find((p) => p.id === selectedPkg);

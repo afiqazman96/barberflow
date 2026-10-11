@@ -102,18 +102,26 @@ export default function SuperAdminPackagesPage() {
     setAddOpen(true);
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.name.trim()) {
       toast.error("Package name is required");
       return;
     }
     const data = formToPatch(form);
     if (editingId) {
-      updatePackage(editingId, data);
+      const result = await updatePackage(editingId, data);
+      if (!result.ok) {
+        toast.error("Could not update package", { description: result.error });
+        return;
+      }
       toast.success("Package updated", { description: form.name });
       setEditingId(null);
     } else {
-      addPackage(data);
+      const result = await addPackage(data);
+      if (!result.ok) {
+        toast.error("Could not create package", { description: result.error });
+        return;
+      }
       toast.success("Package created", { description: form.name });
       setAddOpen(false);
     }

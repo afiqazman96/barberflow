@@ -66,10 +66,14 @@ export default function SuperAdminFeaturesPage() {
     [packages, featureMatrix],
   );
 
-  function handleToggle(packageId: string, feature: (typeof FEATURE_KEYS)[number]["key"]) {
-    toggleFeature(packageId, feature);
+  async function handleToggle(packageId: string, feature: (typeof FEATURE_KEYS)[number]["key"]) {
     const pkg = packages.find((p) => p.id === packageId);
     const label = FEATURE_KEYS.find((f) => f.key === feature)?.label ?? feature;
+    const result = await toggleFeature(packageId, feature);
+    if (!result.ok) {
+      toast.error("Could not update feature", { description: result.error });
+      return;
+    }
     toast.success("Feature updated", {
       description: `${label} · ${pkg?.name ?? "Package"}`,
     });

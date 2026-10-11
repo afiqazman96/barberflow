@@ -69,25 +69,37 @@ export default function SuperAdminSupportPage() {
   const inProgressCount = supportTickets.filter((t) => t.status === "in-progress").length;
   const resolvedCount = supportTickets.filter((t) => t.status === "resolved").length;
 
-  function handleCreateTicket() {
+  async function handleCreateTicket() {
     if (!ticketForm.tenantId || !ticketForm.subject.trim()) {
       toast.error("Tenant and subject are required");
       return;
     }
-    const ticket = addSupportTicket(ticketForm);
-    toast.success("Ticket created", { description: ticket.subject });
+    const result = await addSupportTicket(ticketForm);
+    if (!result.ok) {
+      toast.error("Could not create ticket", { description: result.error });
+      return;
+    }
+    toast.success("Ticket created", { description: ticketForm.subject });
     setAddOpen(false);
     setTicketForm(emptyTicketForm);
   }
 
-  function startTicket(id: string) {
-    updateTicket(id, { status: "in-progress" });
+  async function startTicket(id: string) {
+    const result = await updateTicket(id, { status: "in-progress" });
+    if (!result.ok) {
+      toast.error("Could not update ticket", { description: result.error });
+      return;
+    }
     toast.info("Ticket marked in progress");
   }
 
-  function resolveTicket(id: string) {
+  async function resolveTicket(id: string) {
     const ticket = supportTickets.find((t) => t.id === id);
-    updateTicket(id, { status: "resolved" });
+    const result = await updateTicket(id, { status: "resolved" });
+    if (!result.ok) {
+      toast.error("Could not resolve ticket", { description: result.error });
+      return;
+    }
     toast.success("Ticket resolved", { description: ticket?.subject });
   }
 

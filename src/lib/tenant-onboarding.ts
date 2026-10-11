@@ -1,23 +1,15 @@
-import type { OwnerAccount, Tenant } from "@/lib/types";
+import type { Tenant } from "@/lib/types";
 import { todayIso } from "@/lib/utils";
 
 /**
- * Tenant onboarding: the account a new shop owner signs in with, and the words
- * used to hand it over.
- *
- * `issueOwnerAccount` is the one seam to the backend. Today it only makes up a
- * temporary password in the browser (`provisioned: false`), so nothing can sign
- * in with it yet. When tenant provisioning exists on the server, replace the
- * body with the server action that creates the Supabase login + owner row and
- * returns the same shape — the screens above it do not change.
+ * Tenant onboarding: the words used to hand a new owner their account, plus
+ * the client-side temp-password generator `createTenant`
+ * (`@/lib/platform/actions`) uses when it provisions the real one.
  */
 
-/**
- * Flip to true once tenant provisioning exists on the server and
- * `issueOwnerAccount` really creates the login. Until then credentials are demo
- * only, so nothing emails them out by default.
- */
-export const OWNER_LOGINS_ARE_LIVE = false;
+/** Tenant provisioning is live — `createTenant` creates a real Supabase
+ * login, so a freshly onboarded owner's credentials actually work. */
+export const OWNER_LOGINS_ARE_LIVE = true;
 
 // No 0/O, 1/l/I: the password gets read out or retyped from a chat message.
 const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -30,17 +22,6 @@ export function generateTempPassword(): string {
   return [chars.slice(0, 4), chars.slice(4, 8), chars.slice(8, 12)]
     .map((g) => g.join(""))
     .join("-");
-}
-
-export function issueOwnerAccount(email: string): OwnerAccount {
-  return {
-    loginEmail: email.trim().toLowerCase(),
-    tempPassword: generateTempPassword(),
-    mustChangePassword: true,
-    status: "awaiting-first-login",
-    issuedAt: new Date().toISOString(),
-    provisioned: OWNER_LOGINS_ARE_LIVE,
-  };
 }
 
 export function isValidEmail(value: string): boolean {

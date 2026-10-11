@@ -20,11 +20,11 @@ import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { QueueSync } from "@/components/domain/queue-sync";
 import { useAppStore } from "@/lib/store/app-store";
-import { DEMO_TENANT_ID, usePlatformStore } from "@/lib/store/platform-store";
+import { usePlatformStore } from "@/lib/store/platform-store";
 import type { FeatureKey } from "@/lib/types";
 
-// The demo shop ("Fade House") is DEMO_TENANT_ID in the platform store — its
-// package's feature matrix is what Super Admin > Features actually toggles.
+// The signed-in owner's own tenant — `<SessionProvider>` loads it
+// (`myTenant`/`myFeatures`) for every shop portal, this screen among them.
 
 // Nav items whose visibility is gated by a package feature flag. Anything not
 // listed here is always shown (core flows every package includes).
@@ -34,11 +34,7 @@ const FEATURE_GATED_HREFS: Record<string, FeatureKey> = {
 };
 
 function useGatedNavItems(items: typeof navItems) {
-  const demoTenant = usePlatformStore((s) =>
-    s.tenants.find((t) => t.id === DEMO_TENANT_ID),
-  );
-  const featureMatrix = usePlatformStore((s) => s.featureMatrix);
-  const row = demoTenant ? featureMatrix[demoTenant.packageId] : undefined;
+  const row = usePlatformStore((s) => s.myFeatures);
   return items.filter((item) => {
     const feature = FEATURE_GATED_HREFS[item.href];
     if (!feature) return true;

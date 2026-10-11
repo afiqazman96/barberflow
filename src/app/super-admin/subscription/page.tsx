@@ -101,7 +101,7 @@ export default function SuperAdminSubscriptionPage() {
     setPlanForm({ packageId: tenant.packageId, billing: tenant.billing });
   }
 
-  function handleChangePlan() {
+  async function handleChangePlan() {
     if (!planModal) return;
     const newPkg = packages.find((p) => p.id === planForm.packageId);
     if (newPkg && planModal.branches > newPkg.maxBranches) {
@@ -116,23 +116,39 @@ export default function SuperAdminSubscriptionPage() {
       });
       return;
     }
-    changeTenantPlan(planModal.id, planForm.packageId, planForm.billing);
+    const result = await changeTenantPlan(planModal.id, planForm.packageId, planForm.billing);
+    if (!result.ok) {
+      toast.error("Could not change plan", { description: result.error });
+      return;
+    }
     toast.success("Plan updated", { description: planModal.name });
     setPlanModal(null);
   }
 
-  function handleConvert(tenant: Tenant) {
-    convertTrialToActive(tenant.id);
+  async function handleConvert(tenant: Tenant) {
+    const result = await convertTrialToActive(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not convert trial", { description: result.error });
+      return;
+    }
     toast.success("Trial converted to active", { description: tenant.name });
   }
 
-  function handleActivate(tenant: Tenant) {
-    activateTenant(tenant.id);
+  async function handleActivate(tenant: Tenant) {
+    const result = await activateTenant(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not reactivate subscription", { description: result.error });
+      return;
+    }
     toast.success("Subscription reactivated", { description: tenant.name });
   }
 
-  function handleSuspend(tenant: Tenant) {
-    suspendTenant(tenant.id);
+  async function handleSuspend(tenant: Tenant) {
+    const result = await suspendTenant(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not suspend subscription", { description: result.error });
+      return;
+    }
     toast.success("Subscription suspended", { description: tenant.name });
   }
 

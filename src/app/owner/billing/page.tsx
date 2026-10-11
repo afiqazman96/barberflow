@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -23,8 +23,6 @@ import { useAppStore } from "@/lib/store/app-store";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
-const TENANT_ID = "t1";
-
 function usagePct(used: number, max: number) {
   if (max <= 0) return 0;
   return Math.min(100, Math.round((used / max) * 100));
@@ -46,15 +44,16 @@ export default function OwnerBillingPage() {
   const branches = useAppStore((s) => s.branches);
   const staff = useAppStore((s) => s.staff);
 
-  const tenants = usePlatformStore((s) => s.tenants);
+  const tenant = usePlatformStore((s) => s.myTenant);
   const packages = usePlatformStore((s) => s.packages);
+  const loadPackages = usePlatformStore((s) => s.loadPackages);
   const changeTenantPlan = usePlatformStore((s) => s.changeTenantPlan);
   const convertTrialToActive = usePlatformStore((s) => s.convertTrialToActive);
 
-  const tenant = useMemo(
-    () => tenants.find((t) => t.id === TENANT_ID),
-    [tenants],
-  );
+  useEffect(() => {
+    void loadPackages();
+  }, [loadPackages]);
+
   const pkg = useMemo(
     () => packages.find((p) => p.id === tenant?.packageId),
     [packages, tenant?.packageId],
@@ -77,9 +76,13 @@ export default function OwnerBillingPage() {
     setUpgradeOpen(true);
   }
 
-  function handleUpgrade() {
+  async function handleUpgrade() {
     if (!tenant) return;
-    changeTenantPlan(tenant.id, planForm.packageId, planForm.billing);
+    const result = await changeTenantPlan(tenant.id, planForm.packageId, planForm.billing);
+    if (!result.ok) {
+      toast.error("Could not change plan", { description: result.error });
+      return;
+    }
     const nextPkg = packages.find((p) => p.id === planForm.packageId);
     toast.success("Plan updated", {
       description: nextPkg ? `Now on ${nextPkg.name}` : undefined,
@@ -87,9 +90,13 @@ export default function OwnerBillingPage() {
     setUpgradeOpen(false);
   }
 
-  function handleConvertTrial() {
+  async function handleConvertTrial() {
     if (!tenant) return;
-    convertTrialToActive(tenant.id);
+    const result = await convertTrialToActive(tenant.id);
+    if (!result.ok) {
+      toast.error("Could not convert trial", { description: result.error });
+      return;
+    }
     toast.success("Trial converted", {
       description: "Your subscription is now active",
     });

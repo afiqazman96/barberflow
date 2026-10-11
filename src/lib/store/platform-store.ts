@@ -1,55 +1,30 @@
 "use client";
 
-import { useEffect } from "react";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-import type {
-  FeatureKey,
-  Package,
-  SupportTicket,
-  Tenant,
-} from "@/lib/types";
+import type { FeatureKey, Package, SupportTicket, Tenant } from "@/lib/types";
 import {
-  DEFAULT_FEATURE_MATRIX,
-  PACKAGES,
-  SUPPORT_TICKETS,
-  TENANTS,
-} from "@/lib/mock/data";
+  activateTenant as activateTenantAction,
+  addPackage as addPackageAction,
+  addSupportTicket as addSupportTicketAction,
+  archiveTenant as archiveTenantAction,
+  changeTenantPlan as changeTenantPlanAction,
+  convertTrialToActive as convertTrialToActiveAction,
+  createTenant,
+  resetOwnerPassword as resetOwnerPasswordAction,
+  restoreTenant as restoreTenantAction,
+  suspendTenant as suspendTenantAction,
+  toggleFeature as toggleFeatureAction,
+  updatePackage as updatePackageAction,
+  updateTenant as updateTenantAction,
+  updateTicket as updateTicketAction,
+} from "@/lib/platform/actions";
 import {
-  generateTempPassword,
-  isTrialExpired,
-  issueOwnerAccount,
-} from "@/lib/tenant-onboarding";
-import { todayIso } from "@/lib/utils";
-
-/** The demo shop's tenant id — the shop portals read its status and plan. */
-export const DEMO_TENANT_ID = "t1";
-const STORAGE_KEY = "bf-platform-v1";
-
-function slugify(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "")
-    .slice(0, 40);
-}
-
-function addDays(days: number) {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function mrrFor(
-  pkg: Package,
-  billing: "monthly" | "yearly",
-  status: Tenant["status"],
-) {
-  if (status === "suspended" || status === "trial") return 0;
-  return billing === "yearly"
-    ? Math.round((pkg.yearlyPrice / 12) * 100) / 100
-    : pkg.price;
-}
+  fetchMyTenant,
+  fetchPlatformSnapshot,
+  fetchPublicPackages,
+  type PlatformSnapshot,
+} from "@/lib/platform/client";
+import { isTrialExpired } from "@/lib/tenant-onboarding";
 
 export interface SubscribeInput {
   businessName: string;
@@ -58,43 +33,67 @@ export interface SubscribeInput {
   packageId: string;
   billing?: "monthly" | "yearly";
   startAs?: "trial" | "active";
-  branches?: number;
-  staff?: number;
 }
+
+type Result = { ok: true } | { ok: false; error: string };
 
 interface PlatformState {
   tenants: Tenant[];
   packages: Package[];
   supportTickets: SupportTicket[];
-  featureMatrix: Record<string, Record<string, boolean>>;
+  featureMatrix: Record<string, Record<FeatureKey, boolean>>;
+  /** True once the first real snapshot has landed. */
+  hydrated: boolean;
+  /** The signed-in shop session's own tenant — null until `loadMyTenant`
+   * resolves, or for a visitor with no shop session at all. */
+  myTenant: Tenant | null;
+  myFeatures: Record<FeatureKey, boolean> | null;
 
-  addTenant: (input: SubscribeInput) => Tenant;
-  updateTenant: (id: string, patch: Partial<Tenant>) => void;
+  /** Fetch everything from the server and replace local state with it.
+   * Platform-session only — for the Super Admin console. */
+  refresh: () => Promise<void>;
+  /** Plans only, no session required — for the public /pricing page. */
+  loadPackages: () => Promise<void>;
+  /** The caller's own tenant — for a shop session's portal shell. */
+  loadMyTenant: () => Promise<void>;
+
+  addTenant: (
+    input: SubscribeInput,
+  ) => Promise<{ ok: true; tenant: Tenant; tempPassword: string } | { ok: false; error: string }>;
+  updateTenant: (
+    id: string,
+    patch: Partial<Pick<Tenant, "name" | "ownerName" | "ownerEmail">>,
+  ) => Promise<Result>;
   changeTenantPlan: (
     tenantId: string,
     packageId: string,
     billing?: "monthly" | "yearly",
-  ) => void;
-  convertTrialToActive: (tenantId: string) => void;
-  suspendTenant: (tenantId: string) => void;
-  activateTenant: (tenantId: string) => void;
-  /** New temporary password for the owner; returns the updated tenant. */
-  resetOwnerPassword: (tenantId: string) => Tenant | undefined;
-  archiveTenant: (tenantId: string) => void;
-  restoreTenant: (tenantId: string) => void;
+  ) => Promise<Result>;
+  convertTrialToActive: (tenantId: string) => Promise<Result>;
+  suspendTenant: (tenantId: string) => Promise<Result>;
+  activateTenant: (tenantId: string) => Promise<Result>;
+  /** New temporary password for the owner, shown once. */
+  resetOwnerPassword: (
+    tenantId: string,
+  ) => Promise<{ ok: true; tenant: Tenant; tempPassword: string } | { ok: false; error: string }>;
+  archiveTenant: (tenantId: string) => Promise<Result>;
+  restoreTenant: (tenantId: string) => Promise<Result>;
 
-  addPackage: (pkg: Omit<Package, "id">) => Package;
-  updatePackage: (id: string, patch: Partial<Package>) => void;
+  addPackage: (pkg: Omit<Package, "id">) => Promise<Result>;
+  updatePackage: (id: string, patch: Partial<Omit<Package, "id">>) => Promise<Result>;
 
-  toggleFeature: (packageId: string, feature: FeatureKey) => void;
-  setFeatureMatrix: (matrix: Record<string, Record<string, boolean>>) => void;
+  toggleFeature: (packageId: string, feature: FeatureKey) => Promise<Result>;
+  setFeatureMatrix: (matrix: Record<string, Record<FeatureKey, boolean>>) => void;
 
   addSupportTicket: (input: {
     tenantId: string;
     subject: string;
     priority: SupportTicket["priority"];
-  }) => SupportTicket;
-  updateTicket: (id: string, patch: Partial<SupportTicket>) => void;
+  }) => Promise<Result>;
+  updateTicket: (
+    id: string,
+    patch: Partial<Pick<SupportTicket, "status" | "priority">>,
+  ) => Promise<Result>;
 
   totalMrr: () => number;
   trialCount: () => number;
@@ -102,308 +101,207 @@ interface PlatformState {
   openTicketCount: () => number;
 }
 
-export const usePlatformStore = create<PlatformState>()(
-  persist(
-    (set, get) => ({
-  tenants: TENANTS.map((t) => ({ ...t })),
-  packages: PACKAGES.map((p) => ({ ...p })),
-  supportTickets: SUPPORT_TICKETS.map((t) => ({ ...t })),
-  featureMatrix: structuredClone(DEFAULT_FEATURE_MATRIX),
+/** Replace one tenant in the list, or leave the list alone if it isn't there. */
+function withTenant(tenants: Tenant[], updated: Tenant): Tenant[] {
+  return tenants.map((t) => (t.id === updated.id ? updated : t));
+}
 
-  addTenant: (input) => {
-    const pkg =
-      get().packages.find((p) => p.id === input.packageId) ?? get().packages[0];
-    const billing = input.billing ?? "monthly";
-    const startAs = input.startAs ?? "trial";
-    const status: Tenant["status"] = startAs;
-    const tenant: Tenant = {
-      id: `t-${Date.now()}`,
-      name: input.businessName.trim(),
-      slug: slugify(input.businessName),
-      plan: pkg.name,
-      packageId: pkg.id,
-      status,
-      branches: input.branches ?? 1,
-      staff: input.staff ?? 1,
-      mrr: mrrFor(pkg, billing, status),
-      ownerName: input.ownerName.trim(),
-      ownerEmail: input.ownerEmail.trim().toLowerCase(),
-      billing,
-      trialEndsAt: status === "trial" ? addDays(pkg.trialDays) : undefined,
-      createdAt: new Date().toISOString().slice(0, 10),
-      ownerAccount: issueOwnerAccount(input.ownerEmail),
-    };
-    set((s) => ({ tenants: [tenant, ...s.tenants] }));
-    return tenant;
+const OFFLINE = "Check your connection and try again";
+
+export const usePlatformStore = create<PlatformState>((set, get) => ({
+  tenants: [],
+  packages: [],
+  supportTickets: [],
+  featureMatrix: {},
+  hydrated: false,
+  myTenant: null,
+  myFeatures: null,
+
+  refresh: async () => {
+    const snapshot = await fetchPlatformSnapshot();
+    if (!snapshot) return;
+    set({ ...snapshot, hydrated: true });
   },
 
-  updateTenant: (id, patch) =>
-    set((s) => ({
-      tenants: s.tenants.map((t) => {
-        if (t.id !== id) return t;
-        const next = { ...t, ...patch, updatedAt: new Date().toISOString() };
-        // The owner signs in with this address, so the two never drift apart.
-        if (patch.ownerEmail && t.ownerAccount) {
-          next.ownerAccount = { ...t.ownerAccount, loginEmail: patch.ownerEmail.trim().toLowerCase() };
-        }
-        return next;
-      }),
-    })),
-
-  resetOwnerPassword: (tenantId) => {
-    let updated: Tenant | undefined;
-    set((s) => ({
-      tenants: s.tenants.map((t) => {
-        if (t.id !== tenantId) return t;
-        const now = new Date().toISOString();
-        updated = {
-          ...t,
-          ownerAccount: {
-            loginEmail: t.ownerAccount?.loginEmail ?? t.ownerEmail,
-            tempPassword: generateTempPassword(),
-            mustChangePassword: true,
-            status: "awaiting-first-login",
-            issuedAt: t.ownerAccount?.issuedAt ?? now,
-            lastResetAt: now,
-            provisioned: t.ownerAccount?.provisioned ?? false,
-          },
-          updatedAt: now,
-        };
-        return updated;
-      }),
-    }));
-    return updated;
+  loadPackages: async () => {
+    const snapshot = await fetchPublicPackages();
+    if (!snapshot) return;
+    set({ packages: snapshot.packages, featureMatrix: snapshot.featureMatrix });
   },
 
-  changeTenantPlan: (tenantId, packageId, billing) => {
-    const pkg = get().packages.find((p) => p.id === packageId);
-    if (!pkg) return;
-    set((s) => ({
-      tenants: s.tenants.map((t) => {
-        if (t.id !== tenantId) return t;
-        const nextBilling = billing ?? t.billing;
-        return {
-          ...t,
-          packageId: pkg.id,
-          plan: pkg.name,
-          billing: nextBilling,
-          mrr: mrrFor(pkg, nextBilling, t.status),
-          updatedAt: new Date().toISOString(),
-        };
-      }),
-    }));
+  loadMyTenant: async () => {
+    const result = await fetchMyTenant();
+    if (!result) return;
+    set({ myTenant: result.tenant, myFeatures: result.features });
   },
 
-  convertTrialToActive: (tenantId) => {
-    const tenant = get().tenants.find((t) => t.id === tenantId);
-    const pkg = get().packages.find((p) => p.id === tenant?.packageId);
-    if (!tenant || !pkg) return;
-    set((s) => ({
-      tenants: s.tenants.map((t) =>
-        t.id === tenantId
-          ? {
-              ...t,
-              status: "active" as const,
-              trialEndsAt: undefined,
-              mrr: mrrFor(pkg, t.billing, "active"),
-              updatedAt: new Date().toISOString(),
-            }
-          : t,
-      ),
-    }));
+  addTenant: async (input) => {
+    try {
+      const result = await createTenant(input);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: [result.data.tenant, ...s.tenants] }));
+      return { ok: true, tenant: result.data.tenant, tempPassword: result.data.tempPassword };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
   },
 
-  suspendTenant: (tenantId) =>
-    set((s) => ({
-      tenants: s.tenants.map((t) =>
-        t.id === tenantId
-          ? {
-              ...t,
-              status: "suspended" as const,
-              mrr: 0,
-              updatedAt: new Date().toISOString(),
-            }
-          : t,
-      ),
-    })),
-
-  activateTenant: (tenantId) => {
-    const tenant = get().tenants.find((t) => t.id === tenantId);
-    const pkg = get().packages.find((p) => p.id === tenant?.packageId);
-    if (!tenant || !pkg) return;
-    // Lifting a suspension puts a tenant back where it was: a trial that has
-    // not run out resumes as a trial, anything else is a paying subscription.
-    // It must never turn a trial into a free paid plan.
-    const resumeTrial = !!tenant.trialEndsAt && tenant.trialEndsAt >= todayIso();
-    const status: Tenant["status"] = resumeTrial ? "trial" : "active";
-    set((s) => ({
-      tenants: s.tenants.map((t) =>
-        t.id === tenantId
-          ? {
-              ...t,
-              status,
-              trialEndsAt: resumeTrial ? t.trialEndsAt : undefined,
-              mrr: mrrFor(pkg, t.billing, status),
-              updatedAt: new Date().toISOString(),
-            }
-          : t,
-      ),
-    }));
+  updateTenant: async (id, patch) => {
+    try {
+      const result = await updateTenantAction(id, patch);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
   },
 
-  archiveTenant: (tenantId) =>
-    set((s) => ({
-      tenants: s.tenants.map((t) =>
-        t.id === tenantId
-          ? {
-              ...t,
-              status: "suspended" as const,
-              mrr: 0,
-              archived: true,
-              archivedAt: new Date().toISOString().slice(0, 10),
-              updatedAt: new Date().toISOString(),
-            }
-          : t,
-      ),
-    })),
-
-  restoreTenant: (tenantId) =>
-    set((s) => ({
-      tenants: s.tenants.map((t) =>
-        t.id === tenantId
-          ? {
-              ...t,
-              archived: false,
-              archivedAt: undefined,
-              updatedAt: new Date().toISOString(),
-            }
-          : t,
-      ),
-    })),
-
-  addPackage: (pkg) => {
-    const created: Package = { ...pkg, id: `pkg-${Date.now()}` };
-    set((s) => ({
-      packages: [...s.packages, created],
-      featureMatrix: {
-        ...s.featureMatrix,
-        [created.id]: {
-          queue: true,
-          booking: true,
-          pos: true,
-          commission: false,
-          inventory: false,
-          membership: false,
-          analytics: false,
-          api: false,
-          "white-label": false,
-        },
-      },
-    }));
-    return created;
+  changeTenantPlan: async (tenantId, packageId, billing) => {
+    try {
+      const result = await changeTenantPlanAction(tenantId, packageId, billing);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
   },
 
-  updatePackage: (id, patch) =>
-    set((s) => {
-      const packages = s.packages.map((p) =>
-        p.id === id ? { ...p, ...patch } : p,
-      );
-      const updated = packages.find((p) => p.id === id);
-      // Keep tenant plan name + MRR in sync when price/name changes
-      const tenants = s.tenants.map((t) => {
-        if (t.packageId !== id || !updated) return t;
-        return {
-          ...t,
-          plan: updated.name,
-          mrr: mrrFor(updated, t.billing, t.status),
-        };
-      });
-      return { packages, tenants };
-    }),
+  convertTrialToActive: async (tenantId) => {
+    try {
+      const result = await convertTrialToActiveAction(tenantId);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
 
-  toggleFeature: (packageId, feature) =>
-    set((s) => {
-      const row = s.featureMatrix[packageId] ?? {};
-      return {
-        featureMatrix: {
-          ...s.featureMatrix,
-          [packageId]: { ...row, [feature]: !row[feature] },
-        },
-      };
-    }),
+  suspendTenant: async (tenantId) => {
+    try {
+      const result = await suspendTenantAction(tenantId);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
 
+  activateTenant: async (tenantId) => {
+    try {
+      const result = await activateTenantAction(tenantId);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  resetOwnerPassword: async (tenantId) => {
+    try {
+      const result = await resetOwnerPasswordAction(tenantId);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true, tenant: result.data.tenant, tempPassword: result.data.tempPassword };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  archiveTenant: async (tenantId) => {
+    try {
+      const result = await archiveTenantAction(tenantId);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  restoreTenant: async (tenantId) => {
+    try {
+      const result = await restoreTenantAction(tenantId);
+      if (!result.ok) return result;
+      set((s) => ({ tenants: withTenant(s.tenants, result.data.tenant) }));
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  addPackage: async (pkg) => {
+    try {
+      const result = await addPackageAction(pkg);
+      if (!result.ok) return result;
+      await get().refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  updatePackage: async (id, patch) => {
+    try {
+      const result = await updatePackageAction(id, patch);
+      if (!result.ok) return result;
+      await get().refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  toggleFeature: async (packageId, feature) => {
+    try {
+      const result = await toggleFeatureAction(packageId, feature);
+      if (!result.ok) return result;
+      await get().refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  // Never called from the UI today (no bulk-import screen exists) — kept so
+  // the interface has somewhere to grow into; a real one would call
+  // `setFeatureMatrix` in `@/lib/platform/actions` and `refresh()`.
   setFeatureMatrix: (featureMatrix) => set({ featureMatrix }),
 
-  addSupportTicket: ({ tenantId, subject, priority }) => {
-    const tenant = get().tenants.find((t) => t.id === tenantId);
-    const ticket: SupportTicket = {
-      id: `tk-${Date.now()}`,
-      tenantId,
-      tenantName: tenant?.name ?? "Unknown",
-      subject: subject.trim(),
-      priority,
-      status: "open",
-      createdAt: new Date().toISOString().slice(0, 10),
-    };
-    set((s) => ({ supportTickets: [ticket, ...s.supportTickets] }));
-    return ticket;
+  addSupportTicket: async (input) => {
+    try {
+      const result = await addSupportTicketAction(input);
+      if (!result.ok) return result;
+      await get().refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
   },
 
-  updateTicket: (id, patch) =>
-    set((s) => ({
-      supportTickets: s.supportTickets.map((t) =>
-        t.id === id ? { ...t, ...patch } : t,
-      ),
-    })),
+  updateTicket: async (id, patch) => {
+    try {
+      const result = await updateTicketAction(id, patch);
+      if (!result.ok) return result;
+      await get().refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
 
   totalMrr: () =>
-    get().tenants.reduce(
-      (sum, t) => sum + (t.status === "active" ? t.mrr : 0),
-      0,
-    ),
+    get().tenants.reduce((sum, t) => sum + (t.status === "active" ? t.mrr : 0), 0),
   trialCount: () =>
     get().tenants.filter((t) => t.status === "trial" && !t.archived && !isTrialExpired(t)).length,
   expiredTrialCount: () =>
     get().tenants.filter((t) => !t.archived && isTrialExpired(t)).length,
   openTicketCount: () =>
-    get().supportTickets.filter(
-      (t) => t.status === "open" || t.status === "in-progress",
-    ).length,
-    }),
-    {
-      name: STORAGE_KEY,
-      version: 1,
-      // Hydrated in an effect (see usePlatformHydration) so the first client
-      // render matches the server's.
-      skipHydration: true,
-      partialize: (s) => ({
-        // A temporary password is shown once and never written to storage.
-        tenants: s.tenants.map((t) =>
-          t.ownerAccount
-            ? { ...t, ownerAccount: { ...t.ownerAccount, tempPassword: undefined } }
-            : t,
-        ),
-        packages: s.packages,
-        supportTickets: s.supportTickets,
-        featureMatrix: s.featureMatrix,
-      }),
-    },
-  ),
-);
+    get().supportTickets.filter((t) => t.status === "open" || t.status === "in-progress").length,
+}));
 
-/**
- * Loads the saved platform data after mount and keeps other tabs of the same
- * browser in step — a subscription made on /pricing in one tab shows up in
- * Super Admin in another.
- */
-export function usePlatformHydration() {
-  useEffect(() => {
-    void usePlatformStore.persist.rehydrate();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) void usePlatformStore.persist.rehydrate();
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
-}
-
+export type { PlatformSnapshot };

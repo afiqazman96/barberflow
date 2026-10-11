@@ -221,6 +221,9 @@ model Tenant {
   ownerName   String
   ownerEmail  String
   trialEndsAt DateTime?
+  /// Offboarded tenant — hidden from the active list, MRR excluded.
+  archived    Boolean      @default(false)
+  archivedAt  DateTime?
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -243,6 +246,7 @@ model Tenant {
 
   @@index([packageId])
   @@index([status])
+  @@index([archived])
   @@map("tenants")
 }
 

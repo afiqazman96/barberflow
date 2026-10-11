@@ -29,7 +29,7 @@ import { MyShiftCard } from "@/components/domain/shift-cards";
 import { findNextQueueTicket, useStaffPortal } from "@/hooks/use-staff-portal";
 import { useNow } from "@/hooks/use-now";
 import { useAppStore } from "@/lib/store/app-store";
-import { isRosteredOn, localIso } from "@/lib/roster";
+import { isRosteredOn, leaveOn, localIso } from "@/lib/roster";
 import { weeklyTrend } from "@/lib/analytics";
 import { cn, formatCurrency, formatDateCompact, todayIso } from "@/lib/utils";
 
@@ -89,7 +89,8 @@ export default function StaffDashboardPage() {
   function handleStartShift() {
     const today = localIso(now ?? new Date());
     if (!isRosteredOn(roster, leaves, staffId, today)) {
-      toast.warning("You're not rostered today", {
+      const onLeave = leaveOn(leaves, staffId, today);
+      toast.warning(onLeave ? "You're on leave today" : "You're not rostered today", {
         description: "Your owner will see this as an unscheduled shift",
       });
     }

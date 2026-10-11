@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "@/components/auth/session-provider";
 import { useNow } from "@/hooks/use-now";
-import { isRosteredOn, localIso } from "@/lib/roster";
+import { isRosteredOn, leaveOn, localIso } from "@/lib/roster";
 import { useAppStore } from "@/lib/store/app-store";
 
 function useClockIn(staffId: string) {
@@ -21,8 +21,10 @@ function useClockIn(staffId: string) {
   const now = useNow();
 
   function start() {
-    if (!isRosteredOn(roster, leaves, staffId, localIso(now ?? new Date()))) {
-      toast.warning("You're not rostered today", {
+    const today = localIso(now ?? new Date());
+    if (!isRosteredOn(roster, leaves, staffId, today)) {
+      const onLeave = leaveOn(leaves, staffId, today);
+      toast.warning(onLeave ? "You're on leave today" : "You're not rostered today", {
         description: "Your owner will see this as an unscheduled shift",
       });
     }

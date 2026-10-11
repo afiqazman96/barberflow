@@ -34,6 +34,7 @@ import {
   formatClock,
   formatDuration,
   formatHhmm,
+  leaveOn,
   localIso,
   openShiftOf,
   rosterFor,
@@ -586,6 +587,16 @@ export default function OwnerRosterPage() {
       >
         {override && (
           <div className="space-y-4">
+            {override.mode === "start" &&
+              (() => {
+                const leave = leaveOn(leaves, override.staff.id, todayIso);
+                if (!leave) return null;
+                return (
+                  <div className="rounded-xl border border-[var(--warning)]/30 bg-[var(--warning)]/10 px-3 py-2 text-sm text-[var(--warning)]">
+                    {override.staff.name} has approved leave today ({leave.reason}).
+                  </div>
+                );
+              })()}
             <div>
               <Label htmlFor="ov-reason">Reason</Label>
               <Select id="ov-reason" value={reason} onChange={(e) => setReason(e.target.value)}>

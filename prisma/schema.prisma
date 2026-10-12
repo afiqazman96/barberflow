@@ -235,14 +235,15 @@ model Tenant {
   services        Service[]
   products        Product[]
   membershipPlans MembershipPlan[]
-  commissionRules CommissionRule[]
-  queueTickets    QueueTicket[]
-  bookings        Booking[]
-  sales           Sale[]
-  supportTickets  SupportTicket[]
-  shifts          Shift[]
-  rosterDays      RosterDay[]
-  staffLeaves     StaffLeave[]
+  commissionRules   CommissionRule[]
+  commissionPayouts CommissionPayout[]
+  queueTickets      QueueTicket[]
+  bookings          Booking[]
+  sales             Sale[]
+  supportTickets    SupportTicket[]
+  shifts            Shift[]
+  rosterDays        RosterDay[]
+  staffLeaves       StaffLeave[]
 
   @@index([packageId])
   @@index([status])
@@ -399,6 +400,7 @@ model Staff {
   drawerSessions       DrawerSession[]
   rosterDays           RosterDay[]
   leaves               StaffLeave[]
+  commissionPayouts    CommissionPayout[]
 
   @@index([tenantId])
   @@index([branchId, status])
@@ -565,6 +567,27 @@ model CommissionRule {
 
   @@index([tenantId, active])
   @@map("commission_rules")
+}
+
+/// A record that the shop paid a barber their earned commission. What's owed
+/// is never stored — it's `Sale.commission` earned minus payouts, computed
+/// fresh each time so it can't drift from the sales it's actually based on.
+model CommissionPayout {
+  id         String   @id @default(cuid())
+  tenantId   String
+  staffId    String
+  amount     Decimal  @db.Decimal(10, 2)
+  note       String?
+  paidAt     DateTime @default(now())
+  /// Who recorded it. A plain id with a name snapshot, like a sale's rungById.
+  paidById   String
+  paidByName String
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staff  Staff  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, staffId])
+  @@map("commission_payouts")
 }
 
 // ---------------------------------------------------------------------------

@@ -381,6 +381,64 @@ export async function setCommissionRuleActive(
   return { ok: true };
 }
 
+/**
+ * The owner pays a barber their earned commission. Capped at what the
+ * ledger (`commissionLedgerFor`) says is actually owed right now, computed
+ * fresh here rather than trusted from the client — the same reason a sale's
+ * commission is recomputed server-side instead of taken from the browser.
+ */
+export async function recordCommissionPayout(input: {
+  staffId: string;
+  amount: number;
+  note?: string;
+}): Promise<ActionResult<{ id: string }>> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  if (!Number.isFinite(input.amount) || input.amount <= 0) {
+    return { ok: false, error: "Check the amount" };
+  }
+
+  const target = await prisma.staff.findFirst({
+    where: { id: input.staffId, tenantId: owner.tenantId },
+    select: { id: true, name: true },
+  });
+  if (!target) return { ok: false, error: "Staff member not found" };
+
+  const [earned, paid] = await Promise.all([
+    prisma.sale.aggregate({
+      where: { tenantId: owner.tenantId, staffId: target.id, voidedAt: null },
+      _sum: { commission: true },
+    }),
+    prisma.commissionPayout.aggregate({
+      where: { tenantId: owner.tenantId, staffId: target.id },
+      _sum: { amount: true },
+    }),
+  ]);
+  const owed =
+    Math.round((Number(earned._sum.commission ?? 0) - Number(paid._sum.amount ?? 0)) * 100) / 100;
+  const amount = Math.round(input.amount * 100) / 100;
+  if (amount > owed + 0.005) {
+    return { ok: false, error: `Only ${formatMoney(owed)} is owed to ${target.name}` };
+  }
+
+  const payout = await prisma.commissionPayout.create({
+    data: {
+      tenantId: owner.tenantId,
+      staffId: target.id,
+      amount,
+      note: input.note?.trim().slice(0, 200) || null,
+      paidById: owner.id,
+      paidByName: owner.name,
+    },
+    select: { id: true },
+  });
+  return { ok: true, data: { id: payout.id } };
+}
+
+function formatMoney(n: number): string {
+  return `RM ${n.toFixed(2)}`;
+}
+
 const LOGO_DATA_URL = /^data:image\/(?:png|jpe?g|webp|gif|avif);base64,[A-Za-z0-9+/=]+$/;
 
 /**

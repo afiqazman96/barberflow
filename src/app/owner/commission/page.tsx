@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Info,
@@ -11,6 +11,7 @@ import {
   DollarSign,
   Sparkles,
   Plus,
+  Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -21,9 +22,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { recordCommissionPayout } from "@/lib/shop/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import type { CommissionRule, CommissionType, Service } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
+
+type LedgerEntry = { earned: number; paid: number; owed: number };
 
 function ruleDescription(
   rule: CommissionRule,
@@ -94,6 +98,57 @@ export default function OwnerCommissionPage() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState<AddRuleForm>(emptyRuleForm);
+  const [ledger, setLedger] = useState<Record<string, LedgerEntry>>({});
+  const [payoutFor, setPayoutFor] = useState<{ id: string; name: string; owed: number } | null>(
+    null,
+  );
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutNote, setPayoutNote] = useState("");
+  const [payingOut, setPayingOut] = useState(false);
+
+  async function loadLedger() {
+    try {
+      const res = await fetch("/api/commission/ledger", { cache: "no-store" });
+      if (res.ok) setLedger(await res.json());
+    } catch {
+      // The payout card just shows zeros until the next successful load.
+    }
+  }
+  useEffect(() => {
+    void loadLedger();
+  }, []);
+
+  function openPayout(staffId: string, name: string) {
+    const owed = ledger[staffId]?.owed ?? 0;
+    setPayoutFor({ id: staffId, name, owed });
+    setPayoutAmount(owed > 0 ? owed.toFixed(2) : "");
+    setPayoutNote("");
+  }
+
+  async function confirmPayout() {
+    if (!payoutFor) return;
+    const amount = Number(payoutAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error("Check the amount");
+      return;
+    }
+    setPayingOut(true);
+    const result = await recordCommissionPayout({
+      staffId: payoutFor.id,
+      amount,
+      note: payoutNote.trim() || undefined,
+    });
+    setPayingOut(false);
+    if (!result.ok) {
+      toast.error("Couldn't record the payout", { description: result.error });
+      return;
+    }
+    toast.success("Commission paid", {
+      description: `${payoutFor.name} · ${formatCurrency(amount)}`,
+    });
+    setPayoutFor(null);
+    void loadLedger();
+  }
 
   const barbers = useMemo(
     () => staff.filter((s) => s.role === "barber" && s.branchId === activeBranchId),
@@ -336,6 +391,61 @@ export default function OwnerCommissionPage() {
               </div>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-[var(--gold)]" />
+                Commission Payouts
+              </CardTitle>
+              <span className="text-sm text-[var(--text-muted)]">Lifetime, every branch</span>
+            </CardHeader>
+            <div className="space-y-3">
+              {barbers.map((b) => {
+                const entry = ledger[b.id] ?? { earned: 0, paid: 0, owed: 0 };
+                return (
+                  <div
+                    key={b.id}
+                    className="flex flex-wrap items-center gap-4 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-muted)]/50 p-3"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--gold)]/15 font-display text-xs font-semibold text-[var(--gold-soft)]">
+                      {initials(b.name)}
+                    </div>
+                    <p className="min-w-0 flex-1 truncate font-medium">{b.name}</p>
+                    <div className="flex gap-4 text-right text-xs">
+                      <div>
+                        <p className="font-display font-semibold">{formatCurrency(entry.earned)}</p>
+                        <p className="text-[10px] text-[var(--text-faint)]">earned</p>
+                      </div>
+                      <div>
+                        <p className="font-display font-semibold">{formatCurrency(entry.paid)}</p>
+                        <p className="text-[10px] text-[var(--text-faint)]">paid</p>
+                      </div>
+                      <div>
+                        <p className="font-display font-semibold text-[var(--gold-soft)]">
+                          {formatCurrency(entry.owed)}
+                        </p>
+                        <p className="text-[10px] text-[var(--text-faint)]">owed</p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={entry.owed <= 0}
+                      onClick={() => openPayout(b.id, b.name)}
+                    >
+                      Mark Paid
+                    </Button>
+                  </div>
+                );
+              })}
+              {barbers.length === 0 && (
+                <p className="py-6 text-center text-sm text-[var(--text-muted)]">
+                  No barbers at this branch yet.
+                </p>
+              )}
+            </div>
+          </Card>
         </div>
       </PageTransition>
 
@@ -456,6 +566,47 @@ export default function OwnerCommissionPage() {
             <Button type="submit">Add Rule</Button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!payoutFor}
+        onOpenChange={(open) => !open && setPayoutFor(null)}
+        title={payoutFor ? `Pay ${payoutFor.name}` : ""}
+        description={payoutFor ? `${formatCurrency(payoutFor.owed)} owed` : ""}
+      >
+        {payoutFor && (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="payout-amount">Amount (RM)</Label>
+              <Input
+                id="payout-amount"
+                type="number"
+                min={0}
+                max={payoutFor.owed}
+                step={0.01}
+                value={payoutAmount}
+                onChange={(e) => setPayoutAmount(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="payout-note">Note (optional)</Label>
+              <Input
+                id="payout-note"
+                value={payoutNote}
+                onChange={(e) => setPayoutNote(e.target.value)}
+                placeholder="e.g. Paid via bank transfer"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={() => setPayoutFor(null)}>
+                Cancel
+              </Button>
+              <Button onClick={confirmPayout} disabled={payingOut}>
+                {payingOut ? "Paying…" : "Mark Paid"}
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );

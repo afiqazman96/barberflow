@@ -130,6 +130,47 @@ export async function commissionRulesFor(tenantId: string): Promise<CommissionRu
   }));
 }
 
+/**
+ * What every barber has earned in commission (lifetime, voided sales
+ * excluded) against what they've been paid out. `owed` is never stored —
+ * always this difference, so it can't drift from the sales it's based on.
+ */
+export async function commissionLedgerFor(
+  tenantId: string,
+): Promise<Record<string, { earned: number; paid: number; owed: number }>> {
+  const [earned, paid] = await Promise.all([
+    prisma.sale.groupBy({
+      by: ["staffId"],
+      where: { tenantId, staffId: { not: null }, voidedAt: null },
+      _sum: { commission: true },
+    }),
+    prisma.commissionPayout.groupBy({
+      by: ["staffId"],
+      where: { tenantId },
+      _sum: { amount: true },
+    }),
+  ]);
+  const ledger: Record<string, { earned: number; paid: number; owed: number }> = {};
+  for (const row of earned) {
+    if (!row.staffId) continue;
+    ledger[row.staffId] = {
+      earned: Number(row._sum.commission ?? 0),
+      paid: 0,
+      owed: Number(row._sum.commission ?? 0),
+    };
+  }
+  for (const row of paid) {
+    const entry = ledger[row.staffId] ?? { earned: 0, paid: 0, owed: 0 };
+    const paidAmount = Number(row._sum.amount ?? 0);
+    ledger[row.staffId] = {
+      ...entry,
+      paid: paidAmount,
+      owed: Math.round((entry.earned - paidAmount) * 100) / 100,
+    };
+  }
+  return ledger;
+}
+
 const ACTOR: Record<ShiftActor, "self" | "owner" | "auto"> = {
   SELF: "self",
   OWNER: "owner",

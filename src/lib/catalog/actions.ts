@@ -3,7 +3,7 @@
 import type { MembershipTier } from "@/generated/prisma/enums";
 import { requireRole } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
-import { isUniqueViolation } from "@/lib/customers/resolve";
+import { isUniqueViolation, resolveCustomerId } from "@/lib/customers/resolve";
 import { prisma } from "@/lib/prisma";
 import type { Customer, MembershipPlan, Product, Service } from "@/lib/types";
 
@@ -413,4 +413,51 @@ export async function updateCustomer(
     if (isUniqueViolation(error)) return { ok: false, error: DUPLICATE };
     throw error;
   }
+}
+
+/**
+ * A customer, from their own phone, asks to be signed up for a plan. There is
+ * no payment capture anywhere in this app — this does not activate the tier
+ * itself (only `updateCustomer`, staff-only, does that, normally from a POS
+ * sale). It leaves a note on their CRM record so the counter can collect
+ * payment and flip the tier on their next visit. Unauthenticated by design,
+ * the same trust level as `bookAppointment`/`joinQueue`.
+ */
+export async function requestMembershipInterest(input: {
+  branchId: string;
+  name: string;
+  phone: string;
+  email?: string;
+  planName: string;
+}): Promise<ActionResult> {
+  const branch = await prisma.branch.findUnique({
+    where: { id: input.branchId },
+    select: { tenantId: true },
+  });
+  if (!branch) return { ok: false, error: "Shop not found" };
+
+  const name = clean(input.name, 120);
+  const phone = clean(input.phone, 40);
+  if (!name) return { ok: false, error: "Name is required" };
+  if (!phone) return { ok: false, error: "Phone number is required" };
+  const planName = clean(input.planName, 60);
+  if (!planName) return { ok: false, error: "Pick a plan" };
+  const email = clean(input.email, 200).toLowerCase();
+  if (email && !EMAIL_RE.test(email)) return { ok: false, error: "Check the email address" };
+
+  const customerId = await resolveCustomerId(branch.tenantId, {
+    name,
+    phone,
+    email: email || null,
+  });
+
+  const existing = await prisma.customer.findUnique({
+    where: { id: customerId },
+    select: { notes: true },
+  });
+  const stamp = `[${new Date().toISOString().slice(0, 10)}] Asked to join ${planName} — confirm and take payment at the counter.`;
+  const notes = [existing?.notes, stamp].filter(Boolean).join("\n").slice(0, 1000);
+
+  await prisma.customer.update({ where: { id: customerId }, data: { notes } });
+  return { ok: true };
 }

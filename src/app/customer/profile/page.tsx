@@ -15,6 +15,7 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
+import { requestMembershipInterest } from "@/lib/catalog/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import type { Customer, MembershipPlan } from "@/lib/types";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -26,6 +27,7 @@ type StoredMembership = Customer["membership"];
 
 export default function ProfilePage() {
   const membershipPlans = useAppStore((s) => s.membershipPlans);
+  const branchId = useAppStore((s) => s.branchId);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [membership, setMembership] = useState<StoredMembership>("none");
@@ -64,18 +66,28 @@ export default function ProfilePage() {
     setTimeout(() => setSaved(false), 2000);
   }
 
-  function handleConfirmUpgrade() {
+  async function handleConfirmUpgrade() {
     if (!pendingPlan) return;
+    if (!name.trim() || !phone.trim()) {
+      toast.error("Add your name and phone above first");
+      return;
+    }
     setActivating(true);
-    setTimeout(() => {
-      setMembership(pendingPlan.tier);
-      persist({ membership: pendingPlan.tier });
-      toast.success(`Welcome to ${pendingPlan.name}!`, {
-        description: "Member pricing applies from your next visit",
-      });
-      setActivating(false);
-      setPendingPlan(null);
-    }, 600);
+    const result = await requestMembershipInterest({
+      branchId,
+      name,
+      phone,
+      planName: pendingPlan.name,
+    });
+    setActivating(false);
+    if (!result.ok) {
+      toast.error("Couldn't send your request", { description: result.error });
+      return;
+    }
+    toast.success("Request sent", {
+      description: `Pay and activate ${pendingPlan.name} at the counter on your next visit`,
+    });
+    setPendingPlan(null);
   }
 
   return (
@@ -213,7 +225,7 @@ export default function ProfilePage() {
                     className="mt-4 w-full"
                     onClick={() => setPendingPlan(plan)}
                   >
-                    Upgrade to {plan.name}
+                    Join {plan.name}
                   </Button>
                 )}
               </Card>
@@ -243,7 +255,7 @@ export default function ProfilePage() {
       <Modal
         open={!!pendingPlan}
         onOpenChange={(open) => !open && setPendingPlan(null)}
-        title={pendingPlan ? `Activate ${pendingPlan.name}` : ""}
+        title={pendingPlan ? `Join ${pendingPlan.name}` : ""}
         description={
           pendingPlan
             ? `${formatCurrency(pendingPlan.price)}/mo · ${pendingPlan.discountPercent}% off every visit`
@@ -264,8 +276,8 @@ export default function ProfilePage() {
               ))}
             </ul>
             <p className="text-xs text-[var(--text-faint)]">
-              Demo checkout — no card is charged. Your membership status is
-              saved on this device and applies from your next visit.
+              We don't take payment online — this lets the counter know you
+              want in. Pay and activate {pendingPlan.name} on your next visit.
             </p>
             <Button
               className="w-full"
@@ -273,9 +285,7 @@ export default function ProfilePage() {
               onClick={handleConfirmUpgrade}
               disabled={activating}
             >
-              {activating
-                ? "Activating…"
-                : `Confirm & Activate · ${formatCurrency(pendingPlan.price)}/mo`}
+              {activating ? "Sending…" : "I'm Interested"}
             </Button>
           </div>
         )}

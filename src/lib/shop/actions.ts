@@ -10,7 +10,7 @@ import { prisma } from "@/lib/prisma";
 import type { CommissionRule, OpsRules, TaxConfig } from "@/lib/types";
 
 import type { RosterDayInput } from "./dto";
-import { dateColumn, shopToday } from "./queries";
+import { commissionLedgerForStaff, dateColumn, shopToday } from "./queries";
 
 /**
  * Every write to shifts, the roster, leave and the shop's rules. Triggers on
@@ -404,18 +404,8 @@ export async function recordCommissionPayout(input: {
   });
   if (!target) return { ok: false, error: "Staff member not found" };
 
-  const [earned, paid] = await Promise.all([
-    prisma.sale.aggregate({
-      where: { tenantId: owner.tenantId, staffId: target.id, voidedAt: null },
-      _sum: { commission: true },
-    }),
-    prisma.commissionPayout.aggregate({
-      where: { tenantId: owner.tenantId, staffId: target.id },
-      _sum: { amount: true },
-    }),
-  ]);
-  const owed =
-    Math.round((Number(earned._sum.commission ?? 0) - Number(paid._sum.amount ?? 0)) * 100) / 100;
+  const ledger = await commissionLedgerForStaff(owner.tenantId, target.id);
+  const owed = ledger.owed;
   const amount = Math.round(input.amount * 100) / 100;
   if (amount > owed + 0.005) {
     return { ok: false, error: `Only ${formatMoney(owed)} is owed to ${target.name}` };

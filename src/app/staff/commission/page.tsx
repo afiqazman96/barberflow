@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Wallet, TrendingUp, Info, Receipt } from "lucide-react";
+import { Wallet, TrendingUp, Info, Receipt, HandCoins } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatTile } from "@/components/domain/stat-tile";
@@ -10,8 +11,24 @@ import { useAppStore } from "@/lib/store/app-store";
 import { useStaffPortal } from "@/hooks/use-staff-portal";
 import { formatCurrency, formatDateTime, todayIso } from "@/lib/utils";
 
+type Ledger = { earned: number; paid: number; owed: number };
+
 export default function StaffCommissionPage() {
   const { staff, staffSales } = useStaffPortal();
+
+  const [ledger, setLedger] = useState<Ledger | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/commission/my-ledger", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: Ledger | null) => {
+        if (!cancelled && data) setLedger(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // staffSales is every sale ever attributed to this barber (History wants
   // that). This page is titled "Today's breakdown", so it needs its own
@@ -60,6 +77,40 @@ export default function StaffCommissionPage() {
           delay={0.1}
         />
       </div>
+
+      <Card className="border-[var(--gold)]/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HandCoins className="h-4 w-4 text-[var(--gold)]" />
+            Lifetime Payouts
+          </CardTitle>
+          <span className="text-sm text-[var(--text-muted)]">Every branch</span>
+        </CardHeader>
+        {ledger ? (
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="font-display text-lg font-semibold">
+                {formatCurrency(ledger.earned)}
+              </p>
+              <p className="text-xs text-[var(--text-faint)]">Earned</p>
+            </div>
+            <div>
+              <p className="font-display text-lg font-semibold">
+                {formatCurrency(ledger.paid)}
+              </p>
+              <p className="text-xs text-[var(--text-faint)]">Paid out</p>
+            </div>
+            <div>
+              <p className="font-display text-lg font-semibold text-[var(--gold-soft)]">
+                {formatCurrency(ledger.owed)}
+              </p>
+              <p className="text-xs text-[var(--text-faint)]">Still owed</p>
+            </div>
+          </div>
+        ) : (
+          <p className="py-2 text-center text-sm text-[var(--text-muted)]">Loading…</p>
+        )}
+      </Card>
 
       <Card>
         <CardHeader>

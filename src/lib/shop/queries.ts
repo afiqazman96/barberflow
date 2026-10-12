@@ -171,6 +171,30 @@ export async function commissionLedgerFor(
   return ledger;
 }
 
+/** The same ledger as `commissionLedgerFor`, for one staff member. */
+export async function commissionLedgerForStaff(
+  tenantId: string,
+  staffId: string,
+): Promise<{ earned: number; paid: number; owed: number }> {
+  const [earned, paid] = await Promise.all([
+    prisma.sale.aggregate({
+      where: { tenantId, staffId, voidedAt: null },
+      _sum: { commission: true },
+    }),
+    prisma.commissionPayout.aggregate({
+      where: { tenantId, staffId },
+      _sum: { amount: true },
+    }),
+  ]);
+  const earnedAmount = Number(earned._sum.commission ?? 0);
+  const paidAmount = Number(paid._sum.amount ?? 0);
+  return {
+    earned: earnedAmount,
+    paid: paidAmount,
+    owed: Math.round((earnedAmount - paidAmount) * 100) / 100,
+  };
+}
+
 const ACTOR: Record<ShiftActor, "self" | "owner" | "auto"> = {
   SELF: "self",
   OWNER: "owner",

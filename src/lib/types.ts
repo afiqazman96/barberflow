@@ -305,8 +305,10 @@ export interface Sale {
     reason: string;
     at: string;
     by: string;
-    /** A cash refund was owed but no drawer was open to record it. */
+    /** A cash refund was owed with no drawer open, or any card/QR void. */
     refundPending?: boolean;
+    /** Set once the owner confirms the refund was actually paid out. */
+    refundResolved?: { at: string; by: string };
   };
 }
 

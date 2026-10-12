@@ -61,7 +61,11 @@ import {
   saveCustomerPatch,
   saveNewCustomer,
 } from "@/lib/catalog/client";
-import { checkout, voidSale as voidSaleOnServer } from "@/lib/sales/actions";
+import {
+  checkout,
+  resolveRefund as resolveRefundOnServer,
+  voidSale as voidSaleOnServer,
+} from "@/lib/sales/actions";
 import {
   addCashMovement as addCashMovementOnServer,
   closeDrawer as closeDrawerOnServer,
@@ -244,6 +248,8 @@ interface AppState {
     card?: Sale["card"],
   ) => Promise<{ ok: true; sale: Sale } | { ok: false; error: string }>;
   voidSale: (saleId: string, reason: string, by: string) => Promise<{ ok: boolean; error?: string }>;
+  /** The owner confirms a voided sale's refund was actually paid out. */
+  resolveRefund: (saleId: string, by: string) => Promise<{ ok: boolean; error?: string }>;
   /** Open the till at the branch being viewed, as the signed-in person. */
   openDrawer: (input: {
     cashierId: string;
@@ -1535,9 +1541,12 @@ export const useAppStore = create<AppState>((set, get) => ({
                   reason,
                   at,
                   by,
-                  // Cash owed back but no till open to record it against.
+                  // Cash owed back with no till open, or any card/QR sale —
+                  // those never auto-refund in-app either.
                   refundPending:
-                    sale.paymentMethod === "cash" && !s.drawerSession ? true : undefined,
+                    sale.paymentMethod === "cash"
+                      ? (!s.drawerSession ? true : undefined)
+                      : true,
                 },
               }
             : x,
@@ -1574,6 +1583,30 @@ export const useAppStore = create<AppState>((set, get) => ({
           : s.products,
       };
     });
+    return { ok: true };
+  },
+
+  resolveRefund: async (saleId, by) => {
+    const target = get().sales.find((x) => x.id === saleId);
+    if (!target?.voided?.refundPending || target.voided.refundResolved) {
+      return { ok: false, error: "That refund is no longer pending" };
+    }
+    let result: Awaited<ReturnType<typeof resolveRefundOnServer>>;
+    try {
+      result = await resolveRefundOnServer(saleId);
+    } catch {
+      return { ok: false, error: "Check your connection and try again" };
+    }
+    if (!result.ok) return result;
+
+    const at = new Date().toISOString();
+    set((s) => ({
+      sales: s.sales.map((x) =>
+        x.id === saleId && x.voided
+          ? { ...x, voided: { ...x.voided, refundResolved: { at, by } } }
+          : x,
+      ),
+    }));
     return { ok: true };
   },
 

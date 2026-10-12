@@ -452,7 +452,11 @@ export async function voidSale(saleId: string, reason: string): Promise<ActionRe
         voidedById: owner.id,
         voidedByName: owner.name,
         voidReason: why,
-        refundPending: sale.paymentMethod === "CASH" && !drawer,
+        // Cash with a till open comes straight back out of it, no owed
+        // balance. Cash with no till open, and every card/QR sale — which
+        // never auto-refunds in-app, only on the payment terminal — leave a
+        // refund the owner must action and then mark resolved.
+        refundPending: sale.paymentMethod === "CASH" ? !drawer : true,
       },
     });
     if (updated.count === 0) return false;
@@ -483,6 +487,35 @@ export async function voidSale(saleId: string, reason: string): Promise<ActionRe
     return true;
   });
   if (!voided) return { ok: false, error: "That sale has already been voided" };
+
+  return { ok: true };
+}
+
+/**
+ * The owner confirms a voided sale's refund was actually paid out — cash
+ * handed back, or the card/QR refund actioned on the terminal. Nothing in
+ * this app can see that happen on its own, so this is a manual sign-off, not
+ * a cash-drawer movement.
+ */
+export async function resolveRefund(saleId: string): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const resolved = await prisma.sale.updateMany({
+    where: {
+      id: saleId,
+      tenantId: owner.tenantId,
+      refundPending: true,
+      refundResolvedAt: null,
+    },
+    data: {
+      refundResolvedAt: new Date(),
+      refundResolvedById: owner.id,
+      refundResolvedByName: owner.name,
+    },
+  });
+  if (resolved.count === 0) {
+    return { ok: false, error: "That refund is no longer pending" };
+  }
 
   return { ok: true };
 }

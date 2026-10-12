@@ -52,6 +52,8 @@ export const saleSelect = {
   voidedByName: true,
   voidReason: true,
   refundPending: true,
+  refundResolvedAt: true,
+  refundResolvedByName: true,
   items: {
     orderBy: { id: "asc" },
     select: {
@@ -116,6 +118,9 @@ export function toSaleDto(row: SaleRow, timeZone: string): Sale {
           at: instantToShopIso(row.voidedAt, timeZone),
           by: row.voidedByName ?? "",
           refundPending: row.refundPending || undefined,
+          refundResolved: row.refundResolvedAt
+            ? { at: instantToShopIso(row.refundResolvedAt, timeZone), by: row.refundResolvedByName ?? "" }
+            : undefined,
         }
       : undefined,
   };

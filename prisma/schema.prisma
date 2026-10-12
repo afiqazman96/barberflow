@@ -902,8 +902,14 @@ model Sale {
   voidedById    String?
   voidedByName  String?
   voidReason    String?
-  /// A cash sale was voided with no drawer open to pay the refund from.
+  /// A cash sale was voided with no drawer open to pay the refund from, or
+  /// any card/QR sale — those never auto-refund in-app; the owner actions it
+  /// on the payment terminal and marks it resolved below.
   refundPending Boolean   @default(false)
+  /// Set once the owner confirms the refund was actually paid out.
+  refundResolvedAt     DateTime?
+  refundResolvedById   String?
+  refundResolvedByName String?
 
   tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch      Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)

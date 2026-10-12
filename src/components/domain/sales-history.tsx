@@ -34,6 +34,7 @@ export function SalesHistory() {
   const business = useAppStore((s) => s.businessProfile);
   const taxConfig = useAppStore((s) => s.taxConfig);
   const voidSale = useAppStore((s) => s.voidSale);
+  const resolveRefund = useAppStore((s) => s.resolveRefund);
 
   const [search, setSearch] = useState("");
   const [method, setMethod] = useState<"all" | PaymentMethod>("all");
@@ -61,6 +62,16 @@ export function SalesHistory() {
     });
     setVoidOpen(false);
     setVoidReason("");
+  }
+
+  async function handleResolveRefund() {
+    if (!selected) return;
+    const result = await resolveRefund(selected.id, session.name);
+    if (!result.ok) {
+      toast.error("Couldn't mark the refund resolved", { description: result.error });
+      return;
+    }
+    toast.success("Refund marked as paid out");
   }
 
   const filtered = useMemo(() => {
@@ -205,7 +216,11 @@ export function SalesHistory() {
                   {selected.voided.reason} · by {selected.voided.by} ·{" "}
                   {formatDateTime(selected.voided.at)}
                   {selected.voided.refundPending &&
-                    " · cash refund still owed (no drawer was open)"}
+                    (selected.voided.refundResolved
+                      ? ` · refunded by ${selected.voided.refundResolved.by} · ${formatDateTime(selected.voided.refundResolved.at)}`
+                      : selected.paymentMethod === "cash"
+                        ? " · cash refund still owed (no drawer was open)"
+                        : " · refund still owed on the card/QR terminal")}
                 </div>
               )}
               <div className="flex items-center justify-between text-sm">
@@ -326,6 +341,13 @@ export function SalesHistory() {
                     Void sale
                   </Button>
                 )}
+                {isOwner &&
+                  selected.voided?.refundPending &&
+                  !selected.voided.refundResolved && (
+                    <Button className="flex-1" onClick={handleResolveRefund}>
+                      Mark refunded
+                    </Button>
+                  )}
               </div>
             </div>
           </div>

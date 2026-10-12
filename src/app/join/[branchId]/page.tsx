@@ -18,7 +18,11 @@ export default function JoinBranchPage() {
   const branches = useAppStore((s) => s.branches);
   const setBranchId = useAppStore((s) => s.setBranchId);
   const graceMins = useAppStore((s) => s.opsRules.gracePeriodMins);
-  const branch = branches.find((b) => b.id === params.branchId) ?? branches[0];
+  // No fallback to branches[0]: that could be left over from a different
+  // shop's QR scanned earlier in this browser, and this one hasn't loaded
+  // yet. Undefined here just means "still opening", never "assume someone
+  // else's branch".
+  const branch = branches.find((b) => b.id === params.branchId);
 
   useEffect(() => {
     if (branch) setBranchId(branch.id);
@@ -59,13 +63,13 @@ export default function JoinBranchPage() {
 
         <div className="mt-8 space-y-3">
           <Button asChild size="xl" className="w-full">
-            <Link href={`/customer/queue?branch=${branch?.id ?? "b1"}&source=qr`}>
+            <Link href={`/customer/queue?branch=${branch?.id ?? params.branchId}&source=qr`}>
               <Ticket className="h-5 w-5" />
               Join the walk-in queue
             </Link>
           </Button>
           <Button asChild variant="outline" size="xl" className="w-full">
-            <Link href={`/customer/booking?branch=${branch?.id ?? "b1"}`}>
+            <Link href={`/customer/booking?branch=${branch?.id ?? params.branchId}`}>
               <CalendarClock className="h-5 w-5" />
               Book a later appointment
             </Link>

@@ -41,7 +41,6 @@ function isValidPhone(value: string) {
 function QueueWizard() {
   const router = useRouter();
   const params = useSearchParams();
-  const branchIdParam = params.get("branch") ?? "b1";
   const fromQr = params.get("source") === "qr";
 
   const maxWaitMins = useAppStore((s) => s.opsRules.maxWaitMins);
@@ -52,6 +51,11 @@ function QueueWizard() {
   const setTrackingTicketId = useAppStore((s) => s.setTrackingTicketId);
   const setBranchId = useAppStore((s) => s.setBranchId);
   const selectedBranchId = useAppStore((s) => s.branchId);
+  // The URL's own branch wins; falling back to a hardcoded demo id would
+  // silently put a visitor who opened this page with no branch in the link
+  // into the wrong tenant's queue. The store's already-selected branch (set
+  // by wherever they actually came from) is the only sane fallback.
+  const branchIdParam = params.get("branch") ?? selectedBranchId;
 
   const branch =
     branches.find((b) => b.id === branchIdParam) ?? placeholderBranch(branchIdParam);

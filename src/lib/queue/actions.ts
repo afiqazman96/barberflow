@@ -8,7 +8,10 @@ import type {
 } from "@/generated/prisma/enums";
 import { requireRole, requireShopSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
+import { timezoneForTenant } from "@/lib/bookings/queries";
+import { instantToShopTime } from "@/lib/bookings/time";
 import { prisma } from "@/lib/prisma";
+import { closingMins, hhmmToMins, openingMins } from "@/lib/roster";
 
 import { isUniqueViolation, resolveCustomerId } from "@/lib/customers/resolve";
 
@@ -247,7 +250,7 @@ async function createTicket({
 export async function joinQueue(input: TicketInput): Promise<CreateTicketResult> {
   const branch = await prisma.branch.findUnique({
     where: { id: input.branchId },
-    select: { tenantId: true, tenant: { select: { status: true } } },
+    select: { tenantId: true, openHours: true, tenant: { select: { status: true } } },
   });
   if (!branch) {
     return { ok: false, error: "This shop isn't taking walk-ins right now" };
@@ -258,6 +261,17 @@ export async function joinQueue(input: TicketInput): Promise<CreateTicketResult>
   if (!input.email?.trim()) {
     // The receipt is emailed, so a self-service join must leave an address.
     return { ok: false, error: "A valid email is required for your receipt" };
+  }
+
+  // The "shop is closed" gate on the join screen is client-side only, built
+  // from the same store a request can simply skip — enforced here too, same
+  // as a booking's slot already is, so a join can't land after hours just by
+  // calling the action directly.
+  const timeZone = await timezoneForTenant(branch.tenantId);
+  const nowMins = hhmmToMins(instantToShopTime(new Date(), timeZone).time);
+  const hours = { openHours: branch.openHours ?? "" };
+  if (nowMins < openingMins(hours) || nowMins >= closingMins(hours)) {
+    return { ok: false, error: "This shop is closed right now" };
   }
 
   const result = await createTicket({

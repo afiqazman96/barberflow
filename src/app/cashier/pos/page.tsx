@@ -513,38 +513,37 @@ export default function CashierPosPage() {
                 )}
               </div>
 
-              {upsellPlan ? (
-                <div className="mb-3 flex items-center gap-2 rounded-lg border border-[var(--gold)]/25 bg-[var(--gold)]/8 px-3 py-2 text-xs">
-                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--gold)]" />
-                  <span className="text-[var(--gold-soft)]">
-                    {upsellPlan.name} membership added ·{" "}
-                    {formatCurrency(upsellPlan.price)}
+              <div className="mb-3">
+                <Label className="flex items-center gap-1.5 text-xs">
+                  <Sparkles className="h-3.5 w-3.5 text-[var(--gold)]" />
+                  Membership
+                  <span className="font-normal text-[var(--text-faint)]">
+                    · sell a plan on this visit
                   </span>
-                  <button
-                    onClick={() => setPosMembershipPlan(null)}
-                    className="ml-auto text-[var(--text-faint)] underline underline-offset-2 hover:text-[var(--text)]"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                memberSaving > 0 &&
-                cheapestPlan && (
-                  <button
-                    onClick={() => setPosMembershipPlan(cheapestPlan.id)}
-                    className="mb-3 flex w-full items-start gap-2 rounded-lg border border-dashed border-[var(--gold)]/40 bg-[var(--gold)]/5 px-3 py-2 text-left text-xs transition hover:bg-[var(--gold)]/10"
-                  >
-                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--gold)]" />
-                    <span>
-                      <span className="font-medium text-[var(--gold-soft)]">
-                        Add {cheapestPlan.name} membership
-                      </span>{" "}
-                      ({formatCurrency(cheapestPlan.price)}/mo) — this visit saves{" "}
-                      {formatCurrency(memberSaving)}
-                    </span>
-                  </button>
-                )
-              )}
+                </Label>
+                <Select
+                  value={posMembershipPlanId ?? ""}
+                  onChange={(e) => setPosMembershipPlan(e.target.value || null)}
+                >
+                  <option value="">No membership</option>
+                  {membershipPlans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {formatCurrency(p.price)}/mo
+                    </option>
+                  ))}
+                </Select>
+                {upsellPlan ? (
+                  <p className="mt-1.5 text-xs text-[var(--gold-soft)]">
+                    {upsellPlan.name} added to this sale · {formatCurrency(upsellPlan.price)}
+                  </p>
+                ) : (
+                  memberSaving > 0 && (
+                    <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                      Adding a plan saves {formatCurrency(memberSaving)} on this visit
+                    </p>
+                  )
+                )}
+              </div>
 
               {membership !== "none" && !upsellPlan && (
                 <p className="mb-3 rounded-lg border border-[var(--gold)]/20 bg-[var(--gold)]/5 px-3 py-2 text-xs text-[var(--gold-soft)]">

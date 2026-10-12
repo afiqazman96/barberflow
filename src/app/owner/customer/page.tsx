@@ -537,6 +537,10 @@ export default function OwnerCustomerPage() {
                 <option value="gold">Gold</option>
                 <option value="platinum">Platinum</option>
               </Select>
+              <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                Changing this doesn&apos;t charge the customer or record a sale —
+                for a paid upgrade, sell the plan at POS instead.
+              </p>
             </div>
             <div>
               <Label htmlFor="edit-notes">Notes (optional)</Label>

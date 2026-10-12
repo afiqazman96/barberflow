@@ -786,6 +786,11 @@ model QueueTicketService {
 // Bookings
 // ---------------------------------------------------------------------------
 
+/// A named barber can hold only one slot at a branch — enforced by the
+/// partial unique index `bookings_staff_slot_key` in the migration, which
+/// Prisma cannot express. "Any Barber" bookings (`staffId` null) rely
+/// instead on `createBooking`'s Serializable transaction, since a unique
+/// index can't constrain a column full of nulls.
 model Booking {
   id       String @id @default(cuid())
   tenantId String

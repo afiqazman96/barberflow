@@ -1,9 +1,10 @@
 "use server";
 
+import { Prisma } from "@/generated/prisma/client";
 import type { BookingStatus as PrismaBookingStatus } from "@/generated/prisma/enums";
 import { requireRole } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
-import { resolveCustomerId } from "@/lib/customers/resolve";
+import { isUniqueViolation, resolveCustomerId } from "@/lib/customers/resolve";
 import { prisma } from "@/lib/prisma";
 import { closingMins, hhmmToMins, openingMins } from "@/lib/roster";
 import { addDays, dateColumn, opsRulesFor, shopToday } from "@/lib/shop/queries";
@@ -42,6 +43,18 @@ const MAY_MOVE_FROM: Record<BookingStatusChange, PrismaBookingStatus[]> = {
 };
 
 const MAX_GRACE_MINS = 120;
+
+/** Raised inside the booking transaction when the slot is already held. */
+class SlotTaken extends Error {}
+
+/** Postgres aborts the losing side of a Serializable conflict with this. */
+function isSerializationFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "P2034"
+  );
+}
 
 type CreateArgs = {
   tenantId: string;
@@ -176,19 +189,6 @@ async function createBooking({
     barbers = branchBarbers.filter((b) => working.has(b.id));
   }
 
-  // The same rule the booking form greys slots out by, checked again here
-  // because the slot may have gone while the form was open.
-  const taken = await prisma.booking.findMany({
-    where: { branchId: input.branchId, scheduledAt, status: { in: HOLDING } },
-    select: { staffId: true },
-  });
-  if (barber && taken.some((b) => b.staffId === barber.id)) {
-    return { ok: false, error: `${barber.name} is already booked at ${input.time}` };
-  }
-  if (taken.length >= barbers.length) {
-    return { ok: false, error: `${input.time} is fully booked` };
-  }
-
   // A customer gets the shop's grace period; the counter may set another.
   const gracePeriodMins =
     allowPast && Number.isFinite(input.gracePeriodMins)
@@ -197,31 +197,63 @@ async function createBooking({
 
   const customerId = await resolveCustomerId(tenantId, { name, phone, email });
 
-  const row = await prisma.booking.create({
-    data: {
-      tenantId,
-      branchId: input.branchId,
-      customerId,
-      customerName: name,
-      customerPhone: phone,
-      customerEmail: email,
-      staffId: barber?.id ?? null,
-      scheduledAt,
-      durationMins: ordered.reduce((sum, s) => sum + s.durationMins, 0),
-      gracePeriodMins,
-      services: {
-        create: ordered.map((s) => ({
-          serviceId: s.id,
-          name: s.name,
-          price: s.price,
-          durationMins: s.durationMins,
-        })),
-      },
-    },
-    select: bookingSelect,
-  });
+  // The same rule the booking form greys slots out by, checked again here
+  // because the slot may have gone while the form was open — and checked
+  // and written inside one Serializable transaction, because two of these
+  // requests landing at once must not both see the slot as free. Postgres
+  // aborts the loser with a serialization failure rather than letting it
+  // commit a second booking into a slot the first one just took; a specific
+  // barber is additionally backstopped by a DB-level partial unique index
+  // (migration 20261013000000_booking_slot_lock) for defense in depth.
+  try {
+    const row = await prisma.$transaction(
+      async (tx) => {
+        const taken = await tx.booking.findMany({
+          where: { branchId: input.branchId, scheduledAt, status: { in: HOLDING } },
+          select: { staffId: true },
+        });
+        if (barber && taken.some((b) => b.staffId === barber.id)) {
+          throw new SlotTaken(`${barber.name} is already booked at ${input.time}`);
+        }
+        if (taken.length >= barbers.length) {
+          throw new SlotTaken(`${input.time} is fully booked`);
+        }
 
-  return { ok: true, data: { booking: toBookingDto(row, timeZone) } };
+        return tx.booking.create({
+          data: {
+            tenantId,
+            branchId: input.branchId,
+            customerId,
+            customerName: name,
+            customerPhone: phone,
+            customerEmail: email,
+            staffId: barber?.id ?? null,
+            scheduledAt,
+            durationMins: ordered.reduce((sum, s) => sum + s.durationMins, 0),
+            gracePeriodMins,
+            services: {
+              create: ordered.map((s) => ({
+                serviceId: s.id,
+                name: s.name,
+                price: s.price,
+                durationMins: s.durationMins,
+              })),
+            },
+          },
+          select: bookingSelect,
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return { ok: true, data: { booking: toBookingDto(row, timeZone) } };
+  } catch (cause) {
+    if (cause instanceof SlotTaken) return { ok: false, error: cause.message };
+    if (isUniqueViolation(cause) || isSerializationFailure(cause)) {
+      return { ok: false, error: `${input.time} was just taken — pick another time` };
+    }
+    throw cause;
+  }
 }
 
 /**

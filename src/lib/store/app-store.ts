@@ -43,6 +43,7 @@ import {
   pushRemoveLeave,
   pushBusinessProfile,
   pushCommissionRuleActive,
+  pushCommissionRuleUpdate,
   pushNewCommissionRule,
   pushRosterDay,
   pushTaxConfig,
@@ -779,13 +780,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   updateCommissionRule: (id, patch) => {
+    const before = get().commissionRules.find((r) => r.id === id);
     set((s) => ({
       commissionRules: s.commissionRules.map((r) =>
         r.id === id ? { ...r, ...patch } : r,
       ),
     }));
-    // Switching a rule on or off is the only edit the screen offers.
-    if (patch.active !== undefined) pushCommissionRuleActive(id, patch.active);
+    if (!before) return;
+
+    const patchKeys = Object.keys(patch);
+    const isJustTheToggle =
+      patchKeys.length === 1 && patchKeys[0] === "active" && patch.active !== undefined;
+    if (isJustTheToggle) {
+      pushCommissionRuleActive(id, patch.active!);
+      return;
+    }
+    // A real edit to the rule's terms, not just the toggle — send the whole
+    // row so the server always writes a complete, valid rule.
+    const { id: _ruleId, ...rule } = { ...before, ...patch };
+    pushCommissionRuleUpdate(id, rule);
   },
 
   // The catalogue and customers are the database's; each change shows here at

@@ -353,12 +353,25 @@ const RULE_SCOPE_TO_PRISMA = {
   product: "PRODUCT",
 } as const satisfies Record<CommissionRule["appliesTo"], CommissionScope>;
 
-/** The owner adds a commission rule. Returns its id, so the screen can keep it. */
-export async function createCommissionRule(
+/**
+ * Shared by create and update: a rule's terms, checked the same way either
+ * time. Whatever it points at must belong to this tenant — an id from
+ * another shop, or one that's been deleted since, is refused rather than
+ * silently stored.
+ */
+async function validatedRuleData(
   input: Omit<CommissionRule, "id">,
-): Promise<ActionResult<{ id: string }>> {
-  const { staff: owner } = await requireRole("OWNER");
-
+  tenantId: string,
+): Promise<ActionResult<{
+  name: string;
+  type: CommissionType;
+  value: number;
+  appliesTo: CommissionScope;
+  serviceId: string | null;
+  productId: string | null;
+  staffId: string | null;
+  active: boolean;
+}>> {
   const name = input.name?.trim().slice(0, 80);
   if (!name) return { ok: false, error: "Rule name is required" };
   const type = RULE_TYPE_TO_PRISMA[input.type];
@@ -370,25 +383,24 @@ export async function createCommissionRule(
     return { ok: false, error: `Value must be from 0 to ${max}` };
   }
 
-  // Whatever the rule points at must be this shop's own.
   const [service, product, staff] = await Promise.all([
     input.serviceId
-      ? prisma.service.findFirst({ where: { id: input.serviceId, tenantId: owner.tenantId } })
+      ? prisma.service.findFirst({ where: { id: input.serviceId, tenantId } })
       : null,
     input.productId
-      ? prisma.product.findFirst({ where: { id: input.productId, tenantId: owner.tenantId } })
+      ? prisma.product.findFirst({ where: { id: input.productId, tenantId } })
       : null,
     input.staffId
-      ? prisma.staff.findFirst({ where: { id: input.staffId, tenantId: owner.tenantId } })
+      ? prisma.staff.findFirst({ where: { id: input.staffId, tenantId } })
       : null,
   ]);
   if ((input.serviceId && !service) || (input.productId && !product) || (input.staffId && !staff)) {
     return { ok: false, error: "That service, product or barber isn't in this shop" };
   }
 
-  const rule = await prisma.commissionRule.create({
+  return {
+    ok: true,
     data: {
-      tenantId: owner.tenantId,
       name,
       type,
       value: Math.round(input.value * 100) / 100,
@@ -398,9 +410,51 @@ export async function createCommissionRule(
       staffId: staff?.id ?? null,
       active: input.active !== false,
     },
+  };
+}
+
+/** The owner adds a commission rule. Returns its id, so the screen can keep it. */
+export async function createCommissionRule(
+  input: Omit<CommissionRule, "id">,
+): Promise<ActionResult<{ id: string }>> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const validated = await validatedRuleData(input, owner.tenantId);
+  if (!validated.ok) return validated;
+
+  const rule = await prisma.commissionRule.create({
+    data: { tenantId: owner.tenantId, ...validated.data },
     select: { id: true },
   });
   return { ok: true, data: { id: rule.id } };
+}
+
+/**
+ * The owner edits a commission rule's terms. Past sales already snapshot
+ * their own commission at the time they were rung up (`Sale.commission`
+ * carries no link back to the rule that produced it), so this only ever
+ * changes what the rule does going forward.
+ */
+export async function updateCommissionRule(
+  ruleId: string,
+  input: Omit<CommissionRule, "id">,
+): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const existing = await prisma.commissionRule.findFirst({
+    where: { id: ruleId, tenantId: owner.tenantId },
+    select: { id: true },
+  });
+  if (!existing) return { ok: false, error: "Rule not found" };
+
+  const validated = await validatedRuleData(input, owner.tenantId);
+  if (!validated.ok) return validated;
+
+  await prisma.commissionRule.update({
+    where: { id: ruleId },
+    data: validated.data,
+  });
+  return { ok: true };
 }
 
 /** The owner switches a commission rule on or off. */

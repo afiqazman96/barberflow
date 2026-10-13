@@ -7,6 +7,7 @@ import {
   Trophy,
   ToggleLeft,
   ToggleRight,
+  Pencil,
   Percent,
   DollarSign,
   Sparkles,
@@ -24,7 +25,7 @@ import { Input, Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { recordCommissionPayout } from "@/lib/shop/actions";
 import { useAppStore } from "@/lib/store/app-store";
-import type { CommissionRule, CommissionType, Service } from "@/lib/types";
+import type { CommissionRule, CommissionType, Product, Service } from "@/lib/types";
 import { formatCurrency, initials } from "@/lib/utils";
 
 type LedgerEntry = { earned: number; paid: number; owed: number };
@@ -32,6 +33,7 @@ type LedgerEntry = { earned: number; paid: number; owed: number };
 function ruleDescription(
   rule: CommissionRule,
   services: Service[],
+  products: Product[],
 ): string {
   const applies =
     rule.appliesTo === "all"
@@ -45,7 +47,7 @@ function ruleDescription(
     case "service-based":
       return `Extra ${rule.value}% on specific service${rule.serviceId ? `: ${services.find((s) => s.id === rule.serviceId)?.name}` : ""}`;
     case "product-based":
-      return `Extra ${rule.value}% on specific product`;
+      return `Extra ${rule.value}% on specific product${rule.productId ? `: ${products.find((p) => p.id === rule.productId)?.name}` : ""}`;
     default:
       return rule.name;
   }
@@ -62,25 +64,40 @@ function ruleTypeIcon(type: CommissionRule["type"]) {
   }
 }
 
-type AddRuleForm = {
+type RuleForm = {
   name: string;
   type: CommissionType;
   value: string;
   appliesTo: CommissionRule["appliesTo"];
   serviceId: string;
+  productId: string;
   staffId: string;
   active: boolean;
 };
 
-const emptyRuleForm = (): AddRuleForm => ({
+const emptyRuleForm = (): RuleForm => ({
   name: "",
   type: "percentage",
   value: "30",
   appliesTo: "service",
   serviceId: "",
+  productId: "",
   staffId: "",
   active: true,
 });
+
+function ruleToForm(rule: CommissionRule): RuleForm {
+  return {
+    name: rule.name,
+    type: rule.type,
+    value: String(rule.value),
+    appliesTo: rule.appliesTo,
+    serviceId: rule.serviceId ?? "",
+    productId: rule.productId ?? "",
+    staffId: rule.staffId ?? "",
+    active: rule.active,
+  };
+}
 
 export default function OwnerCommissionPage() {
   const commissionRules = useAppStore((s) => s.commissionRules);
@@ -95,9 +112,11 @@ export default function OwnerCommissionPage() {
   );
   const staff = useAppStore((s) => s.staff);
   const services = useAppStore((s) => s.services);
+  const products = useAppStore((s) => s.products);
 
-  const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState<AddRuleForm>(emptyRuleForm);
+  const [ruleModalOpen, setRuleModalOpen] = useState(false);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [form, setForm] = useState<RuleForm>(emptyRuleForm);
   const [ledger, setLedger] = useState<Record<string, LedgerEntry>>({});
   const [payoutFor, setPayoutFor] = useState<{ id: string; name: string; owed: number } | null>(
     null,
@@ -186,7 +205,19 @@ export default function OwnerCommissionPage() {
     });
   }
 
-  function handleAddRule(e: React.FormEvent) {
+  function openAddRule() {
+    setEditingRuleId(null);
+    setForm(emptyRuleForm());
+    setRuleModalOpen(true);
+  }
+
+  function openEditRule(rule: CommissionRule) {
+    setEditingRuleId(rule.id);
+    setForm(ruleToForm(rule));
+    setRuleModalOpen(true);
+  }
+
+  function handleSubmitRule(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) {
       toast.error("Rule name is required");
@@ -202,30 +233,40 @@ export default function OwnerCommissionPage() {
         ? Math.max(0, rawValue)
         : Math.min(100, Math.max(0, rawValue));
 
-    const rule = addCommissionRule({
+    const data = {
       name: form.name.trim(),
       type: form.type,
       value,
       appliesTo: form.appliesTo,
       serviceId: form.serviceId || undefined,
+      productId: form.productId || undefined,
       staffId: form.staffId || undefined,
       active: form.active,
-    });
+    };
 
-    toast.success("Rule added", { description: rule.name });
-    setAddOpen(false);
+    if (editingRuleId) {
+      updateCommissionRule(editingRuleId, data);
+      toast.success("Rule saved", { description: data.name });
+    } else {
+      const rule = addCommissionRule(data);
+      toast.success("Rule added", { description: rule.name });
+    }
+    setRuleModalOpen(false);
+    setEditingRuleId(null);
     setForm(emptyRuleForm());
   }
 
   const showServicePicker =
     form.type === "service-based" || form.appliesTo === "service";
+  const showProductPicker =
+    form.type === "product-based" || form.appliesTo === "product";
 
   return (
     <>
       <Topbar
         title="Commission Engine"
         actions={
-          <Button size="sm" onClick={() => setAddOpen(true)}>
+          <Button size="sm" onClick={openAddRule}>
             <Plus className="h-4 w-4" />
             Add Rule
           </Button>
@@ -288,7 +329,7 @@ export default function OwnerCommissionPage() {
                           <div>
                             <p className="font-medium">{rule.name}</p>
                             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                              {ruleDescription(rule, services)}
+                              {ruleDescription(rule, services, products)}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               <Badge variant="default" className="capitalize">
@@ -303,17 +344,26 @@ export default function OwnerCommissionPage() {
                             </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => toggleRule(rule.id)}
-                          className="shrink-0 text-[var(--gold)]"
-                          aria-label={rule.active ? "Disable rule" : "Enable rule"}
-                        >
-                          {rule.active ? (
-                            <ToggleRight className="h-8 w-8" />
-                          ) : (
-                            <ToggleLeft className="h-8 w-8 text-[var(--text-faint)]" />
-                          )}
-                        </button>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            onClick={() => openEditRule(rule)}
+                            className="p-1 text-[var(--text-faint)] hover:text-[var(--text)]"
+                            aria-label={`Edit ${rule.name}`}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => toggleRule(rule.id)}
+                            className="text-[var(--gold)]"
+                            aria-label={rule.active ? "Disable rule" : "Enable rule"}
+                          >
+                            {rule.active ? (
+                              <ToggleRight className="h-8 w-8" />
+                            ) : (
+                              <ToggleLeft className="h-8 w-8 text-[var(--text-faint)]" />
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   );
@@ -450,12 +500,15 @@ export default function OwnerCommissionPage() {
       </PageTransition>
 
       <Modal
-        open={addOpen}
-        onOpenChange={setAddOpen}
-        title="Add Commission Rule"
+        open={ruleModalOpen}
+        onOpenChange={(open) => {
+          setRuleModalOpen(open);
+          if (!open) setEditingRuleId(null);
+        }}
+        title={editingRuleId ? "Edit Commission Rule" : "Add Commission Rule"}
         description="Configure how staff earn on sales"
       >
-        <form onSubmit={handleAddRule} className="space-y-4">
+        <form onSubmit={handleSubmitRule} className="space-y-4">
           <div>
             <Label htmlFor="rule-name">Rule Name</Label>
             <Input
@@ -535,6 +588,23 @@ export default function OwnerCommissionPage() {
               </Select>
             </div>
           )}
+          {showProductPicker && (
+            <div>
+              <Label htmlFor="rule-product">Product (optional)</Label>
+              <Select
+                id="rule-product"
+                value={form.productId}
+                onChange={(e) => setForm((f) => ({ ...f, productId: e.target.value }))}
+              >
+                <option value="">Any product</option>
+                {products.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
           <div>
             <Label htmlFor="rule-staff">Staff Override (optional)</Label>
             <Select
@@ -557,13 +627,20 @@ export default function OwnerCommissionPage() {
               onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
               className="rounded border-[var(--border)] bg-[var(--bg-muted)] accent-[var(--gold)]"
             />
-            Active on creation
+            {editingRuleId ? "Active" : "Active on creation"}
           </label>
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setAddOpen(false)}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setRuleModalOpen(false);
+                setEditingRuleId(null);
+              }}
+            >
               Cancel
             </Button>
-            <Button type="submit">Add Rule</Button>
+            <Button type="submit">{editingRuleId ? "Save Rule" : "Add Rule"}</Button>
           </div>
         </form>
       </Modal>

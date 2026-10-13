@@ -18,6 +18,7 @@ import {
   saveRosterDay,
   saveTaxConfig,
   setCommissionRuleActive,
+  updateCommissionRule,
 } from "./actions";
 import type { RosterDayInput, ShopSnapshot } from "./dto";
 
@@ -111,6 +112,13 @@ export function pushNewCommissionRule(rule: Omit<CommissionRule, "id">): void {
 
 export function pushCommissionRuleActive(id: string, active: boolean): void {
   persist("Couldn't update the rule", () => setCommissionRuleActive(id, active));
+}
+
+export function pushCommissionRuleUpdate(
+  id: string,
+  rule: Omit<CommissionRule, "id">,
+): void {
+  persist("Couldn't save the rule", () => updateCommissionRule(id, rule));
 }
 
 export function pushBusinessProfile(

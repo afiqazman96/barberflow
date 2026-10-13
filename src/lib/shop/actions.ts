@@ -1,6 +1,6 @@
 "use server";
 
-import type { ShiftActor, Staff } from "@/generated/prisma/client";
+import { Prisma, type ShiftActor, type Staff } from "@/generated/prisma/client";
 import type { CommissionScope, CommissionType } from "@/generated/prisma/enums";
 import { requireRole, requireShopSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
@@ -36,6 +36,18 @@ async function findTarget(staffId: string, tenantId: string) {
   return prisma.staff.findFirst({ where: { id: staffId, tenantId }, select: targetSelect });
 }
 
+/** Raised inside the chair-claim transaction when the chair is already held. */
+class ChairTaken extends Error {}
+
+/** Postgres aborts the losing side of a Serializable conflict with this. */
+function isSerializationFailure(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "P2034"
+  );
+}
+
 /**
  * Open a shift: on duty, at a chair if they are a barber. Clocking in when a
  * shift is already open is not an error — it puts them back on duty, which
@@ -47,23 +59,24 @@ async function startShiftFor(
 ): Promise<ActionResult> {
   if (!target.active) return { ok: false, error: "This account is disabled" };
   if (target.role === "OWNER") return { ok: false, error: "Owners do not clock in" };
-  if (!target.branchId) return { ok: false, error: "Assign a branch first" };
+  const branchId = target.branchId;
+  if (!branchId) return { ok: false, error: "Assign a branch first" };
 
   let chairId: string | null = null;
+  let chairLabel = "That chair";
   if (target.role === "BARBER") {
+    // The client already refuses to submit without one — enforced here too,
+    // so calling the action directly can't clock a barber in chairless.
     chairId = opts.chairId ?? target.chairId ?? null;
-    if (chairId) {
-      const chair = await prisma.chair.findFirst({
-        where: { id: chairId, branchId: target.branchId },
-        select: { id: true, label: true },
-      });
-      if (!chair) return { ok: false, error: "Pick a chair at your own branch" };
-      const holder = await prisma.staff.findFirst({
-        where: { chairId, id: { not: target.id } },
-        select: { id: true },
-      });
-      if (holder) return { ok: false, error: `${chair.label} is already taken` };
+    if (!chairId) {
+      return { ok: false, error: "Pick a chair to start your shift" };
     }
+    const chair = await prisma.chair.findFirst({
+      where: { id: chairId, branchId },
+      select: { id: true, label: true },
+    });
+    if (!chair) return { ok: false, error: "Pick a chair at your own branch" };
+    chairLabel = chair.label;
   }
 
   const onDuty = { status: "AVAILABLE" as const, ...(chairId ? { chairId } : {}) };
@@ -71,32 +84,55 @@ async function startShiftFor(
     where: { staffId: target.id, endedAt: null },
     select: { id: true },
   });
-  if (open) {
-    await prisma.staff.update({ where: { id: target.id }, data: onDuty });
-    return { ok: true };
-  }
 
-  const timeZone = await timezoneForTenant(target.tenantId);
+  // The holder check and the write that claims the chair happen inside one
+  // Serializable transaction — same reasoning as a booking slot
+  // (`bookings/actions.ts`): two clock-ins racing for the same chair must
+  // not both see it free. `Staff.chairId`'s unique index backstops it.
   try {
-    await prisma.$transaction([
-      prisma.shift.create({
-        data: {
-          tenantId: target.tenantId,
-          branchId: target.branchId,
-          staffId: target.id,
-          date: dateColumn(shopToday(timeZone)),
-          startedAt: new Date(),
-          chairId,
-          startedBy: opts.by,
-          note: opts.note?.trim() || null,
-        },
-      }),
-      prisma.staff.update({ where: { id: target.id }, data: onDuty }),
-    ]);
+    await prisma.$transaction(
+      async (tx) => {
+        if (chairId) {
+          const holder = await tx.staff.findFirst({
+            where: { chairId, id: { not: target.id } },
+            select: { id: true },
+          });
+          if (holder) throw new ChairTaken();
+        }
+        if (open) {
+          await tx.staff.update({ where: { id: target.id }, data: onDuty });
+          return;
+        }
+        const timeZone = await timezoneForTenant(target.tenantId);
+        await tx.shift.create({
+          data: {
+            tenantId: target.tenantId,
+            branchId,
+            staffId: target.id,
+            date: dateColumn(shopToday(timeZone)),
+            startedAt: new Date(),
+            chairId,
+            startedBy: opts.by,
+            note: opts.note?.trim() || null,
+          },
+        });
+        await tx.staff.update({ where: { id: target.id }, data: onDuty });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   } catch (error) {
-    // Another device opened it a moment ago (`shifts_one_open_per_staff`).
-    if (!isUniqueViolation(error)) throw error;
-    await prisma.staff.update({ where: { id: target.id }, data: onDuty });
+    if (error instanceof ChairTaken) {
+      return { ok: false, error: `${chairLabel} is already taken` };
+    }
+    if (isUniqueViolation(error) || isSerializationFailure(error)) {
+      return {
+        ok: false,
+        error: chairId
+          ? "That chair was just taken — try again"
+          : "Try again",
+      };
+    }
+    throw error;
   }
   return { ok: true };
 }

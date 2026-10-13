@@ -54,7 +54,10 @@ const MAY_MOVE_FROM: Record<PrismaQueueStatus, PrismaQueueStatus[]> = {
   AWAITING_PAYMENT: ["CALLED", "IN_SERVICE"],
   COMPLETED: ["IN_SERVICE", "AWAITING_PAYMENT"],
   NO_SHOW: ["WAITING", "CALLED"],
-  CANCELLED: ["WAITING", "CALLED"],
+  // IN_SERVICE included so a ticket stuck here — the barber's tab crashed,
+  // or the customer walked out mid-service — can be released without
+  // forcing it through a payment that never happened.
+  CANCELLED: ["WAITING", "CALLED", "IN_SERVICE"],
 };
 
 /**
@@ -68,7 +71,10 @@ const BOOKING_FOLLOWS: Partial<
   IN_SERVICE: { to: "IN_SERVICE", from: ["CHECKED_IN"] },
   COMPLETED: { to: "COMPLETED", from: ["CHECKED_IN", "IN_SERVICE"] },
   NO_SHOW: { to: "NO_SHOW", from: ["CONFIRMED", "CHECKED_IN"] },
-  CANCELLED: { to: "CANCELLED", from: ["CONFIRMED", "CHECKED_IN"] },
+  // IN_SERVICE included alongside the usual pre-chair statuses: a ticket
+  // released from IN_SERVICE (`MAY_MOVE_FROM.CANCELLED` above) must still
+  // unwind the booking it was checked in from, not leave it stuck mid-visit.
+  CANCELLED: { to: "CANCELLED", from: ["CONFIRMED", "CHECKED_IN", "IN_SERVICE"] },
 };
 
 async function bookingFollows(ticketId: string, target: PrismaQueueStatus) {

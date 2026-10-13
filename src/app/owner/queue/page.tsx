@@ -1,9 +1,21 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Armchair, Filter, Plus, UserCheck } from "lucide-react";
+import {
+  Armchair,
+  Clock,
+  Filter,
+  Phone,
+  Play,
+  Plus,
+  ShoppingCart,
+  User,
+  UserCheck,
+  UserX,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
@@ -18,8 +30,8 @@ import { registerWalkIn } from "@/lib/queue/actions";
 import { useAppStore } from "@/lib/store/app-store";
 import { findCustomerByPhone } from "@/lib/mock/data";
 import { assignStaffChair } from "@/lib/staff/actions";
-import type { QueueStatus } from "@/lib/types";
-import { initials } from "@/lib/utils";
+import type { QueueStatus, QueueTicket } from "@/lib/types";
+import { formatTime, initials } from "@/lib/utils";
 
 const STATUS_FILTERS: { value: QueueStatus | "all"; label: string }[] = [
   { value: "all", label: "All" },
@@ -30,6 +42,8 @@ const STATUS_FILTERS: { value: QueueStatus | "all"; label: string }[] = [
 ];
 
 function OwnerQueueContent() {
+  const confirm = useConfirm();
+  const router = useRouter();
   const params = useSearchParams();
   const queue = useAppStore((s) => s.queue);
   const branchId = useAppStore((s) => s.branchId);
@@ -40,10 +54,14 @@ function OwnerQueueContent() {
   const staffStatuses = useAppStore((s) => s.staffStatuses);
   const assignChair = useAppStore((s) => s.assignChair);
   const addQueueTicket = useAppStore((s) => s.addQueueTicket);
+  const updateQueueTicket = useAppStore((s) => s.updateQueueTicket);
+  const loadPosTicket = useAppStore((s) => s.loadPosTicket);
+  const clearPos = useAppStore((s) => s.clearPos);
 
   const [filter, setFilter] = useState<QueueStatus | "all">("all");
   const [registerOpen, setRegisterOpen] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [detailTicket, setDetailTicket] = useState<QueueTicket | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -98,6 +116,91 @@ function OwnerQueueContent() {
     toast.success("Chair reassigned", {
       description: `${chair?.label} → ${member?.name ?? "Unassigned"}`,
     });
+  }
+
+  function handleCall(ticket: QueueTicket) {
+    updateQueueTicket(ticket.id, { status: "called" });
+    toast.info(`Calling ${ticket.number}`, {
+      description: `${ticket.customerName} — please proceed to counter`,
+    });
+    setDetailTicket({ ...ticket, status: "called" });
+  }
+
+  function handleStartAssign(ticket: QueueTicket) {
+    const free = barbers.filter((b) => staffStatuses[b.id] === "available");
+    const preferred = ticket.preferredStaffId
+      ? barbers.find((b) => b.id === ticket.preferredStaffId)
+      : undefined;
+    if (
+      preferred &&
+      !free.includes(preferred) &&
+      staffStatuses[preferred.id] === "busy"
+    ) {
+      toast.info(`${preferred.name} is with another customer`, {
+        description: "Assign when they're free, or wait for them",
+      });
+      return;
+    }
+    const assignee = free.find((b) => b.id === ticket.preferredStaffId) ?? free[0];
+    if (!assignee) {
+      toast.error("No barber is free", {
+        description: "Nobody on shift is available right now",
+      });
+      return;
+    }
+
+    updateQueueTicket(ticket.id, {
+      status: "in-service",
+      assignedStaffId: assignee.id,
+      chairId: assignee.chairId,
+      startedAt: new Date().toISOString(),
+      estimatedWaitMins: 0,
+    });
+    toast.success("Service started", {
+      description: `${ticket.customerName} assigned to ${assignee.name}`,
+    });
+    setDetailTicket(null);
+  }
+
+  function handleNoShow(ticket: QueueTicket) {
+    confirm.ask({
+      title: `Mark ${ticket.customerName} as no-show?`,
+      description: "They lose their place in the queue.",
+      confirmLabel: "No-show",
+      run: () => {
+        updateQueueTicket(ticket.id, { status: "no-show" });
+        toast.error("Marked as no-show", { description: ticket.customerName });
+        setDetailTicket(null);
+      },
+    });
+  }
+
+  /**
+   * A ticket can get stuck in-service forever if the barber's tab crashes or
+   * the customer just walks out — there's no auto-timeout, so this is the
+   * only way off. Frees the barber and chair; nothing is billed.
+   */
+  function handleCancel(ticket: QueueTicket) {
+    confirm.ask({
+      title: `Cancel ${ticket.customerName}'s ticket?`,
+      description:
+        "Use this if the service can't be finished — the barber and chair are freed, and nothing is billed.",
+      confirmLabel: "Cancel ticket",
+      run: () => {
+        updateQueueTicket(ticket.id, { status: "cancelled" });
+        toast.error("Ticket cancelled", { description: ticket.customerName });
+        setDetailTicket(null);
+      },
+    });
+  }
+
+  function handleSendToPos(ticket: QueueTicket) {
+    clearPos();
+    updateQueueTicket(ticket.id, { status: "awaiting-payment" });
+    loadPosTicket(ticket.id);
+    toast.success("Sent to POS", { description: ticket.customerName });
+    setDetailTicket(null);
+    router.push("/owner/pos");
   }
 
   async function handleRegister(e: React.FormEvent) {
@@ -157,6 +260,7 @@ function OwnerQueueContent() {
 
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Queue Monitor"
         actions={
@@ -275,7 +379,11 @@ function OwnerQueueContent() {
                     exit={{ opacity: 0, scale: 0.96 }}
                     transition={{ delay: i * 0.03 }}
                   >
-                    <QueueCard ticket={ticket} />
+                    <QueueCard
+                      ticket={ticket}
+                      active={detailTicket?.id === ticket.id}
+                      onClick={() => setDetailTicket(ticket)}
+                    />
                   </motion.div>
                 ))}
               </AnimatePresence>
@@ -360,6 +468,86 @@ function OwnerQueueContent() {
             Add to Queue
           </Button>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!detailTicket}
+        onOpenChange={(open) => !open && setDetailTicket(null)}
+        title={detailTicket ? `Ticket ${detailTicket.number}` : ""}
+        description={detailTicket?.customerName}
+      >
+        {detailTicket && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge status={detailTicket.status} />
+              <span className="rounded-lg bg-[var(--bg-muted)] px-2 py-1 text-xs text-[var(--text-muted)]">
+                {detailTicket.source}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <p className="flex items-center gap-2 text-[var(--text-muted)]">
+                <User className="h-4 w-4" />
+                {detailTicket.customerPhone}
+              </p>
+              <p>{detailTicket.serviceNames.join(" · ")}</p>
+              <p className="flex items-center gap-2 text-[var(--text-faint)]">
+                <Clock className="h-4 w-4" />
+                Joined {formatTime(detailTicket.createdAt)}
+                {detailTicket.estimatedWaitMins > 0 &&
+                  ` · ~${detailTicket.estimatedWaitMins} min wait`}
+              </p>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              {(detailTicket.status === "waiting" ||
+                detailTicket.status === "called") && (
+                <Button variant="secondary" onClick={() => handleCall(detailTicket)}>
+                  <Phone className="h-4 w-4" />
+                  Call
+                </Button>
+              )}
+              {(detailTicket.status === "waiting" ||
+                detailTicket.status === "called") && (
+                <Button onClick={() => handleStartAssign(detailTicket)}>
+                  <Play className="h-4 w-4" />
+                  Start & Assign
+                </Button>
+              )}
+              {(detailTicket.status === "in-service" ||
+                detailTicket.status === "awaiting-payment" ||
+                detailTicket.status === "called") && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleSendToPos(detailTicket)}
+                >
+                  <ShoppingCart className="h-4 w-4" />
+                  Send to POS
+                </Button>
+              )}
+              {detailTicket.status === "called" && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleNoShow(detailTicket)}
+                  className="border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                >
+                  <UserX className="h-4 w-4" />
+                  No-Show
+                </Button>
+              )}
+              {detailTicket.status === "in-service" && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleCancel(detailTicket)}
+                  className="border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                >
+                  <UserX className="h-4 w-4" />
+                  Cancel
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );

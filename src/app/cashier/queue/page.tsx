@@ -240,6 +240,25 @@ function QueuePageContent() {
     });
   }
 
+  /**
+   * A ticket can get stuck in-service forever if the barber's tab crashes or
+   * the customer just walks out — there's no auto-timeout, so this is the
+   * only way off. Frees the barber and chair; nothing is billed.
+   */
+  function handleCancel(ticket: QueueTicket) {
+    confirm.ask({
+      title: `Cancel ${ticket.customerName}'s ticket?`,
+      description:
+        "Use this if the service can't be finished — the barber and chair are freed, and nothing is billed.",
+      confirmLabel: "Cancel ticket",
+      run: () => {
+        updateQueueTicket(ticket.id, { status: "cancelled" });
+        toast.error("Ticket cancelled", { description: ticket.customerName });
+        setDetailTicket(null);
+      },
+    });
+  }
+
   function handleSendToPos(ticket: QueueTicket) {
     clearPos();
     updateQueueTicket(ticket.id, { status: "awaiting-payment" });
@@ -472,6 +491,16 @@ function QueuePageContent() {
                 >
                   <UserX className="h-4 w-4" />
                   No-Show
+                </Button>
+              )}
+              {detailTicket.status === "in-service" && (
+                <Button
+                  variant="outline"
+                  onClick={() => handleCancel(detailTicket)}
+                  className="border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                >
+                  <UserX className="h-4 w-4" />
+                  Cancel
                 </Button>
               )}
             </div>

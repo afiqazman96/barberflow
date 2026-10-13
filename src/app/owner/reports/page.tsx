@@ -25,7 +25,7 @@ import { StatTile } from "@/components/domain/stat-tile";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input, Label } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 import { useAppStore } from "@/lib/store/app-store";
 import { peakHours, topServices, weeklyTrend } from "@/lib/analytics";
 import { useNow } from "@/hooks/use-now";
@@ -74,6 +74,9 @@ const RANGES = [
   { id: "all", label: "All time", from: () => "" },
 ] as const;
 
+/** Sentinel for "every branch", distinct from any real branch id. */
+const ALL_BRANCHES = "all";
+
 export default function OwnerReportsPage() {
   const [tab, setTab] = useState<TabId>("overview");
   const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null);
@@ -92,24 +95,43 @@ export default function OwnerReportsPage() {
   const branchId = useAppStore((s) => s.branchId);
   const business = useAppStore((s) => s.businessProfile);
 
-  const branchName = branches.find((b) => b.id === branchId)?.name;
+  // This page's own scope — independent of the sidebar's "Viewing Branch"
+  // switcher, which stays a single real branch for POS/drawer screens and
+  // can't express "every branch". Starts wherever the switcher was when the
+  // page opened, same as before this existed.
+  const [scopeBranchId, setScopeBranchId] = useState<string>(branchId);
+  const allBranchesSelected = scopeBranchId === ALL_BRANCHES;
+  const branchName = allBranchesSelected
+    ? undefined
+    : branches.find((b) => b.id === scopeBranchId)?.name;
 
-  // Every figure on this page is for the branch being viewed.
   const staff = useMemo(
-    () => allStaff.filter((s) => s.branchId === branchId),
-    [allStaff, branchId],
+    () =>
+      allBranchesSelected
+        ? allStaff
+        : allStaff.filter((s) => s.branchId === scopeBranchId),
+    [allStaff, scopeBranchId, allBranchesSelected],
   );
   const queue = useMemo(
-    () => allQueue.filter((q) => q.branchId === branchId),
-    [allQueue, branchId],
+    () =>
+      allBranchesSelected
+        ? allQueue
+        : allQueue.filter((q) => q.branchId === scopeBranchId),
+    [allQueue, scopeBranchId, allBranchesSelected],
   );
   const bookings = useMemo(
-    () => allBookings.filter((b) => b.branchId === branchId),
-    [allBookings, branchId],
+    () =>
+      allBranchesSelected
+        ? allBookings
+        : allBookings.filter((b) => b.branchId === scopeBranchId),
+    [allBookings, scopeBranchId, allBranchesSelected],
   );
   const branchSales = useMemo(
-    () => allSales.filter((s) => s.branchId === branchId),
-    [allSales, branchId],
+    () =>
+      allBranchesSelected
+        ? allSales
+        : allSales.filter((s) => s.branchId === scopeBranchId),
+    [allSales, scopeBranchId, allBranchesSelected],
   );
   const now = useNow();
 
@@ -254,6 +276,23 @@ export default function OwnerReportsPage() {
 
           <Card className="p-4">
             <div className="flex flex-wrap items-end gap-3">
+              {branches.length > 1 && (
+                <div>
+                  <Label>Branch</Label>
+                  <Select
+                    value={scopeBranchId}
+                    onChange={(e) => setScopeBranchId(e.target.value)}
+                    className="w-44"
+                  >
+                    <option value={ALL_BRANCHES}>All Branches</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label>From</Label>
                 <Input

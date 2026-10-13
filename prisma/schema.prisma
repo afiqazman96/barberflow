@@ -319,6 +319,10 @@ model Branch {
   status    BranchStatus @default(OPEN)
   /// Display string, e.g. "10:00 – 22:00".
   openHours String?
+  /// Closed for good — hidden from the switcher, QR links and every active
+  /// screen, but its history (sales, bookings, tickets) is kept, not deleted.
+  archived   Boolean   @default(false)
+  archivedAt DateTime?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
@@ -334,6 +338,7 @@ model Branch {
   drawerSessions DrawerSession[]
 
   @@index([tenantId])
+  @@index([archived])
   @@map("branches")
 }
 

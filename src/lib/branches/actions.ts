@@ -280,3 +280,78 @@ export async function deleteChair(chairId: string): Promise<ActionResult> {
   revalidateBranchScreens();
   return { ok: true };
 }
+
+/**
+ * Retire a branch. Every sale, booking and queue ticket it has ever had
+ * cascades from it, so this never deletes the row — it hides the branch from
+ * the switcher, POS, booking and every customer-facing QR/booking link
+ * (`branchesFor`), while its history stays queryable exactly as it was.
+ *
+ * Refused in the three states that would otherwise strand something: the
+ * shop's last remaining branch (nothing left to run the business from), a
+ * branch staff are still rostered to (their own dashboard has nowhere to
+ * resolve to), and one with cash currently in its till.
+ */
+export async function archiveBranch(branchId: string): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const branch = await prisma.branch.findFirst({
+    where: { id: branchId, tenantId: owner.tenantId },
+    select: { id: true, name: true, archived: true },
+  });
+  if (!branch) {
+    return { ok: false, error: "Branch not found" };
+  }
+  if (branch.archived) {
+    return { ok: true };
+  }
+
+  const otherActive = await prisma.branch.count({
+    where: { tenantId: owner.tenantId, archived: false, id: { not: branchId } },
+  });
+  if (otherActive === 0) {
+    return { ok: false, error: "This is the only branch left — a shop needs at least one" };
+  }
+
+  const assigned = await prisma.staff.count({
+    where: { branchId, active: true },
+  });
+  if (assigned > 0) {
+    return {
+      ok: false,
+      error: `${assigned} staff member${assigned === 1 ? " is" : "s are"} still assigned here. Move them to another branch first.`,
+    };
+  }
+
+  const openDrawer = await prisma.drawerSession.findFirst({
+    where: { branchId, closedAt: null },
+    select: { id: true },
+  });
+  if (openDrawer) {
+    return { ok: false, error: "A cash drawer is still open at this branch. Close it first." };
+  }
+
+  await prisma.branch.update({
+    where: { id: branchId },
+    data: { archived: true, archivedAt: new Date() },
+  });
+
+  revalidateBranchScreens();
+  return { ok: true };
+}
+
+/** Bring an archived branch back into active use. */
+export async function restoreBranch(branchId: string): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const updated = await prisma.branch.updateMany({
+    where: { id: branchId, tenantId: owner.tenantId, archived: true },
+    data: { archived: false, archivedAt: null },
+  });
+  if (updated.count === 0) {
+    return { ok: false, error: "Branch not found" };
+  }
+
+  revalidateBranchScreens();
+  return { ok: true };
+}

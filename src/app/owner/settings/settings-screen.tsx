@@ -19,6 +19,8 @@ import {
   Percent,
   ToggleLeft,
   ToggleRight,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -32,10 +34,12 @@ import { StatusBadge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { useAppStore } from "@/lib/store/app-store";
 import {
+  archiveBranch,
   createBranch,
   createChair,
   deleteChair,
   renameChair,
+  restoreBranch,
   updateBranchDetails,
 } from "@/lib/branches/actions";
 import type { BranchDetail, ChairDetail } from "@/lib/branches/dto";
@@ -172,6 +176,7 @@ export function OwnerSettingsScreen({
 
   const [addBranchOpen, setAddBranchOpen] = useState(false);
   const [newBranchForm, setNewBranchForm] = useState(emptyBranchForm);
+  const [showArchivedBranches, setShowArchivedBranches] = useState(false);
 
   const [addServiceOpen, setAddServiceOpen] = useState(false);
   const [newServiceForm, setNewServiceForm] = useState(emptyServiceForm);
@@ -186,7 +191,17 @@ export function OwnerSettingsScreen({
   const [chairLabel, setChairLabel] = useState("");
   const [pickedChairFilterBranchId, setChairFilterBranchId] = useState("");
 
-  const firstBranchId = branches[0]?.id ?? "";
+  // An archived branch can't take new chairs, a QR code nobody can scan, or
+  // be archived a second time — every picker below works off the active set.
+  const activeBranches = useMemo(
+    () => branches.filter((b) => !b.archived),
+    [branches],
+  );
+  const archivedBranches = useMemo(
+    () => branches.filter((b) => b.archived),
+    [branches],
+  );
+  const firstBranchId = activeBranches[0]?.id ?? "";
   const chairBranchId = pickedChairBranchId || firstBranchId;
   const chairFilterBranchId = pickedChairFilterBranchId || firstBranchId;
 
@@ -404,6 +419,33 @@ export function OwnerSettingsScreen({
     toast.success("Branch added", { description: input.name });
     setAddBranchOpen(false);
     setNewBranchForm(emptyBranchForm);
+  }
+
+  function handleArchiveBranch(branch: BranchDetail) {
+    confirm.ask({
+      title: `Archive ${branch.name}?`,
+      description:
+        "It disappears from the switcher, POS and booking, and any QR code for it stops working. Past sales and bookings stay on record, and you can restore it later.",
+      confirmLabel: "Archive branch",
+      run: async () => {
+        const result = await runAction(() => archiveBranch(branch.id), {
+          failed: `Could not archive ${branch.name}`,
+          offline: "Branch was not archived — check your connection and try again.",
+        });
+        if (!result?.ok) return;
+        forgetBranchDraft(branch.id);
+        toast.success("Branch archived", { description: branch.name });
+      },
+    });
+  }
+
+  async function handleRestoreBranch(branch: BranchDetail) {
+    const result = await runAction(() => restoreBranch(branch.id), {
+      failed: `Could not restore ${branch.name}`,
+      offline: "Branch was not restored — check your connection and try again.",
+    });
+    if (!result?.ok) return;
+    toast.success("Branch restored", { description: branch.name });
   }
 
   function handleSaveServices() {
@@ -889,13 +931,50 @@ export function OwnerSettingsScreen({
 
                   {activeTab === "branches" && (
                     <div className="space-y-4">
-                      <div className="flex justify-end">
+                      <div className="flex items-center justify-end gap-2">
+                        {archivedBranches.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowArchivedBranches((v) => !v)}
+                          >
+                            {showArchivedBranches ? "Hide" : "Show"} archived (
+                            {archivedBranches.length})
+                          </Button>
+                        )}
                         <Button size="sm" onClick={() => setAddBranchOpen(true)}>
                           <Plus className="h-4 w-4" />
                           Add Branch
                         </Button>
                       </div>
-                      {branches.map((branch) => {
+                      {showArchivedBranches && archivedBranches.length > 0 && (
+                        <div className="space-y-2">
+                          {archivedBranches.map((branch) => (
+                            <Card
+                              key={branch.id}
+                              className="flex items-center justify-between gap-3 p-4"
+                            >
+                              <div>
+                                <p className="font-medium text-[var(--text-muted)]">
+                                  {branch.name}
+                                </p>
+                                <p className="text-xs text-[var(--text-faint)]">
+                                  Archived
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRestoreBranch(branch)}
+                              >
+                                <ArchiveRestore className="h-4 w-4" />
+                                Restore
+                              </Button>
+                            </Card>
+                          ))}
+                        </div>
+                      )}
+                      {activeBranches.map((branch) => {
                         const draft = getBranchDraft(branch);
                         return (
                           <Card key={branch.id}>
@@ -979,6 +1058,23 @@ export function OwnerSettingsScreen({
                               </div>
                               <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 p-3">
                                 <BranchQrPanel branch={branch} compact />
+                              </div>
+                              <div className="flex justify-end">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={activeBranches.length <= 1}
+                                  title={
+                                    activeBranches.length <= 1
+                                      ? "A shop needs at least one branch"
+                                      : undefined
+                                  }
+                                  onClick={() => handleArchiveBranch(branch)}
+                                >
+                                  <Archive className="h-4 w-4" />
+                                  Archive branch
+                                </Button>
                               </div>
                             </div>
                           </Card>
@@ -1099,7 +1195,7 @@ export function OwnerSettingsScreen({
                               }
                               className="w-48"
                             >
-                              {branches.map((b) => (
+                              {activeBranches.map((b) => (
                                 <option key={b.id} value={b.id}>
                                   {b.name}
                                 </option>
@@ -1209,7 +1305,7 @@ export function OwnerSettingsScreen({
                           register walk-ins manually from Queue → Walk-in.
                         </p>
                       </Card>
-                      {branches.map((branch) => (
+                      {activeBranches.map((branch) => (
                         <BranchQrPanel key={branch.id} branch={branch} />
                       ))}
                     </div>
@@ -1683,7 +1779,7 @@ export function OwnerSettingsScreen({
                 value={chairBranchId}
                 onChange={(e) => setChairBranchId(e.target.value)}
               >
-                {branches.map((b) => (
+                {activeBranches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
                   </option>

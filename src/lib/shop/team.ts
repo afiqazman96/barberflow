@@ -99,7 +99,11 @@ export async function teamFor(
  */
 export async function branchesFor(tenantId: string, today: string): Promise<Branch[]> {
   const rows = await prisma.branch.findMany({
-    where: { tenantId },
+    // Archived branches are retired, not deleted: their history stays in the
+    // database, but they must stop appearing anywhere a branch can be picked
+    // — the switcher, POS, booking, and this feeds the customer-facing QR/
+    // booking pages too (`publicShopSnapshot` below calls this same function).
+    where: { tenantId, archived: false },
     orderBy: { createdAt: "asc" },
     select: {
       id: true,

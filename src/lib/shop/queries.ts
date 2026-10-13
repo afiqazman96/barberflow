@@ -367,10 +367,12 @@ export async function publicShopSnapshot(branchId: string | null): Promise<ShopS
   const branch = branchId
     ? await prisma.branch.findUnique({
         where: { id: branchId },
-        select: { id: true, tenantId: true },
+        select: { id: true, tenantId: true, archived: true },
       })
     : null;
-  if (!branch) return null;
+  // An archived branch is treated exactly like an unknown one: a QR code or
+  // booking link printed before it closed must not keep working.
+  if (!branch || branch.archived) return null;
 
   const timeZone = await timezoneForTenant(branch.tenantId);
   const opsRules = await opsRulesFor(branch.tenantId);

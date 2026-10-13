@@ -31,6 +31,7 @@ export const listBranchDetails = cache(
         phone: true,
         openHours: true,
         status: true,
+        archived: true,
         chairs: {
           orderBy: { number: "asc" },
           select: {
@@ -56,6 +57,7 @@ export const listBranchDetails = cache(
         openHours: branch.openHours ?? "",
         status: appBranchStatusFor(branch.status),
         chairs: branch.chairs.length,
+        archived: branch.archived,
       })),
       chairs: rows.flatMap((branch) =>
         branch.chairs.map(({ staff, ...chair }) => ({

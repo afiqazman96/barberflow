@@ -24,6 +24,7 @@ export type BranchDetail = {
   openHours: string;
   status: Branch["status"];
   chairs: number;
+  archived: boolean;
 };
 
 /** One chair, plus whoever is sitting at it (`Staff.chairId` is the unique side). */

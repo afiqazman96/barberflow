@@ -15,6 +15,7 @@ import {
   Percent,
   ListOrdered,
   CalendarDays,
+  Clock,
   UserCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,8 +37,10 @@ import {
   buildCustomerReport,
   buildProductReport,
   buildQueueReport,
+  buildRosterReport,
   buildSalesReport,
   buildServiceReport,
+  buildShiftReport,
   buildStaffReport,
 } from "@/lib/reports/builders";
 import {
@@ -56,6 +59,8 @@ const TABS = [
   { id: "commission", label: "Commission", icon: Percent },
   { id: "queue", label: "Queue", icon: ListOrdered },
   { id: "bookings", label: "Appointments", icon: CalendarDays },
+  { id: "shifts", label: "Shifts", icon: Clock },
+  { id: "roster", label: "Roster", icon: CalendarDays },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -91,6 +96,9 @@ export default function OwnerReportsPage() {
   const products = useAppStore((s) => s.products);
   const allQueue = useAppStore((s) => s.queue);
   const allBookings = useAppStore((s) => s.bookings);
+  const allShifts = useAppStore((s) => s.shifts);
+  const roster = useAppStore((s) => s.roster);
+  const leaves = useAppStore((s) => s.leaves);
   const branches = useAppStore((s) => s.branches);
   const branchId = useAppStore((s) => s.branchId);
   const business = useAppStore((s) => s.businessProfile);
@@ -133,6 +141,26 @@ export default function OwnerReportsPage() {
         : allSales.filter((s) => s.branchId === scopeBranchId),
     [allSales, scopeBranchId, allBranchesSelected],
   );
+  // A shift's own branch is where someone physically worked that day —
+  // scoping by it (not home branch) correctly includes a covering day when
+  // viewing the branch they covered.
+  const shifts = useMemo(
+    () =>
+      allBranchesSelected
+        ? allShifts
+        : allShifts.filter((sh) => sh.branchId === scopeBranchId),
+    [allShifts, scopeBranchId, allBranchesSelected],
+  );
+  // The roster is a home-branch assignment, not an event with its own
+  // branch — scope it by home branch so a cover shift elsewhere doesn't
+  // move someone's recurring schedule off this list.
+  const staffForRoster = useMemo(
+    () =>
+      allBranchesSelected
+        ? allStaff
+        : allStaff.filter((s) => s.homeBranchId === scopeBranchId),
+    [allStaff, scopeBranchId, allBranchesSelected],
+  );
   const now = useNow();
 
   const inRange = (iso: string) => {
@@ -162,6 +190,11 @@ export default function OwnerReportsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [bookings, from, to],
   );
+  const rangedShifts = useMemo(
+    () => shifts.filter((sh) => inRange(sh.date)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shifts, from, to],
+  );
 
   const reports = useMemo(() => {
     const map: Record<Exclude<TabId, "overview">, BuiltReport> = {
@@ -173,6 +206,8 @@ export default function OwnerReportsPage() {
       commission: buildCommissionReport(sales),
       queue: buildQueueReport(rangedQueue),
       bookings: buildBookingReport(rangedBookings),
+      shifts: buildShiftReport(rangedShifts, allStaff, branches),
+      roster: buildRosterReport(staffForRoster, roster, leaves),
     };
     return map;
   }, [
@@ -183,6 +218,12 @@ export default function OwnerReportsPage() {
     products,
     rangedQueue,
     rangedBookings,
+    rangedShifts,
+    allStaff,
+    branches,
+    staffForRoster,
+    roster,
+    leaves,
     branchName,
   ]);
 

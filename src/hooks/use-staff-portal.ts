@@ -32,6 +32,7 @@ export function useStaffPortal() {
       staffList.find((s) => s.id === staffId) ?? {
         id: staffId,
         branchId: session.branchId ?? "",
+        homeBranchId: session.branchId ?? "",
         name: session.name,
         role: "barber",
         phone: "",

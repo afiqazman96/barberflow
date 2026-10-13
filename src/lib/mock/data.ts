@@ -131,6 +131,7 @@ export const STAFF: StaffMember[] = [
   {
     id: "s0",
     branchId: "b1",
+    homeBranchId: "b1",
     name: "Rizal Rahman",
     role: "owner",
     phone: "+60 12-300 1001",
@@ -151,6 +152,7 @@ export const STAFF: StaffMember[] = [
   {
     id: "c1",
     branchId: "b1",
+    homeBranchId: "b1",
     name: "Siti Nurhaliza",
     role: "cashier",
     phone: "+60 12-300 2002",
@@ -171,6 +173,7 @@ export const STAFF: StaffMember[] = [
   {
     id: "s1",
     branchId: "b1",
+    homeBranchId: "b1",
     name: "Adam Iskandar",
     role: "barber",
     phone: "+60 12-111 2233",
@@ -191,6 +194,7 @@ export const STAFF: StaffMember[] = [
   {
     id: "s2",
     branchId: "b1",
+    homeBranchId: "b1",
     name: "Hafiz Rahman",
     role: "barber",
     phone: "+60 12-444 5566",
@@ -211,6 +215,7 @@ export const STAFF: StaffMember[] = [
   {
     id: "s3",
     branchId: "b1",
+    homeBranchId: "b1",
     name: "Amir Zulkifli",
     role: "barber",
     phone: "+60 12-777 8899",

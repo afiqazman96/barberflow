@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
+import { Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { HeroStatCard } from "@/components/domain/hero-stat-card";
 import { StatTile } from "@/components/domain/stat-tile";
@@ -58,11 +59,15 @@ export default function StaffDashboardPage() {
   const endShift = useAppStore((s) => s.endShift);
   const roster = useAppStore((s) => s.roster);
   const leaves = useAppStore((s) => s.leaves);
+  const branches = useAppStore((s) => s.branches);
   const now = useNow();
 
   const [chairModalOpen, setChairModalOpen] = useState(false);
   const [selectedChairId, setSelectedChairId] = useState<string | null>(
     chair?.id ?? staff?.chairId ?? null,
+  );
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(
+    staff?.homeBranchId ?? staff?.branchId ?? "",
   );
 
   const targetPct = staff?.monthlyTarget
@@ -82,7 +87,7 @@ export default function StaffDashboardPage() {
 
   const availableChairs = chairs.filter(
     (c) =>
-      c.branchId === staff?.branchId &&
+      c.branchId === selectedBranchId &&
       (c.staffId === null || c.staffId === staffId),
   );
 
@@ -94,6 +99,8 @@ export default function StaffDashboardPage() {
         description: "Your owner will see this as an unscheduled shift",
       });
     }
+    setSelectedBranchId(staff?.homeBranchId ?? staff?.branchId ?? "");
+    setSelectedChairId(null);
     setChairModalOpen(true);
   }
 
@@ -103,14 +110,18 @@ export default function StaffDashboardPage() {
       return;
     }
     const picked = chairs.find((c) => c.id === selectedChairId);
-    const res = startShift(staffId, { chairId: selectedChairId });
+    const covering = selectedBranchId !== (staff?.homeBranchId ?? staff?.branchId);
+    const res = startShift(staffId, { chairId: selectedChairId, branchId: selectedBranchId });
     if (!res.ok) {
       toast.error("Couldn't start your shift", { description: res.error });
       return;
     }
     setChairModalOpen(false);
+    const branchName = branches.find((b) => b.id === selectedBranchId)?.name;
     toast.success("Shift started", {
-      description: `You're available at ${picked?.label ?? "your chair"}`,
+      description: covering
+        ? `Covering at ${branchName ?? "another branch"} · ${picked?.label ?? "your chair"}`
+        : `You're available at ${picked?.label ?? "your chair"}`,
     });
   }
 
@@ -373,6 +384,25 @@ export default function StaffDashboardPage() {
         title="Pick your chair"
         description="Select a station for this shift"
       >
+        {branches.length > 1 && (
+          <div className="mb-4">
+            <Label>Working at</Label>
+            <Select
+              value={selectedBranchId}
+              onChange={(e) => {
+                setSelectedBranchId(e.target.value);
+                setSelectedChairId(null);
+              }}
+            >
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                  {b.id === (staff?.homeBranchId ?? staff?.branchId) ? " (home)" : ""}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         <div className="space-y-2">
           {availableChairs.map((c) => (
             <button

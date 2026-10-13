@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { appStatusFor } from "@/lib/staff/status";
 import type { Branch, BusinessProfile, Chair, StaffMember } from "@/lib/types";
 
+import { effectiveBranchIdsFor } from "./effective-branch";
 import { dateColumn } from "./queries";
 
 /**
@@ -42,15 +43,25 @@ export async function teamFor(
     withContacts: boolean;
   },
 ): Promise<StaffMember[]> {
+  // A branch's team is anyone whose home branch is here, OR who is
+  // currently covering here via an open shift — resolved in JS below since
+  // "exclude someone whose home branch matches but who's covering
+  // elsewhere today" isn't a filter Prisma can express in one query.
+  const branchFilter = opts.branchIds
+    ? {
+        OR: [
+          { branchId: { in: opts.branchIds } },
+          { shifts: { some: { endedAt: null, branchId: { in: opts.branchIds } } } },
+          ...(opts.barbersOnly ? [] : [{ role: "OWNER" as const }]),
+        ],
+      }
+    : {};
+
   const rows = await prisma.staff.findMany({
     where: {
       tenantId,
       ...(opts.barbersOnly ? { role: "BARBER" as const, active: true } : {}),
-      ...(opts.branchIds
-        ? opts.barbersOnly
-          ? { branchId: { in: opts.branchIds } }
-          : { OR: [{ branchId: { in: opts.branchIds } }, { role: "OWNER" as const }] }
-        : {}),
+      ...branchFilter,
       ...(opts.withContacts ? {} : { active: true }),
     },
     orderBy: [{ createdAt: "asc" }, { name: "asc" }],
@@ -72,25 +83,36 @@ export async function teamFor(
     },
   });
 
-  return rows.map((r) => ({
-    id: r.id,
-    branchId: r.branchId ?? "",
-    name: r.name,
-    role: ROLE[r.role],
-    phone: opts.withContacts ? (r.phone ?? "") : "",
-    email: opts.withContacts ? r.email : "",
-    // Never sent; the field is a leftover of the prototype's demo logins.
-    password: "",
-    active: r.active,
-    mustChangePassword: opts.withContacts ? r.mustChangePassword : undefined,
-    avatar: r.avatarUrl ?? undefined,
-    status: appStatusFor(r.status),
-    chairId: r.chairId,
-    specialty: r.specialty ?? "",
-    monthlyTarget: r.monthlyTarget === null ? 0 : Number(r.monthlyTarget),
-    rating: r.rating === null ? 0 : Number(r.rating),
-    ...NO_FIGURES,
-  }));
+  const effective = await effectiveBranchIdsFor(rows);
+
+  return rows
+    .filter((r) => {
+      if (!opts.branchIds || r.role === "OWNER") return true;
+      const eff = effective.get(r.id) ?? null;
+      // Drop a "covering-out" row: home branch matched the filter above,
+      // but their open shift says they're actually somewhere else.
+      return eff !== null && opts.branchIds.includes(eff);
+    })
+    .map((r) => ({
+      id: r.id,
+      branchId: effective.get(r.id) ?? r.branchId ?? "",
+      homeBranchId: r.branchId ?? "",
+      name: r.name,
+      role: ROLE[r.role],
+      phone: opts.withContacts ? (r.phone ?? "") : "",
+      email: opts.withContacts ? r.email : "",
+      // Never sent; the field is a leftover of the prototype's demo logins.
+      password: "",
+      active: r.active,
+      mustChangePassword: opts.withContacts ? r.mustChangePassword : undefined,
+      avatar: r.avatarUrl ?? undefined,
+      status: appStatusFor(r.status),
+      chairId: r.chairId,
+      specialty: r.specialty ?? "",
+      monthlyTarget: r.monthlyTarget === null ? 0 : Number(r.monthlyTarget),
+      rating: r.rating === null ? 0 : Number(r.rating),
+      ...NO_FIGURES,
+    }));
 }
 
 /**

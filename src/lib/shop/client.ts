@@ -64,12 +64,12 @@ function persist(title: string, write: () => Promise<ActionResult>): void {
 
 export function pushClockIn(
   staffId: string,
-  opts: { self: boolean; chairId?: string | null; note?: string },
+  opts: { self: boolean; chairId?: string | null; note?: string; branchId?: string },
 ): void {
   persist("Couldn't start the shift", () =>
     opts.self
-      ? clockIn(opts.chairId)
-      : ownerClockIn(staffId, { chairId: opts.chairId, note: opts.note }),
+      ? clockIn(opts.chairId, opts.branchId)
+      : ownerClockIn(staffId, { chairId: opts.chairId, note: opts.note, branchId: opts.branchId }),
   );
 }
 

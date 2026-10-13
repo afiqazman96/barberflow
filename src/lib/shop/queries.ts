@@ -23,11 +23,12 @@ import type {
 } from "@/lib/types";
 
 import type { ShopSnapshot } from "./dto";
+import { effectiveBranchIdFor } from "./effective-branch";
 import { closeStaleShifts } from "./housekeeping";
 import { branchesFor, businessProfileFor, chairsAt, teamFor } from "./team";
 
 /** How far back staff screens see shifts and leave (attendance, history). */
-const HISTORY_DAYS = 62;
+const HISTORY_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -272,14 +273,15 @@ async function staffChairsAt(branchIds: string[]) {
 export async function staffShopSnapshot(): Promise<ShopSnapshot> {
   const { staff } = await requireShopSession();
 
-  const branchIds = staff.branchId
-    ? [staff.branchId]
-    : (
-        await prisma.branch.findMany({
-          where: { tenantId: staff.tenantId },
-          select: { id: true },
-        })
-      ).map((b) => b.id);
+  const allBranchIds = (
+    await prisma.branch.findMany({
+      where: { tenantId: staff.tenantId },
+      select: { id: true },
+    })
+  ).map((b) => b.id);
+
+  const effectiveBranchId = await effectiveBranchIdFor(staff);
+  const branchIds = effectiveBranchId ? [effectiveBranchId] : allBranchIds;
 
   const timeZone = await timezoneForTenant(staff.tenantId);
   await closeStaleShifts(staff.tenantId, timeZone);
@@ -295,7 +297,10 @@ export async function staffShopSnapshot(): Promise<ShopSnapshot> {
       withContacts: isOwner,
     }),
     branchesFor(staff.tenantId, shopToday(timeZone)),
-    chairsAt(branchIds),
+    // Every branch's chairs, not just today's — the clock-in branch picker
+    // lets a barber or cashier choose any branch to cover, and needs that
+    // branch's chairs available before they've actually clocked in there.
+    chairsAt(allBranchIds),
     businessProfileFor(staff.tenantId),
   ]);
   const [

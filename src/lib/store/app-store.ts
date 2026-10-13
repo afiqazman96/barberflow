@@ -156,7 +156,7 @@ interface AppState {
   /** Clock a barber or cashier in. The only way from off-duty to on-duty. */
   startShift: (
     staffId: string,
-    opts?: { chairId?: string | null; by?: "self" | "owner"; note?: string },
+    opts?: { chairId?: string | null; by?: "self" | "owner"; note?: string; branchId?: string },
   ) => { ok: boolean; error?: string };
   /** Clock out and free their chair. Refuses mid-service or with the till open. */
   endShift: (
@@ -171,7 +171,7 @@ interface AppState {
     password: string,
     opts?: { mustChangePassword?: boolean },
   ) => void;
-  addStaff: (staff: Omit<StaffMember, "id" | "todaySales" | "todayCommission" | "todayCustomers" | "monthlySales" | "monthlyCommission" | "rating"> & Partial<StaffMember>) => StaffMember;
+  addStaff: (staff: Omit<StaffMember, "id" | "homeBranchId" | "todaySales" | "todayCommission" | "todayCustomers" | "monthlySales" | "monthlyCommission" | "rating"> & Partial<StaffMember>) => StaffMember;
   updateStaff: (id: string, patch: Partial<StaffMember>) => void;
   addBranch: (branch: Omit<Branch, "id" | "tenantId" | "queueCount" | "avgWaitMins"> & Partial<Branch>) => Branch;
   updateBranch: (id: string, patch: Partial<Branch>) => void;
@@ -383,7 +383,9 @@ function closeShiftPatch(
         : q,
     ),
     staff: s.staff.map((m) =>
-      m.id === staffId ? { ...m, status: "off-duty" as const, chairId: null } : m,
+      m.id === staffId
+        ? { ...m, status: "off-duty" as const, chairId: null, branchId: m.homeBranchId }
+        : m,
     ),
     staffStatuses: { ...s.staffStatuses, [staffId]: "off-duty" as const },
   };
@@ -542,11 +544,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { ok: true };
     }
 
+    const branchId = opts?.branchId ?? m.homeBranchId ?? m.branchId;
     const chairId = m.role === "barber" ? (opts?.chairId ?? m.chairId ?? null) : null;
     if (chairId) {
       const chair = s.chairs.find((c) => c.id === chairId);
-      if (!chair || chair.branchId !== m.branchId) {
-        return { ok: false, error: "Pick a chair at your own branch" };
+      if (!chair || chair.branchId !== branchId) {
+        return { ok: false, error: "Pick a chair at that branch" };
       }
       if (chair.staffId && chair.staffId !== staffId) {
         return { ok: false, error: `${chair.label} is already taken` };
@@ -556,7 +559,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const record: ShiftRecord = {
       id: `sh-${Date.now()}`,
       staffId,
-      branchId: m.branchId,
+      branchId,
       date: localIso(now),
       startedAt: now.toISOString(),
       chairId,
@@ -567,7 +570,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       shifts: [record, ...st.shifts],
       staffStatuses: { ...st.staffStatuses, [staffId]: "available" },
       staff: st.staff.map((x) =>
-        x.id === staffId ? { ...x, status: "available" as const } : x,
+        x.id === staffId ? { ...x, status: "available" as const, branchId } : x,
       ),
     }));
     if (chairId) get().assignChair(chairId, staffId);
@@ -575,6 +578,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       self: get().session?.staffId === staffId,
       chairId,
       note: opts?.note,
+      branchId: opts?.branchId,
     });
     return { ok: true };
   },
@@ -645,6 +649,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const member: StaffMember = {
       id: input.id ?? `s-${Date.now()}`,
       branchId: input.branchId,
+      homeBranchId: input.homeBranchId ?? input.branchId,
       name: input.name,
       role: input.role,
       phone: input.phone,

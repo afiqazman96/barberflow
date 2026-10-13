@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import type { QueueTicket, StaffStatus } from "@/lib/types";
 import { appStatusFor } from "@/lib/staff/status";
 import { maskName } from "@/lib/utils";
+import { effectiveBranchIdFor } from "@/lib/shop/effective-branch";
 
 import { readOwnBookingId } from "@/lib/bookings/cookie";
 
@@ -143,8 +144,9 @@ async function branchStaffStatuses(
 export async function staffQueueSnapshot(): Promise<QueueSnapshot> {
   const { staff } = await requireShopSession();
 
-  const branchIds = staff.branchId
-    ? [staff.branchId]
+  const effectiveBranchId = await effectiveBranchIdFor(staff);
+  const branchIds = effectiveBranchId
+    ? [effectiveBranchId]
     : (
         await prisma.branch.findMany({
           where: { tenantId: staff.tenantId },

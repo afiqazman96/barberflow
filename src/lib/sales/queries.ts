@@ -6,6 +6,7 @@ import { timezoneForTenant } from "@/lib/bookings/queries";
 import { instantToShopIso } from "@/lib/bookings/time";
 import { prisma } from "@/lib/prisma";
 import type { PaymentMethod, Sale } from "@/lib/types";
+import { effectiveBranchIdFor } from "@/lib/shop/effective-branch";
 
 import { drawersAt } from "./drawer";
 import type { SalesSnapshot } from "./dto";
@@ -135,8 +136,9 @@ export function toSaleDto(row: SaleRow, timeZone: string): Sale {
 export async function staffSalesSnapshot(): Promise<SalesSnapshot> {
   const { staff } = await requireShopSession();
 
-  const branchIds = staff.branchId
-    ? [staff.branchId]
+  const effectiveBranchId = await effectiveBranchIdFor(staff);
+  const branchIds = effectiveBranchId
+    ? [effectiveBranchId]
     : (
         await prisma.branch.findMany({
           where: { tenantId: staff.tenantId },

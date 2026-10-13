@@ -26,7 +26,7 @@ import Link from "next/link";
 import { StaffCard } from "@/components/domain/staff-card";
 import { StatTile } from "@/components/domain/stat-tile";
 import { useNow } from "@/hooks/use-now";
-import { attendanceFor } from "@/lib/roster";
+import { attendanceFor, openShiftOf } from "@/lib/roster";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge, StatusBadge } from "@/components/ui/badge";
@@ -142,6 +142,9 @@ function toMember(
   return {
     ...live,
     id: entry.id,
+    // Always from the server-fresh directory, never the live store — so this
+    // can't be clobbered by wherever the person happens to be covering today.
+    homeBranchId: entry.branchId ?? fallbackBranchId,
     name: entry.name,
     email: entry.email,
     phone: entry.phone ?? "",
@@ -394,7 +397,7 @@ export function OwnerStaffScreen({
   }
 
   async function handleTransferBranch(newBranchId: string) {
-    if (!selected || newBranchId === selected.branchId) return;
+    if (!selected || newBranchId === selected.homeBranchId) return;
     const member = selected;
 
     const result = await runAction(
@@ -410,7 +413,15 @@ export function OwnerStaffScreen({
     if (member.chairId) {
       assignChair(member.chairId, null);
     }
-    updateStaff(member.id, { branchId: newBranchId, chairId: null });
+    // Only also move today's effective branch when no shift is open — a
+    // permanent home-branch transfer shouldn't yank out an in-progress cover
+    // shift elsewhere.
+    const covering = openShiftOf(shifts, member.id);
+    updateStaff(member.id, {
+      homeBranchId: newBranchId,
+      chairId: null,
+      ...(covering ? {} : { branchId: newBranchId }),
+    });
     const branchName = branches.find((b) => b.id === newBranchId)?.name;
     toast.success("Staff transferred", {
       description: `${member.name} → ${branchName ?? "branch"}`,
@@ -682,7 +693,7 @@ export function OwnerStaffScreen({
                   )?.customerName;
                   const chairId = member.chairId;
                   const branchChairs = chairs.filter(
-                    (c) => c.branchId === member.branchId,
+                    (c) => c.branchId === member.homeBranchId,
                   );
                   const chair = chairs.find((c) => c.id === chairId);
                   const targetPct =
@@ -1202,7 +1213,7 @@ export function OwnerStaffScreen({
                 assignment is cleared.
               </p>
               <Select
-                value={selected.branchId}
+                value={selected.homeBranchId}
                 onChange={(e) => handleTransferBranch(e.target.value)}
                 className="mt-2"
               >

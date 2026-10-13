@@ -1,12 +1,17 @@
 import type {
   Booking,
+  Branch,
   Customer,
+  LeaveEntry,
   Product,
   QueueTicket,
+  RosterDay,
   Sale,
   Service,
+  ShiftRecord,
   StaffMember,
 } from "@/lib/types";
+import { DAY_NAMES, formatDuration, formatHhmm, shiftMins } from "@/lib/roster";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import type { BuiltReport } from "@/lib/reports/export";
 
@@ -398,6 +403,104 @@ export function buildBookingReport(bookings: Booking[]): BuiltReport {
       { label: "Confirmed", value: String(confirmed) },
       { label: "Completed", value: String(completed) },
       { label: "No-show", value: String(noShow) },
+    ],
+  };
+}
+
+export function buildShiftReport(
+  shifts: ShiftRecord[],
+  staff: StaffMember[],
+  branches: Branch[],
+): BuiltReport {
+  const staffById = new Map(staff.map((s) => [s.id, s]));
+  const branchById = new Map(branches.map((b) => [b.id, b]));
+  const now = new Date();
+
+  const rows = shifts.map((sh) => ({
+    staffName: staffById.get(sh.staffId)?.name ?? "Unknown",
+    branch: branchById.get(sh.branchId)?.name ?? sh.branchId,
+    date: sh.date,
+    startedAt: formatDateTime(sh.startedAt),
+    endedAt: sh.endedAt ? formatDateTime(sh.endedAt) : "Still clocked in",
+    duration: formatDuration(shiftMins(sh, now)),
+    startedBy: sh.startedBy,
+    endedBy: sh.endedBy ?? "",
+    note: sh.note ?? "",
+  }));
+
+  const closed = shifts.filter((s) => s.endedAt);
+  const totalMins = shifts.reduce((sum, s) => sum + shiftMins(s, now), 0);
+
+  return {
+    id: "shifts",
+    title: "Shift & Attendance Report",
+    description: "Clock-in / clock-out history across the shop",
+    filename: `shifts-${stamp()}`,
+    columns: [
+      { key: "staffName", header: "Staff" },
+      { key: "branch", header: "Branch" },
+      { key: "date", header: "Date" },
+      { key: "startedAt", header: "Clocked In" },
+      { key: "endedAt", header: "Clocked Out" },
+      { key: "duration", header: "Duration", align: "right" },
+      { key: "startedBy", header: "Started By" },
+      { key: "endedBy", header: "Ended By" },
+      { key: "note", header: "Note" },
+    ],
+    rows,
+    summary: [
+      { label: "Shifts", value: String(shifts.length) },
+      { label: "Total hours", value: formatDuration(totalMins) },
+      {
+        label: "Avg shift length",
+        value: formatDuration(Math.round(totalMins / Math.max(shifts.length, 1))),
+      },
+      { label: "Still clocked in", value: String(shifts.length - closed.length) },
+    ],
+  };
+}
+
+export function buildRosterReport(
+  staff: StaffMember[],
+  roster: Record<string, RosterDay[]>,
+  leaves: LeaveEntry[],
+): BuiltReport {
+  const rows: Record<string, string>[] = [];
+
+  for (const member of staff) {
+    if (member.role === "owner") continue;
+    const week = roster[member.id];
+    if (!week) continue;
+    week.forEach((day, i) => {
+      rows.push({
+        staffName: member.name,
+        weekday: DAY_NAMES[i],
+        restDay: day.off ? "Yes" : "No",
+        start: day.off ? "" : formatHhmm(day.start),
+        end: day.off ? "" : formatHhmm(day.end),
+      });
+    });
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const upcomingLeave = leaves.filter((l) => l.date >= today);
+
+  return {
+    id: "roster",
+    title: "Weekly Roster Report",
+    description: "Recurring weekly schedule by staff member",
+    filename: `roster-${stamp()}`,
+    columns: [
+      { key: "staffName", header: "Staff" },
+      { key: "weekday", header: "Day" },
+      { key: "restDay", header: "Rest Day" },
+      { key: "start", header: "Start" },
+      { key: "end", header: "End" },
+    ],
+    rows,
+    summary: [
+      { label: "Staff rostered", value: String(Object.keys(roster).length) },
+      { label: "Upcoming leave days", value: String(upcomingLeave.length) },
     ],
   };
 }

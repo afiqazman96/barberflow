@@ -5,6 +5,7 @@ import type { BookingStatus as PrismaBookingStatus } from "@/generated/prisma/en
 import { requireShopSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import type { Booking } from "@/lib/types";
+import { effectiveBranchIdFor } from "@/lib/shop/effective-branch";
 
 import { readOwnBookingId } from "./cookie";
 import type { BookingsSnapshot } from "./dto";
@@ -105,8 +106,9 @@ function toSlotDto(row: BookingRow, timeZone: string, index: number): Booking {
 export async function staffBookingsSnapshot(): Promise<BookingsSnapshot> {
   const { staff } = await requireShopSession();
 
-  const branchIds = staff.branchId
-    ? [staff.branchId]
+  const effectiveBranchId = await effectiveBranchIdFor(staff);
+  const branchIds = effectiveBranchId
+    ? [effectiveBranchId]
     : (
         await prisma.branch.findMany({
           where: { tenantId: staff.tenantId },

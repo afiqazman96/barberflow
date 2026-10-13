@@ -55,11 +55,20 @@ function isSerializationFailure(error: unknown): boolean {
  */
 async function startShiftFor(
   target: ShiftTarget,
-  opts: { chairId?: string | null; by: ShiftActor; note?: string },
+  opts: { chairId?: string | null; by: ShiftActor; note?: string; branchId?: string },
 ): Promise<ActionResult> {
   if (!target.active) return { ok: false, error: "This account is disabled" };
   if (target.role === "OWNER") return { ok: false, error: "Owners do not clock in" };
-  const branchId = target.branchId;
+
+  let branchId = target.branchId;
+  if (opts.branchId) {
+    const branch = await prisma.branch.findFirst({
+      where: { id: opts.branchId, tenantId: target.tenantId, archived: false },
+      select: { id: true },
+    });
+    if (!branch) return { ok: false, error: "Pick a real branch" };
+    branchId = branch.id;
+  }
   if (!branchId) return { ok: false, error: "Assign a branch first" };
 
   let chairId: string | null = null;
@@ -180,9 +189,12 @@ async function endShiftFor(
 }
 
 /** The signed-in barber or cashier starts their own shift. */
-export async function clockIn(chairId?: string | null): Promise<ActionResult> {
+export async function clockIn(
+  chairId?: string | null,
+  branchId?: string,
+): Promise<ActionResult> {
   const { staff } = await requireShopSession();
-  return startShiftFor(staff, { chairId, by: "SELF" });
+  return startShiftFor(staff, { chairId, by: "SELF", branchId });
 }
 
 /** The signed-in barber or cashier ends their own shift. */
@@ -195,7 +207,7 @@ export async function clockOut(): Promise<ActionResult> {
 /** The owner clocks someone in for them (forgot, phone flat, ...). */
 export async function ownerClockIn(
   staffId: string,
-  opts: { chairId?: string | null; note?: string },
+  opts: { chairId?: string | null; note?: string; branchId?: string },
 ): Promise<ActionResult> {
   const { staff: owner } = await requireRole("OWNER");
   const target = await findTarget(staffId, owner.tenantId);

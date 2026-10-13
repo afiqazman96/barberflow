@@ -100,7 +100,7 @@ export default function OwnerRosterPage() {
   const team = useMemo(
     () =>
       allStaff.filter(
-        (s) => s.role !== "owner" && s.active && s.branchId === branchId,
+        (s) => s.role !== "owner" && s.active && s.homeBranchId === branchId,
       ),
     [allStaff, branchId],
   );
@@ -616,7 +616,7 @@ export default function OwnerRosterPage() {
                   {chairs
                     .filter(
                       (c) =>
-                        c.branchId === override.staff.branchId &&
+                        c.branchId === override.staff.homeBranchId &&
                         (!c.staffId || c.staffId === override.staff.id),
                     )
                     .map((c) => (

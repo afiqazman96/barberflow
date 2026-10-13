@@ -143,7 +143,10 @@ export interface Chair {
 
 export interface StaffMember {
   id: string;
+  /** Wherever this person is working today (open shift's branch, or home). */
   branchId: string;
+  /** The static, admin-assigned branch — unaffected by a day's cover shift. */
+  homeBranchId: string;
   name: string;
   role: "owner" | "cashier" | "barber";
   phone: string;

@@ -152,7 +152,75 @@ Seeded logins, if you ran it — password `demo1234` for all:
 
 ---
 
-## 4. Verify the deployment
+## 4. Set up transactional email (Resend)
+
+The app sends three kinds of email — a new tenant owner's login, a new staff
+member's login, and customer receipts — all through Resend
+(`src/lib/email/resend.ts`). Without it configured, a send fails gracefully
+(`notConfigured`) rather than breaking checkout; set `EMAIL_DRY_RUN=1` to log
+to the server console instead of sending, useful for local dev without a key.
+
+1. **Pick a sending domain.** Use a subdomain dedicated to mail (e.g.
+   `hello.yourdomain.com`), not your root domain — it keeps deliverability
+   isolated from anything else the root domain does (the website's own SPF/MX,
+   Google Workspace, etc.) and avoids DNS record conflicts.
+
+2. **Add the domain in Resend** (resend.com/domains → Add Domain). Resend
+   gives you 2–3 DNS records to add — typically two `CNAME`s (for sending and
+   the return path) and a `TXT` (DKIM), all scoped to the subdomain, e.g. for
+   `hello.yourdomain.com`:
+
+   | Name | Type | Value |
+   |---|---|---|
+   | `send.hello` | CNAME | `send.forge.rmta.net.` |
+   | `rsend.hello` | CNAME | `rsend-<region>.forge.rmta.net.` |
+   | `resend._domainkey.hello` | TXT | the DKIM public key Resend shows |
+
+   Exact values differ per domain — always use what Resend's dashboard shows,
+   not the example above.
+
+3. **Add those records where the domain's DNS is managed** (in Vercel:
+   project or team → Domains → the domain → DNS Records), matching
+   type/name/value exactly.
+
+4. Back in Resend, wait for the domain to show **Verified** — DNS propagation
+   is usually minutes, occasionally longer. Until it's verified, Resend only
+   delivers to the account's own email (sandbox mode); every other recipient
+   gets a `403`.
+
+5. **Create an API key** (Resend → API Keys → Create → "Sending access" is
+   enough).
+
+6. **Set environment variables**, locally and in Vercel (Project Settings →
+   Environment Variables — mark `RESEND_API_KEY` **Sensitive**):
+
+   ```
+   RESEND_API_KEY     # starts with re_
+   EMAIL_FROM         # e.g. "BarberFlow <hello@hello.yourdomain.com>"
+   ```
+
+   `EMAIL_FROM`'s address must be `@` the verified domain — any local part
+   works once the domain itself is verified, not just one specific address.
+
+7. **Redeploy.** An environment variable change doesn't apply to a
+   deployment that's already running.
+
+Verify it actually sends before trusting it in production — Resend's own
+`delivered@resend.dev` address always accepts and never lands in a real
+inbox, so it's safe to test against directly:
+
+```bash
+curl -s https://api.resend.com/emails \
+  -H "Authorization: Bearer $RESEND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"from":"'"$EMAIL_FROM"'","to":["delivered@resend.dev"],"subject":"test","html":"<p>test</p>","text":"test"}'
+```
+
+A `200` with a message `id` means the domain is verified and the key works.
+
+---
+
+## 5. Verify the deployment
 
 **Row-level security.** This is the check worth doing carefully. The
 publishable key ships inside the browser bundle, so if Supabase's REST API can
@@ -180,7 +248,7 @@ barber) — you should be redirected to your own dashboard, not shown the page.
 
 ---
 
-## 5. Troubleshooting
+## 6. Troubleshooting
 
 | Symptom | Cause |
 |---|---|
@@ -191,13 +259,16 @@ barber) — you should be redirected to your own dashboard, not shown the page.
 | `This endpoint requires a valid Bearer token` from `db:seed` | `SUPABASE_SERVICE_ROLE_KEY` holds a publishable key, not a secret one (§1). |
 | Migrations hang or fail on DDL | `DIRECT_URL` is pointed at port 6543. Transaction mode can't run DDL or hold advisory locks. |
 | Connection limit exhausted in production | `DATABASE_URL` is pointed at port 5432 instead of the transaction pooler. |
+| `The <domain> domain is not verified` (`403` from Resend) | DNS records can be correctly live and this still fires — Resend only picks up a new domain on its own schedule or when you re-check it from the dashboard. Confirm the records resolve (e.g. `nslookup -type=TXT resend._domainkey.<subdomain>`), then recheck the domain's status in Resend rather than assuming the records are wrong. |
 
 ---
 
-## 6. Before real customers
+## 7. Before real customers
 
 - Rotate every `demo1234` password, or don't seed the demo tenant at all.
-- Never commit `.env` — it is git-ignored, keep it that way.
+- Never commit `.env` — it is git-ignored, keep it that way. That includes
+  `RESEND_API_KEY`: mark it Sensitive in Vercel, and if it's ever pasted
+  somewhere public, rotate it from the Resend dashboard immediately.
 - `SUPABASE_SERVICE_ROLE_KEY` bypasses all authorization. Only
   `src/lib/supabase/admin.ts` may read it, and only from server code.
 - Adding a table? RLS is **not** inherited. See the Database section in

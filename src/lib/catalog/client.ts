@@ -7,6 +7,8 @@ import type { Customer, MembershipPlan, Product, Service } from "@/lib/types";
 import {
   adjustProductStock,
   createCustomer,
+  deleteCustomer,
+  mergeCustomers,
   removeMembershipPlan,
   removeProduct,
   removeService,
@@ -110,6 +112,27 @@ export async function saveCustomerPatch(id: string, patch: Partial<Customer>): P
       ...("notes" in patch ? { notes: notes ?? "" } : {}),
       ...("preferredStaffId" in patch ? { preferredStaffId: preferredStaffId ?? "" } : {}),
     });
+  } catch {
+    return { ok: false, error: "Check your connection and try again" };
+  }
+}
+
+/** Only ever succeeds for a customer with no sales, bookings or queue history. */
+export async function removeCustomer(id: string): Promise<ActionResult> {
+  try {
+    return await deleteCustomer(id);
+  } catch {
+    return { ok: false, error: "Check your connection and try again" };
+  }
+}
+
+/** Folds `loserId`'s history into `winnerId` and removes the duplicate row. */
+export async function mergeCustomerRecords(
+  winnerId: string,
+  loserId: string,
+): Promise<ActionResult> {
+  try {
+    return await mergeCustomers(winnerId, loserId);
   } catch {
     return { ok: false, error: "Check your connection and try again" };
   }

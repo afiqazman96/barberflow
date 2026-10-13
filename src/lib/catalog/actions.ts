@@ -416,6 +416,107 @@ export async function updateCustomer(
 }
 
 /**
+ * Delete a customer with no history. `Booking`/`QueueTicket` both require a
+ * customer with no `onDelete` clause, so Postgres refuses outright if either
+ * exists; `Sale.customerId` is optional and would just go null, silently
+ * stripping their lifetime spend from the CRM. Checked explicitly instead of
+ * letting either of those happen — anyone with real history should be
+ * merged into another record, never deleted.
+ */
+export async function deleteCustomer(customerId: string): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+
+  const customer = await prisma.customer.findFirst({
+    where: { id: customerId, tenantId: owner.tenantId },
+    select: {
+      _count: { select: { sales: true, bookings: true, queueTickets: true } },
+    },
+  });
+  if (!customer) return { ok: false, error: "Customer not found" };
+  const { sales, bookings, queueTickets } = customer._count;
+  if (sales > 0 || bookings > 0 || queueTickets > 0) {
+    return {
+      ok: false,
+      error: "This customer has sales or visit history — merge them into another customer instead",
+    };
+  }
+
+  const deleted = await prisma.customer.deleteMany({
+    where: { id: customerId, tenantId: owner.tenantId },
+  });
+  if (deleted.count === 0) return { ok: false, error: "Customer not found" };
+  return { ok: true };
+}
+
+/**
+ * Merge a duplicate into the record being kept: every sale, booking and
+ * queue ticket moves from the loser to the winner, then the loser is
+ * deleted. The winner's own name, membership and preferred barber are left
+ * exactly as they are — this only ever adds history, never overwrites a
+ * choice the owner already made on the kept record — except a phone or
+ * email the winner is missing, filled in from the loser so the merged
+ * record stays reachable, and notes, which are combined.
+ */
+export async function mergeCustomers(
+  winnerId: string,
+  loserId: string,
+): Promise<ActionResult> {
+  const { staff: owner } = await requireRole("OWNER");
+  if (winnerId === loserId) {
+    return { ok: false, error: "Pick two different customers" };
+  }
+
+  const [winner, loser] = await Promise.all([
+    prisma.customer.findFirst({
+      where: { id: winnerId, tenantId: owner.tenantId },
+      select: { phone: true, email: true, notes: true, lastVisitAt: true },
+    }),
+    prisma.customer.findFirst({
+      where: { id: loserId, tenantId: owner.tenantId },
+      select: { phone: true, email: true, notes: true, lastVisitAt: true },
+    }),
+  ]);
+  if (!winner || !loser) return { ok: false, error: "Customer not found" };
+
+  const notes = [winner.notes, loser.notes].filter(Boolean).join("\n");
+  const lastVisitAt =
+    !winner.lastVisitAt || (loser.lastVisitAt && loser.lastVisitAt > winner.lastVisitAt)
+      ? loser.lastVisitAt
+      : winner.lastVisitAt;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.sale.updateMany({
+      where: { customerId: loserId, tenantId: owner.tenantId },
+      data: { customerId: winnerId },
+    });
+    await tx.booking.updateMany({
+      where: { customerId: loserId, tenantId: owner.tenantId },
+      data: { customerId: winnerId },
+    });
+    await tx.queueTicket.updateMany({
+      where: { customerId: loserId, tenantId: owner.tenantId },
+      data: { customerId: winnerId },
+    });
+
+    // The loser's own phone/email must be gone before the winner can borrow
+    // either — both columns are unique per tenant, and the two rows would
+    // collide for as long as they both held the same value.
+    await tx.customer.deleteMany({ where: { id: loserId, tenantId: owner.tenantId } });
+    await tx.customer.updateMany({
+      where: { id: winnerId, tenantId: owner.tenantId },
+      data: {
+        phone: winner.phone ?? loser.phone,
+        email: winner.email ?? loser.email,
+        notes: notes || null,
+        lastVisitAt,
+      },
+    });
+  });
+
+  return { ok: true };
+}
+
+/**
  * A customer, from their own phone, asks to be signed up for a plan. There is
  * no payment capture anywhere in this app — this does not activate the tier
  * itself (only `updateCustomer`, staff-only, does that, normally from a POS

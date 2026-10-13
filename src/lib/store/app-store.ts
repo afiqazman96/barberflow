@@ -52,6 +52,7 @@ import type { ShopSnapshot } from "@/lib/shop/dto";
 import {
   pushMembershipPlan,
   pushNewProduct,
+  mergeCustomerRecords,
   pushNewService,
   pushProductPatch,
   pushRemoveMembershipPlan,
@@ -59,6 +60,7 @@ import {
   pushRemoveService,
   pushServicePatch,
   pushStockChange,
+  removeCustomer,
   saveCustomerPatch,
   saveNewCustomer,
 } from "@/lib/catalog/client";
@@ -192,6 +194,13 @@ interface AppState {
   updateCustomer: (
     id: string,
     patch: Partial<Customer>,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Only ever succeeds for a customer with no sales, bookings or queue history. */
+  deleteCustomer: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Folds the loser's sales/bookings/tickets into the winner and removes the duplicate. */
+  mergeCustomers: (
+    winnerId: string,
+    loserId: string,
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   addProduct: (product: Omit<Product, "id">) => Product;
   updateProduct: (id: string, patch: Partial<Product>) => void;
@@ -870,6 +879,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => ({
       customers: s.customers.map((c) => (c.id === id ? { ...c, ...patch } : c)),
     }));
+    return { ok: true };
+  },
+
+  deleteCustomer: async (id) => {
+    const result = await removeCustomer(id);
+    if (!result.ok) return result;
+    set((s) => ({ customers: s.customers.filter((c) => c.id !== id) }));
+    return { ok: true };
+  },
+
+  mergeCustomers: async (winnerId, loserId) => {
+    const result = await mergeCustomerRecords(winnerId, loserId);
+    if (!result.ok) return result;
+    set((s) => ({ customers: s.customers.filter((c) => c.id !== loserId) }));
+    // The winner's visits/spend are recomputed server-side from every sale
+    // now reassigned to them — a stale local number is worse than a beat of
+    // loading, so pull the real totals in rather than guess at them here.
+    requestQueueRefetch();
     return { ok: true };
   },
 

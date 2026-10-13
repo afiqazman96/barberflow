@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -10,7 +11,9 @@ import {
   Calendar,
   Scissors,
   Download,
+  GitMerge,
   Ticket,
+  Trash2,
   UserPlus,
   Pencil,
   StickyNote,
@@ -42,11 +45,14 @@ const emptyNewCustomer = () => ({
 });
 
 export default function OwnerCustomerPage() {
+  const confirm = useConfirm();
   const router = useRouter();
   const CUSTOMERS = useAppStore((s) => s.customers);
   const STAFF = useAppStore((s) => s.staff);
   const addCustomer = useAppStore((s) => s.addCustomer);
   const updateCustomer = useAppStore((s) => s.updateCustomer);
+  const deleteCustomer = useAppStore((s) => s.deleteCustomer);
+  const mergeCustomers = useAppStore((s) => s.mergeCustomers);
 
   const [search, setSearch] = useState("");
   const [membershipFilter, setMembershipFilter] = useState<string>("all");
@@ -59,6 +65,8 @@ export default function OwnerCustomerPage() {
   const [newCustomer, setNewCustomer] = useState(emptyNewCustomer);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState(emptyNewCustomer);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeSearch, setMergeSearch] = useState("");
 
   const selected = selectedId
     ? (CUSTOMERS.find((c) => c.id === selectedId) ?? null)
@@ -143,6 +151,64 @@ export default function OwnerCustomerPage() {
     router.push(`/owner/queue?${params.toString()}`);
   }
 
+  function handleDelete(customer: Customer) {
+    confirm.ask({
+      title: `Delete ${customer.name}?`,
+      description:
+        "Only works for a customer with no sales, bookings or queue history — merge them into another record instead if they have any.",
+      confirmLabel: "Delete customer",
+      run: async () => {
+        const result = await deleteCustomer(customer.id);
+        if (!result.ok) {
+          toast.error("Couldn't delete the customer", { description: result.error });
+          return;
+        }
+        toast.success("Customer deleted", { description: customer.name });
+        setSelectedId(null);
+      },
+    });
+  }
+
+  function openMerge() {
+    setMergeSearch("");
+    setMergeOpen(true);
+  }
+
+  function handlePickMergeTarget(target: Customer) {
+    if (!selected) return;
+    confirm.ask({
+      title: `Merge ${selected.name} into ${target.name}?`,
+      description: `${selected.name}'s ${selected.visits} visit${selected.visits === 1 ? "" : "s"} and ${formatCurrency(selected.totalSpent)} spent move to ${target.name}, and this record is deleted. This can't be undone.`,
+      confirmLabel: "Merge",
+      run: async () => {
+        const result = await mergeCustomers(target.id, selected.id);
+        if (!result.ok) {
+          toast.error("Couldn't merge the customers", { description: result.error });
+          return;
+        }
+        toast.success("Customers merged", {
+          description: `${selected.name} → ${target.name}`,
+        });
+        setMergeOpen(false);
+        setSelectedId(null);
+      },
+    });
+  }
+
+  const mergeCandidates = useMemo(() => {
+    if (!selected) return [];
+    const q = mergeSearch.trim().toLowerCase();
+    return CUSTOMERS.filter((c) => {
+      if (c.id === selected.id) return false;
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        c.phone.includes(q) ||
+        c.email?.toLowerCase().includes(q)
+      );
+    }).slice(0, 20);
+  }, [CUSTOMERS, selected, mergeSearch]);
+
   async function handleAddCustomer(e: React.FormEvent) {
     e.preventDefault();
     if (saving.current) return;
@@ -207,6 +273,7 @@ export default function OwnerCustomerPage() {
 
   return (
     <>
+      {confirm.node}
       <Topbar
         title="Customer CRM"
         actions={
@@ -488,6 +555,21 @@ export default function OwnerCustomerPage() {
               <Ticket className="h-4 w-4" />
               Start a Visit
             </Button>
+
+            <div className="flex gap-2 border-t border-[var(--border)] pt-4">
+              <Button variant="outline" className="flex-1" onClick={openMerge}>
+                <GitMerge className="h-4 w-4" />
+                Merge Duplicate
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 border-[var(--danger)]/30 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                onClick={() => handleDelete(selected)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            </div>
           </div>
         )}
 
@@ -644,6 +726,53 @@ export default function OwnerCustomerPage() {
             Add Customer
           </Button>
         </form>
+      </Modal>
+
+      <Modal
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        title={selected ? `Merge ${selected.name} into…` : "Merge"}
+        description="Pick the record to keep — this one's history moves there and it's deleted."
+      >
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
+            <Input
+              className="pl-10"
+              placeholder="Search name, phone, or email…"
+              value={mergeSearch}
+              onChange={(e) => setMergeSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="max-h-80 space-y-1 overflow-y-auto">
+            {mergeCandidates.map((c) => (
+              <button
+                key={c.id}
+                onClick={() => handlePickMergeTarget(c)}
+                className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition hover:bg-[var(--bg-muted)]"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--gold)]/15 font-display text-xs font-semibold text-[var(--gold-soft)]">
+                  {initials(c.name)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{c.name}</p>
+                  <p className="truncate text-xs text-[var(--text-faint)]">
+                    {c.phone}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs text-[var(--text-faint)]">
+                  {c.visits} visits
+                </span>
+              </button>
+            ))}
+            {mergeCandidates.length === 0 && (
+              <p className="py-6 text-center text-sm text-[var(--text-muted)]">
+                No other customers found.
+              </p>
+            )}
+          </div>
+        </div>
       </Modal>
     </>
   );

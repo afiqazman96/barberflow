@@ -60,14 +60,16 @@ export default function TrackingPage() {
     (b) => b.id === (ticket?.branchId ?? booking?.branchId),
   );
 
-  // Oldest first: position is how many people are ahead, plus you.
+  // Oldest first: position is how many people are ahead, plus you. A
+  // "called" ticket has been summoned but hasn't left the line yet — it
+  // still occupies a slot ahead of you, same as the lobby TV counts it.
   const position = useMemo(() => {
     if (!ticket) return 0;
     const line = queue
       .filter(
         (q) =>
           q.branchId === ticket.branchId &&
-          q.status === "waiting",
+          (q.status === "waiting" || q.status === "called"),
       )
       .sort(byQueueOrder);
     return line.findIndex((q) => q.id === ticket.id) + 1;

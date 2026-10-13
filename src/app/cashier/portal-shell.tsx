@@ -5,7 +5,6 @@ import {
   CalendarDays,
   UserCircle,
   ShoppingCart,
-  CreditCard,
   ListOrdered,
   Menu,
 } from "lucide-react";
@@ -20,18 +19,16 @@ const navItems = [
   { href: "/cashier/queue", label: "Queue", icon: ListOrdered },
   { href: "/cashier/appointment", label: "Appointment", icon: CalendarDays },
   { href: "/cashier/customer", label: "Customer", icon: UserCircle },
-  // Sell, Sales & Receipts and Cash Drawer are one POS workflow — grouped
-  // under this single entry as tabs (see PosSubnav) instead of three
-  // separate sidebar items.
+  // Sell, Payment, Sales & Receipts and Cash Drawer are one POS workflow —
+  // payment happens in a modal over the cart, and the rest are grouped as
+  // tabs (see PosSubnav) instead of separate sidebar items.
   { href: "/cashier/pos", label: "Point of Sale", icon: ShoppingCart },
-  { href: "/cashier/payment", label: "Payment", icon: CreditCard },
 ];
 
 const bottomNavItems = [
   { href: "/cashier/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/cashier/queue", label: "Queue", icon: ListOrdered },
   { href: "/cashier/pos", label: "POS", icon: ShoppingCart },
-  { href: "/cashier/payment", label: "Pay", icon: CreditCard },
   { label: "Menu", icon: Menu, action: "menu" as const },
 ];
 

@@ -17,6 +17,7 @@ import {
   CreditCard,
   QrCode,
   CheckCircle2,
+  HandCoins,
   Ticket,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -56,7 +57,14 @@ export default function OwnerPosPage() {
   const SERVICES = useAppStore((s) => s.services);
   const posItems = useAppStore((s) => s.posItems);
   const posDiscount = useAppStore((s) => s.posDiscount);
+  const posDiscountMode = useAppStore((s) => s.posDiscountMode);
+  const setPosDiscountMode = useAppStore((s) => s.setPosDiscountMode);
   const posCustomerId = useAppStore((s) => s.posCustomerId);
+  const posMembershipPlanId = useAppStore((s) => s.posMembershipPlanId);
+  const setPosMembershipPlan = useAppStore((s) => s.setPosMembershipPlan);
+  const membershipPlans = useAppStore((s) => s.membershipPlans);
+  const posTip = useAppStore((s) => s.posTip);
+  const setPosTip = useAppStore((s) => s.setPosTip);
   const lastReceipt = useAppStore((s) => s.lastReceipt);
   const addPosItem = useAppStore((s) => s.addPosItem);
   const updatePosQty = useAppStore((s) => s.updatePosQty);
@@ -95,15 +103,25 @@ export default function OwnerPosPage() {
     ? CUSTOMERS.find((c) => c.id === posCustomerId)
     : null;
   const customerName = customer?.name ?? null;
-  const membership = customer?.membership ?? "none";
+  const upsellPlan = posMembershipPlanId
+    ? membershipPlans.find((p) => p.id === posMembershipPlanId)
+    : null;
+  const membership = upsellPlan ? upsellPlan.tier : (customer?.membership ?? "none");
   const barbers = staff.filter(
     (s) => s.role === "barber" && s.branchId === branchId && s.active,
   );
   const awaitingPayment = queue.filter((q) => q.status === "awaiting-payment");
 
-  const subtotal = posItems.reduce(
+  const cartSubtotal = posItems.reduce(
     (sum, i) => sum + i.unitPrice * i.quantity,
     0,
+  );
+  const subtotal = cartSubtotal + (upsellPlan?.price ?? 0);
+  const discountValue = Math.min(
+    subtotal,
+    posDiscountMode === "percent"
+      ? Math.round(((subtotal * posDiscount) / 100) * 100) / 100
+      : posDiscount,
   );
   const serviceSubtotal = posItems
     .filter((i) => i.type === "service")
@@ -111,12 +129,26 @@ export default function OwnerPosPage() {
   const charges = computeCharges({
     serviceSubtotal,
     otherSubtotal: subtotal - serviceSubtotal,
-    discount: posDiscount,
+    discount: discountValue,
+    tip: posTip,
     config: taxConfig,
   });
   const total = charges.total;
   const receipt = paid ? lastReceipt : null;
   const needsBarber = posItems.some((i) => i.type === "service");
+
+  // Show the member-price saving only when the customer isn't already one.
+  const alreadyMember = (customer?.membership ?? "none") !== "none";
+  const cheapestPlan = [...membershipPlans].sort((a, b) => a.price - b.price)[0];
+  const memberSaving =
+    cheapestPlan && !alreadyMember
+      ? posItems
+          .filter((i) => i.type === "service")
+          .reduce((sum, i) => {
+            const svc = SERVICES.find((v) => v.id === i.id);
+            return svc ? sum + (svc.price - svc.membershipPrice) * i.quantity : sum;
+          }, 0)
+      : 0;
 
   const catalog = useMemo(() => {
     const items =
@@ -500,6 +532,45 @@ export default function OwnerPosPage() {
                 </div>
               )}
 
+              <div className="mb-3">
+                <Label className="flex items-center gap-1.5 text-xs">
+                  <Sparkles className="h-3.5 w-3.5 text-[var(--gold)]" />
+                  Membership
+                  <span className="font-normal text-[var(--text-faint)]">
+                    · sell a plan on this visit
+                  </span>
+                </Label>
+                <select
+                  value={posMembershipPlanId ?? ""}
+                  onChange={(e) => setPosMembershipPlan(e.target.value || null)}
+                  className="mt-1 h-11 w-full rounded-xl border border-[var(--border)] bg-[var(--bg-muted)] px-4 text-sm"
+                >
+                  <option value="">No membership</option>
+                  {membershipPlans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {formatCurrency(p.price)}/mo
+                    </option>
+                  ))}
+                </select>
+                {upsellPlan ? (
+                  <p className="mt-1.5 text-xs text-[var(--gold-soft)]">
+                    {upsellPlan.name} added to this sale · {formatCurrency(upsellPlan.price)}
+                  </p>
+                ) : (
+                  memberSaving > 0 && (
+                    <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                      Adding a plan saves {formatCurrency(memberSaving)} on this visit
+                    </p>
+                  )
+                )}
+              </div>
+
+              {membership !== "none" && !upsellPlan && (
+                <p className="mb-3 rounded-lg border border-[var(--gold)]/20 bg-[var(--gold)]/5 px-3 py-2 text-xs text-[var(--gold-soft)]">
+                  Membership pricing applied for {membership} member
+                </p>
+              )}
+
               {posItems.length === 0 ? (
                 <p className="py-6 text-center text-sm text-[var(--text-muted)]">
                   Cart is empty. Add services or products.
@@ -547,10 +618,28 @@ export default function OwnerPosPage() {
 
               <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
                 <div>
-                  <Label>Discount (RM)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Discount</Label>
+                    <div className="flex gap-1 rounded-lg bg-[var(--bg-muted)] p-0.5 text-xs">
+                      {(["amount", "percent"] as const).map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => setPosDiscountMode(m)}
+                          className={`rounded px-2 py-0.5 transition ${
+                            posDiscountMode === m
+                              ? "bg-[var(--bg-elevated)] font-medium text-[var(--text)]"
+                              : "text-[var(--text-faint)]"
+                          }`}
+                        >
+                          {m === "amount" ? "RM" : "%"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <Input
                     type="number"
                     min={0}
+                    max={posDiscountMode === "percent" ? 100 : undefined}
                     value={posDiscount || ""}
                     onChange={(e) =>
                       setPosDiscount(Math.max(0, Number(e.target.value) || 0))
@@ -577,10 +666,13 @@ export default function OwnerPosPage() {
                     <span>Subtotal</span>
                     <span>{formatCurrency(subtotal)}</span>
                   </div>
-                  {posDiscount > 0 && (
+                  {discountValue > 0 && (
                     <div className="flex justify-between text-[var(--success)]">
-                      <span>Discount</span>
-                      <span>-{formatCurrency(charges.discount)}</span>
+                      <span>
+                        Discount
+                        {posDiscountMode === "percent" && ` (${posDiscount}%)`}
+                      </span>
+                      <span>-{formatCurrency(discountValue)}</span>
                     </div>
                   )}
                   {charges.serviceCharge > 0 && (
@@ -601,6 +693,9 @@ export default function OwnerPosPage() {
                       {formatCurrency(total)}
                     </span>
                   </div>
+                  <p className="pt-1 text-xs text-[var(--text-faint)]">
+                    Add a tip at payment
+                  </p>
                 </div>
                 <Button
                   className="w-full"
@@ -643,9 +738,16 @@ export default function OwnerPosPage() {
                     <span>{formatCurrency(item.unitPrice * item.quantity)}</span>
                   </div>
                 ))}
+                {upsellPlan && (
+                  <div className="flex justify-between text-[var(--gold-soft)]">
+                    <span>{upsellPlan.name} Membership</span>
+                    <span>{formatCurrency(upsellPlan.price)}</span>
+                  </div>
+                )}
                 {(charges.discount > 0 ||
                   charges.serviceCharge > 0 ||
-                  charges.tax > 0) && (
+                  charges.tax > 0 ||
+                  posTip > 0) && (
                   <div className="space-y-1 border-t border-[var(--border)] pt-2 text-[var(--text-muted)]">
                     {charges.discount > 0 && (
                       <div className="flex justify-between text-[var(--success)]">
@@ -667,8 +769,52 @@ export default function OwnerPosPage() {
                         <span>+{formatCurrency(charges.tax)}</span>
                       </div>
                     )}
+                    {posTip > 0 && (
+                      <div className="flex justify-between">
+                        <span>Tip</span>
+                        <span>+{formatCurrency(posTip)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
+              </div>
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
+                  <HandCoins className="h-3.5 w-3.5 text-[var(--gold)]" />
+                  Add a tip for the barber
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[0, 10, 15, 20].map((pct) => {
+                    const amount =
+                      pct === 0 ? 0 : Math.round(charges.goodsTotal * pct) / 100;
+                    const active = pct === 0 ? posTip === 0 : posTip === amount;
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setPosTip(amount)}
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
+                          active
+                            ? "border-[var(--gold)]/50 bg-[var(--gold)]/10 text-[var(--gold-soft)]"
+                            : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--gold-dim)]"
+                        }`}
+                      >
+                        {pct === 0 ? "No tip" : `${pct}%`}
+                      </button>
+                    );
+                  })}
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={posTip || ""}
+                    onChange={(e) =>
+                      setPosTip(Math.max(0, Number(e.target.value) || 0))
+                    }
+                    placeholder="Custom RM"
+                    className="w-24"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {METHODS.map((m) => {

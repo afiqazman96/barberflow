@@ -3,8 +3,7 @@
 import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
   Minus,
@@ -16,6 +15,11 @@ import {
   Search,
   User,
   Scissors,
+  Banknote,
+  CreditCard,
+  QrCode,
+  CheckCircle2,
+  HandCoins,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Topbar } from "@/components/layout/app-shell";
@@ -24,18 +28,33 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, Select } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
 import { PillTabs } from "@/components/ui/pill-tabs";
 import { PosSubnav } from "@/components/domain/pos-subnav";
+import { ReceiptEmailControl } from "@/components/domain/receipt-email";
+import { sendReceiptEmail } from "@/lib/email/receipt-client";
 import { useAppStore, calcCommission } from "@/lib/store/app-store";
 import { CASHIER_DISCOUNT_CAP_PCT, computeCharges } from "@/lib/pos-pricing";
 import { useSession } from "@/components/auth/session-provider";
-import { formatCurrency } from "@/lib/utils";
+import type { PaymentMethod } from "@/lib/types";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
+
+const CARD_SCHEMES = ["Visa", "Mastercard", "Amex", "Debit", "Other"];
 
 type Tab = "services" | "products";
 
+const METHODS: {
+  id: PaymentMethod;
+  label: string;
+  icon: typeof Banknote;
+}[] = [
+  { id: "cash", label: "Cash", icon: Banknote },
+  { id: "card", label: "Card", icon: CreditCard },
+  { id: "qr", label: "QR Pay", icon: QrCode },
+];
+
 export default function CashierPosPage() {
   const confirm = useConfirm();
-  const router = useRouter();
   const session = useSession();
   const allQueue = useAppStore((s) => s.queue);
   const activeBranchId = useAppStore((s) => s.branchId);
@@ -70,10 +89,20 @@ export default function CashierPosPage() {
   const loadPosTicket = useAppStore((s) => s.loadPosTicket);
   const selectPosCustomer = useAppStore((s) => s.selectPosCustomer);
   const clearPos = useAppStore((s) => s.clearPos);
+  const posTip = useAppStore((s) => s.posTip);
+  const setPosTip = useAppStore((s) => s.setPosTip);
+  const drawerSession = useAppStore((s) => s.drawerSession);
+  const lastReceipt = useAppStore((s) => s.lastReceipt);
+  const completePayment = useAppStore((s) => s.completePayment);
 
   const [tab, setTab] = useState<Tab>("services");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [category, setCategory] = useState("all");
+  const [payOpen, setPayOpen] = useState(false);
+  const [method, setMethod] = useState<PaymentMethod | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [paid, setPaid] = useState(false);
+  const [card, setCard] = useState({ scheme: "", last4: "", approvalCode: "" });
 
   const awaitingPayment = queue.filter((q) => q.status === "awaiting-payment");
   const barbers = staff.filter(
@@ -114,9 +143,11 @@ export default function CashierPosPage() {
     serviceSubtotal,
     otherSubtotal: subtotal - serviceSubtotal,
     discount: discountValue,
+    tip: posTip,
     config: taxConfig,
   });
   const total = charges.total;
+  const receipt = paid ? lastReceipt : null;
 
   // A barber is only needed when someone did the work. A walk-in buying a
   // product off the shelf is a plain retail sale.
@@ -239,7 +270,7 @@ export default function CashierPosPage() {
     toast.success("Loaded for checkout", { description: ticketName });
   }
 
-  function handlePay() {
+  function openPayment() {
     if (posItems.length === 0) {
       toast.error("Cart is empty");
       return;
@@ -262,7 +293,58 @@ export default function CashierPosPage() {
       });
       return;
     }
-    router.push("/cashier/payment");
+    setPaid(false);
+    setMethod(null);
+    setCard({ scheme: "", last4: "", approvalCode: "" });
+    setPayOpen(true);
+  }
+
+  async function handlePay() {
+    if (!method) {
+      toast.error("Select a payment method");
+      return;
+    }
+    if (method === "cash" && !drawerSession) {
+      toast.error("Open the cash drawer before taking cash", {
+        description: "Cashier → Cash Drawer",
+      });
+      return;
+    }
+    setProcessing(true);
+    // completePayment records the sale on the server, frees the barber and
+    // closes the queue ticket in one step.
+    const result = await completePayment(
+      method,
+      method === "card"
+        ? {
+            scheme: card.scheme || undefined,
+            last4: card.last4.trim() || undefined,
+            approvalCode: card.approvalCode.trim() || undefined,
+          }
+        : undefined,
+    );
+    setProcessing(false);
+    if (!result.ok) {
+      toast.error("Payment not taken", { description: result.error });
+      return;
+    }
+    const { sale } = result;
+    setPaid(true);
+    toast.success("Payment complete!", {
+      description: `Receipt ${sale.receiptNo}`,
+    });
+    // The receipt goes to the address the customer gave when they joined.
+    if (sale.customerEmail) {
+      void sendReceiptEmail(sale, sale.customerEmail, { auto: true });
+    }
+  }
+
+  function handleClosePayment() {
+    setPayOpen(false);
+    if (paid) {
+      setPaid(false);
+      setMethod(null);
+    }
   }
 
   return (
@@ -399,7 +481,7 @@ export default function CashierPosPage() {
           {posItems.length > 0 && (
             <div className="safe-bottom fixed inset-x-0 bottom-[4.75rem] z-30 px-4 lg:hidden">
               <button
-                onClick={handlePay}
+                onClick={openPayment}
                 className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl bg-[var(--text)] px-4 py-3.5 text-[var(--bg)] shadow-[0_12px_32px_rgba(28,25,23,0.25)]"
               >
                 <span className="flex items-center gap-2 text-sm">
@@ -687,7 +769,7 @@ export default function CashierPosPage() {
                 <Button
                   className="w-full"
                   size="lg"
-                  onClick={handlePay}
+                  onClick={openPayment}
                   disabled={
                     posItems.length === 0 || (needsBarber && !posStaffId)
                   }
@@ -702,6 +784,229 @@ export default function CashierPosPage() {
           </div>
         </div>
       </PageTransition>
+
+      <Modal
+        open={payOpen}
+        onOpenChange={(open) => !open && handleClosePayment()}
+        title={paid ? "Payment Successful" : "Complete Payment"}
+        description={paid ? "Transaction completed" : formatCurrency(total)}
+        className="max-w-md"
+      >
+        <AnimatePresence mode="wait">
+          {!paid ? (
+            <motion.div
+              key="checkout"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="space-y-5"
+            >
+              <div className="space-y-2 text-sm">
+                {posItems.map((item) => (
+                  <div key={item.id} className="flex justify-between">
+                    <span>
+                      {item.name} × {item.quantity}
+                    </span>
+                    <span>{formatCurrency(item.unitPrice * item.quantity)}</span>
+                  </div>
+                ))}
+                {upsellPlan && (
+                  <div className="flex justify-between text-[var(--gold-soft)]">
+                    <span>{upsellPlan.name} Membership</span>
+                    <span>{formatCurrency(upsellPlan.price)}</span>
+                  </div>
+                )}
+                {(charges.discount > 0 ||
+                  charges.serviceCharge > 0 ||
+                  charges.tax > 0 ||
+                  posTip > 0) && (
+                  <div className="space-y-1 border-t border-[var(--border)] pt-2 text-[var(--text-muted)]">
+                    {charges.discount > 0 && (
+                      <div className="flex justify-between text-[var(--success)]">
+                        <span>Discount</span>
+                        <span>-{formatCurrency(charges.discount)}</span>
+                      </div>
+                    )}
+                    {charges.serviceCharge > 0 && (
+                      <div className="flex justify-between">
+                        <span>
+                          Service charge ({charges.serviceChargeRate}%)
+                        </span>
+                        <span>+{formatCurrency(charges.serviceCharge)}</span>
+                      </div>
+                    )}
+                    {charges.tax > 0 && (
+                      <div className="flex justify-between">
+                        <span>SST ({charges.taxRate}%)</span>
+                        <span>+{formatCurrency(charges.tax)}</span>
+                      </div>
+                    )}
+                    {posTip > 0 && (
+                      <div className="flex justify-between">
+                        <span>Tip</span>
+                        <span>+{formatCurrency(posTip)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
+                  <HandCoins className="h-3.5 w-3.5 text-[var(--gold)]" />
+                  Add a tip for the barber
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[0, 10, 15, 20].map((pct) => {
+                    const amount =
+                      pct === 0 ? 0 : Math.round(charges.goodsTotal * pct) / 100;
+                    const active = pct === 0 ? posTip === 0 : posTip === amount;
+                    return (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setPosTip(amount)}
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition ${
+                          active
+                            ? "border-[var(--gold)]/50 bg-[var(--gold)]/10 text-[var(--gold-soft)]"
+                            : "border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--gold-dim)]"
+                        }`}
+                      >
+                        {pct === 0 ? "No tip" : `${pct}%`}
+                      </button>
+                    );
+                  })}
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={posTip || ""}
+                    onChange={(e) =>
+                      setPosTip(Math.max(0, Number(e.target.value) || 0))
+                    }
+                    placeholder="Custom RM"
+                    className="w-24"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {METHODS.map((m) => {
+                  const Icon = m.icon;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => setMethod(m.id)}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl p-3 transition ${
+                        method === m.id
+                          ? "bg-[var(--gold)]/15 ring-2 ring-[var(--gold)]/30"
+                          : "bg-[var(--bg-muted)] hover:bg-[var(--bg-hover)]"
+                      }`}
+                    >
+                      <Icon
+                        className={`h-6 w-6 ${method === m.id ? "text-[var(--gold)]" : "text-[var(--text-muted)]"}`}
+                      />
+                      <span className="text-xs font-medium">{m.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {method === "card" && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label>Scheme</Label>
+                    <Select
+                      value={card.scheme}
+                      onChange={(e) =>
+                        setCard({ ...card, scheme: e.target.value })
+                      }
+                    >
+                      <option value="">—</option>
+                      {CARD_SCHEMES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Last 4</Label>
+                    <Input
+                      inputMode="numeric"
+                      maxLength={4}
+                      placeholder="4242"
+                      value={card.last4}
+                      onChange={(e) =>
+                        setCard({
+                          ...card,
+                          last4: e.target.value.replace(/\D/g, "").slice(0, 4),
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Approval</Label>
+                    <Input
+                      placeholder="123456"
+                      value={card.approvalCode}
+                      onChange={(e) =>
+                        setCard({ ...card, approvalCode: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+              <Button
+                className="w-full"
+                size="lg"
+                onClick={handlePay}
+                disabled={!method || processing}
+              >
+                {processing ? "Processing…" : `Confirm · ${formatCurrency(total)}`}
+              </Button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="success"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="space-y-4"
+            >
+              <div className="flex justify-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--success)]/15">
+                  <CheckCircle2 className="h-8 w-8 text-[var(--success)]" />
+                </div>
+              </div>
+              {receipt && (
+                <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-muted)]/50 p-4 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text-muted)]">Receipt</span>
+                    <Badge variant="gold">{receipt.receiptNo}</Badge>
+                  </div>
+                  <p className="mt-2">{receipt.customerName}</p>
+                  <p className="text-xs text-[var(--text-faint)]">
+                    {formatDateTime(receipt.createdAt)}
+                  </p>
+                  <p className="text-xs text-[var(--text-faint)]">
+                    {receipt.customerEmail
+                      ? `Receipt to: ${receipt.customerEmail}`
+                      : "No email on file"}
+                  </p>
+                  <p className="mt-3 font-display text-xl font-semibold text-[var(--gold-soft)]">
+                    {formatCurrency(receipt.total)}
+                  </p>
+                </div>
+              )}
+              <div className="flex gap-2">
+                {lastReceipt && (
+                  <ReceiptEmailControl sale={lastReceipt} className="flex-1" label="Email" />
+                )}
+                <Button className="flex-1" onClick={handleClosePayment}>
+                  Done
+                </Button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </Modal>
     </>
   );
 }

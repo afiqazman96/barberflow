@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   Package,
+  PackagePlus,
   Plus,
   Minus,
   Search,
@@ -29,6 +30,8 @@ import { formatCurrency } from "@/lib/utils";
 import type { Product } from "@/lib/types";
 
 const LOW_STOCK_THRESHOLD = 12;
+/** Suggested reorder quantity brings a product back up to this many units. */
+const RESTOCK_PAR_LEVEL = 20;
 
 export default function OwnerInventoryPage() {
   const products = useAppStore((s) => s.products);
@@ -41,6 +44,8 @@ export default function OwnerInventoryPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [showLowOnly, setShowLowOnly] = useState(false);
   const [openAdd, setOpenAdd] = useState(false);
+  const [reorderFor, setReorderFor] = useState<Product | null>(null);
+  const [reorderQty, setReorderQty] = useState("");
   const [form, setForm] = useState({
     name: "",
     category: "Styling",
@@ -79,6 +84,28 @@ export default function OwnerInventoryPage() {
     toast.success("Stock updated", {
       description: `${p.name}: ${p.stock} → ${next}`,
     });
+  }
+
+  function openReorder(product: Product) {
+    setReorderFor(product);
+    setReorderQty(String(Math.max(0, RESTOCK_PAR_LEVEL - product.stock)));
+  }
+
+  function handleReorder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reorderFor) return;
+    const qty = Math.floor(Number(reorderQty) || 0);
+    if (qty <= 0) {
+      toast.error("Enter how many units came in");
+      return;
+    }
+    const next = reorderFor.stock + qty;
+    updateProduct(reorderFor.id, { stock: next });
+    toast.success("Stock received", {
+      description: `${reorderFor.name}: ${reorderFor.stock} → ${next}`,
+    });
+    setReorderFor(null);
+    setReorderQty("");
   }
 
   function handleAdd(e: React.FormEvent) {
@@ -133,10 +160,16 @@ export default function OwnerInventoryPage() {
         actions={
           <div className="flex items-center gap-2">
             {lowStock.length > 0 && (
-              <Badge variant="warning" className="gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                {lowStock.length} low stock
-              </Badge>
+              <button
+                type="button"
+                onClick={() => setShowLowOnly(true)}
+                aria-label="Show only low-stock products"
+              >
+                <Badge variant="warning" className="gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {lowStock.length} low stock
+                </Badge>
+              </button>
             )}
             <Button size="sm" onClick={() => setOpenAdd(true)}>
               <Plus className="h-4 w-4" />
@@ -186,11 +219,21 @@ export default function OwnerInventoryPage() {
             >
               <div className="flex items-start gap-3">
                 <AlertTriangle className="h-5 w-5 shrink-0 text-[var(--warning)]" />
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="font-medium text-[var(--warning)]">Low stock warning</p>
-                  <p className="mt-1 text-sm text-[var(--text-muted)]">
-                    {lowStock.map((p) => p.name).join(", ")} — reorder soon.
-                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {lowStock.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => openReorder(p)}
+                        className="flex items-center gap-1.5 rounded-lg border border-[var(--warning)]/30 bg-[var(--bg)] px-2.5 py-1 text-xs font-medium text-[var(--text)] transition hover:bg-[var(--warning)]/10"
+                      >
+                        <PackagePlus className="h-3.5 w-3.5 text-[var(--warning)]" />
+                        {p.name} · {p.stock} left
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -345,6 +388,17 @@ export default function OwnerInventoryPage() {
                         +10
                       </Button>
                     </div>
+                    {product.stock <= LOW_STOCK_THRESHOLD && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 w-full border-[var(--warning)]/30 text-[var(--warning)] hover:bg-[var(--warning)]/10"
+                        onClick={() => openReorder(product)}
+                      >
+                        <PackagePlus className="h-4 w-4" />
+                        Reorder
+                      </Button>
+                    )}
                   </Card>
                 </motion.div>
               );
@@ -425,6 +479,41 @@ export default function OwnerInventoryPage() {
             Create Product
           </Button>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!reorderFor}
+        onOpenChange={(open) => !open && setReorderFor(null)}
+        title={reorderFor ? `Reorder ${reorderFor.name}` : ""}
+        description={
+          reorderFor
+            ? `Currently ${reorderFor.stock} units · ${reorderFor.sku}`
+            : undefined
+        }
+      >
+        {reorderFor && (
+          <form onSubmit={handleReorder} className="space-y-4">
+            <div>
+              <Label htmlFor="reorder-qty">Units received</Label>
+              <Input
+                id="reorder-qty"
+                type="number"
+                min={1}
+                value={reorderQty}
+                onChange={(e) => setReorderQty(e.target.value)}
+                autoFocus
+              />
+              <p className="mt-1.5 text-xs text-[var(--text-faint)]">
+                Suggested to bring stock back up to {RESTOCK_PAR_LEVEL} units —
+                adjust to match what actually arrived.
+              </p>
+            </div>
+            <Button type="submit" className="w-full">
+              <PackagePlus className="h-4 w-4" />
+              Record Delivery
+            </Button>
+          </form>
+        )}
       </Modal>
 
       {confirm.node}

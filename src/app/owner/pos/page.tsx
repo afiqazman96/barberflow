@@ -4,13 +4,11 @@ import { useConfirm } from "@/hooks/use-confirm";
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowRight,
   Minus,
   Plus,
   Trash2,
   Sparkles,
   ShoppingBag,
-  ShoppingCart,
   Search,
   User,
   Banknote,
@@ -329,7 +327,7 @@ export default function OwnerPosPage() {
       <PosSubnav base="/owner/pos" />
       <PageTransition>
         <div className="mx-auto flex max-w-7xl flex-col gap-5 p-4 lg:flex-row lg:p-6">
-          <div className="@container min-w-0 flex-1 space-y-4 pb-24 lg:pb-0">
+          <div className="@container min-w-0 flex-1 space-y-4">
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-faint)]" />
@@ -433,25 +431,6 @@ export default function OwnerPosPage() {
               })}
             </div>
           </div>
-
-          {posItems.length > 0 && (
-            <div className="safe-bottom fixed inset-x-0 bottom-[4.75rem] z-30 px-4 lg:hidden">
-              <button
-                onClick={openPayment}
-                className="mx-auto flex w-full max-w-md items-center justify-between rounded-2xl bg-[var(--text)] px-4 py-3.5 text-[var(--bg)] shadow-[0_12px_32px_rgba(28,25,23,0.25)]"
-              >
-                <span className="flex items-center gap-2 text-sm">
-                  <ShoppingCart className="h-4 w-4" />
-                  {posItems.reduce((n, i) => n + i.quantity, 0)} item
-                  {posItems.reduce((n, i) => n + i.quantity, 0) === 1 ? "" : "s"}
-                </span>
-                <span className="flex items-center gap-1.5 font-display font-bold">
-                  {formatCurrency(total)}
-                  <ArrowRight className="h-4 w-4" />
-                </span>
-              </button>
-            </div>
-          )}
 
           <div className="w-full shrink-0 space-y-4 lg:w-96">
             {awaitingPayment.length > 0 && (

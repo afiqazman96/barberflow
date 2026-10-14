@@ -4,6 +4,8 @@ import type { MembershipTier } from "@/generated/prisma/enums";
 import { requireRole } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
 import { isUniqueViolation, resolveCustomerId } from "@/lib/customers/resolve";
+import { notifyLowStock } from "@/lib/notifications/actions";
+import { LOW_STOCK_THRESHOLD } from "@/lib/notifications/constants";
 import { prisma } from "@/lib/prisma";
 import type { Customer, MembershipPlan, Product, Service } from "@/lib/types";
 
@@ -207,7 +209,13 @@ export async function adjustProductStock(productId: string, delta: number): Prom
     return { ok: false, error: "Check the stock change" };
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
+    const before = await tx.product.findFirst({
+      where: { id: productId, tenantId: owner.tenantId },
+      select: { stock: true, name: true },
+    });
+    if (!before) return null;
+
     const moved = await tx.product.updateMany({
       where: { id: productId, tenantId: owner.tenantId },
       data: { stock: { increment: delta } },
@@ -218,9 +226,27 @@ export async function adjustProductStock(productId: string, delta: number): Prom
         data: { stock: 0 },
       });
     }
-    return moved.count;
+    const after = await tx.product.findFirst({
+      where: { id: productId },
+      select: { stock: true },
+    });
+
+    // Only when stock just crossed at/under the threshold, not every
+    // decrement while it's already low.
+    if (
+      before.stock > LOW_STOCK_THRESHOLD &&
+      after &&
+      after.stock <= LOW_STOCK_THRESHOLD
+    ) {
+      await notifyLowStock(
+        { tenantId: owner.tenantId, name: before.name, stock: after.stock },
+        tx,
+      );
+    }
+
+    return after?.stock ?? null;
   });
-  if (updated === 0) return { ok: false, error: "Product not found" };
+  if (result === null) return { ok: false, error: "Product not found" };
   return { ok: true };
 }
 

@@ -6,6 +6,7 @@ import type { TicketPriority, TicketStatus } from "@/generated/prisma/enums";
 import type { ActionResult } from "@/lib/auth/types";
 import { requirePlatformSession, requireRole, requireShopSession } from "@/lib/auth/session";
 import { isUniqueViolation } from "@/lib/customers/resolve";
+import { notifyTicketStatusChanged } from "@/lib/notifications/actions";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { generateTempPassword } from "@/lib/tenant-onboarding";
@@ -586,6 +587,12 @@ export async function updateTicket(
 ): Promise<ActionResult> {
   await requirePlatformSession();
 
+  const existing = await prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    select: { tenantId: true, subject: true },
+  });
+  if (!existing) return { ok: false, error: "Ticket not found" };
+
   const data: {
     status?: TicketStatus;
     priority?: TicketPriority;
@@ -597,8 +604,15 @@ export async function updateTicket(
   }
   if (patch.priority !== undefined) data.priority = PRIORITY_TO_PRISMA[patch.priority];
 
-  const updated = await prisma.supportTicket.updateMany({ where: { id: ticketId }, data });
-  if (updated.count === 0) return { ok: false, error: "Ticket not found" };
+  await prisma.supportTicket.update({ where: { id: ticketId }, data });
+
+  if (patch.status !== undefined) {
+    await notifyTicketStatusChanged({
+      tenantId: existing.tenantId,
+      subject: existing.subject,
+      status: patch.status,
+    });
+  }
 
   revalidatePath("/super-admin/support");
   return { ok: true };

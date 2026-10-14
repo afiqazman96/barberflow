@@ -5,6 +5,7 @@ import type { BookingStatus as PrismaBookingStatus } from "@/generated/prisma/en
 import { requireRole } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/auth/types";
 import { isUniqueViolation, resolveCustomerId } from "@/lib/customers/resolve";
+import { notifyNewBooking } from "@/lib/notifications/actions";
 import { prisma } from "@/lib/prisma";
 import { closingMins, hhmmToMins, openingMins } from "@/lib/roster";
 import { addDays, dateColumn, opsRulesFor, shopToday } from "@/lib/shop/queries";
@@ -245,6 +246,13 @@ async function createBooking({
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+
+    await notifyNewBooking({
+      tenantId,
+      branchId: input.branchId,
+      customerName: name,
+      time: input.time,
+    });
 
     return { ok: true, data: { booking: toBookingDto(row, timeZone) } };
   } catch (cause) {

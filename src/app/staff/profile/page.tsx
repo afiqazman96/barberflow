@@ -2,11 +2,14 @@
 
 import { Suspense, useEffect, useRef, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
   Armchair,
+  ChevronRight,
   DollarSign,
+  HeadphonesIcon,
   KeyRound,
   Mail,
   Phone,
@@ -249,6 +252,23 @@ function StaffProfileContent() {
           </a>
         </div>
       </Card>
+
+      <Link href="/staff/support">
+        <Card className="transition hover:border-[var(--gold-dim)]">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--gold)]/15">
+              <HeadphonesIcon className="h-5 w-5 text-[var(--gold-soft)]" />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium">Support</p>
+              <p className="text-xs text-[var(--text-muted)]">
+                Something not working? Raise a ticket
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 text-[var(--text-faint)]" />
+          </div>
+        </Card>
+      </Link>
 
       <SignOutButton
         label="Sign Out"

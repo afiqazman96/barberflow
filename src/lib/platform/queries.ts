@@ -1,5 +1,6 @@
 import "server-only";
 
+import { requireShopSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
 import type { FeatureKey, Package, SupportTicket, Tenant } from "@/lib/types";
 
@@ -89,6 +90,17 @@ export async function packagesFor(): Promise<{
 /** Every support ticket, newest first. */
 export async function supportTicketsFor(): Promise<SupportTicket[]> {
   const rows = await prisma.supportTicket.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { tenant: { select: { name: true } } },
+  });
+  return rows.map(ticketDto);
+}
+
+/** The signed-in shop session's own tenant's tickets, newest first. */
+export async function myTicketsFor(): Promise<SupportTicket[]> {
+  const { staff } = await requireShopSession();
+  const rows = await prisma.supportTicket.findMany({
+    where: { tenantId: staff.tenantId },
     orderBy: { createdAt: "desc" },
     include: { tenant: { select: { name: true } } },
   });

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import type { TicketPriority, TicketStatus } from "@/generated/prisma/enums";
 import type { ActionResult } from "@/lib/auth/types";
-import { requirePlatformSession, requireRole } from "@/lib/auth/session";
+import { requirePlatformSession, requireRole, requireShopSession } from "@/lib/auth/session";
 import { isUniqueViolation } from "@/lib/customers/resolve";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -602,4 +602,27 @@ export async function updateTicket(
 
   revalidatePath("/super-admin/support");
   return { ok: true };
+}
+
+/** A tenant raising its own ticket — any shop role, never picks the tenant. */
+export async function raiseSupportTicket(input: {
+  subject: string;
+  priority: SupportTicket["priority"];
+}): Promise<ActionResult<{ id: string }>> {
+  const { staff } = await requireShopSession();
+
+  const subject = clean(input.subject, 200);
+  if (!subject) return { ok: false, error: "Subject is required" };
+
+  const created = await prisma.supportTicket.create({
+    data: {
+      tenantId: staff.tenantId,
+      subject,
+      priority: PRIORITY_TO_PRISMA[input.priority],
+    },
+    select: { id: true },
+  });
+
+  revalidatePath("/owner/support");
+  return { ok: true, data: { id: created.id } };
 }

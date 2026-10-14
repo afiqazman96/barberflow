@@ -52,6 +52,12 @@ enum TicketStatus {
   RESOLVED
 }
 
+enum NotificationType {
+  TICKET_STATUS_CHANGED
+  LOW_STOCK
+  NEW_BOOKING
+}
+
 enum BranchStatus {
   OPEN
   CLOSED
@@ -167,6 +173,8 @@ model PlatformAdmin {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  supportSessions SupportSession[]
+
   @@map("platform_admins")
 }
 
@@ -244,6 +252,8 @@ model Tenant {
   shifts            Shift[]
   rosterDays        RosterDay[]
   staffLeaves       StaffLeave[]
+  notifications     Notification[]
+  supportSessions   SupportSession[]
 
   @@index([packageId])
   @@index([status])
@@ -305,6 +315,51 @@ model SupportTicket {
   @@map("support_tickets")
 }
 
+model Notification {
+  id       String           @id @default(cuid())
+  tenantId String
+  /// Null = tenant-wide (ticket updates, low stock — Product has no branchId).
+  branchId String?
+  type     NotificationType
+  title    String
+  body     String?
+  /// Who this is relevant to; OWNER always sees everything regardless.
+  visibleToRoles StaffRole[]
+  /// Opaque pointer (e.g. a ticket or booking id) — not a FK, so a deleted
+  /// booking never cascade-deletes the notification that reported it.
+  linkId    String?
+  createdAt DateTime         @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, branchId, createdAt])
+  @@map("notifications")
+}
+
+/// An audited "viewing as support" session: a platform admin temporarily
+/// wearing a tenant's OWNER staff row to diagnose a problem. See
+/// `src/lib/support/actions.ts` and `src/lib/auth/session.ts`.
+model SupportSession {
+  id              String    @id @default(cuid())
+  platformAdminId String
+  tenantId        String
+  /// The Staff row being "worn" — the tenant's OWNER (owners already span
+  /// every branch, so this gives full visibility without guessing a branch).
+  staffId         String
+  reason          String?
+  startedAt       DateTime  @default(now())
+  endedAt         DateTime?
+  expiresAt       DateTime
+
+  platformAdmin PlatformAdmin @relation(fields: [platformAdminId], references: [id], onDelete: Cascade)
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  staff         Staff         @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, endedAt])
+  @@map("support_sessions")
+}
+
 // ---------------------------------------------------------------------------
 // Tenant structure
 // ---------------------------------------------------------------------------
@@ -336,6 +391,7 @@ model Branch {
   shifts         Shift[]
   receiptCounter ReceiptCounter?
   drawerSessions DrawerSession[]
+  notifications  Notification[]
 
   @@index([tenantId])
   @@index([archived])
@@ -387,9 +443,12 @@ model Staff {
   /// Overrides matching commission rules when set (BACKEND_HANDOFF §6.8).
   commissionOverridePercent Decimal?    @db.Decimal(5, 2)
 
-  lastLoginAt DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  lastLoginAt         DateTime?
+  /// Cursor, not a flag: notifications newer than this are "unread". Null
+  /// means everything is unread (never opened the bell).
+  notificationsSeenAt DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
@@ -406,6 +465,7 @@ model Staff {
   rosterDays           RosterDay[]
   leaves               StaffLeave[]
   commissionPayouts    CommissionPayout[]
+  supportSessions      SupportSession[]
 
   @@index([tenantId])
   @@index([branchId, status])

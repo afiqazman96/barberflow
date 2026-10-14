@@ -49,3 +49,14 @@ export async function fetchMyTenant(): Promise<{
     return null;
   }
 }
+
+/** A signed-in shop session's own support tickets. */
+export async function fetchMyTickets(): Promise<{ tickets: SupportTicket[] } | null> {
+  try {
+    const response = await fetch("/api/support/mine", { cache: "no-store" });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}

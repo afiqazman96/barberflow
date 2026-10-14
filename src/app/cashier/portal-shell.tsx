@@ -7,6 +7,7 @@ import {
   ShoppingCart,
   ListOrdered,
   Menu,
+  HeadphonesIcon,
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -23,6 +24,7 @@ const navItems = [
   // payment happens in a modal over the cart, and the rest are grouped as
   // tabs (see PosSubnav) instead of separate sidebar items.
   { href: "/cashier/pos", label: "Point of Sale", icon: ShoppingCart },
+  { href: "/cashier/support", label: "Support", icon: HeadphonesIcon },
 ];
 
 const bottomNavItems = [

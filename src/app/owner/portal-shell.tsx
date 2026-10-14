@@ -15,6 +15,7 @@ import {
   Menu,
   Building2,
   CalendarClock,
+  HeadphonesIcon,
 } from "lucide-react";
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
@@ -57,6 +58,7 @@ const navItems = [
   { href: "/owner/inventory", label: "Inventory", icon: Package },
   { href: "/owner/reports", label: "Reports", icon: BarChart3 },
   { href: "/owner/billing", label: "Billing", icon: CreditCard },
+  { href: "/owner/support", label: "Support", icon: HeadphonesIcon },
   { href: "/owner/settings", label: "Settings", icon: Settings },
 ];
 

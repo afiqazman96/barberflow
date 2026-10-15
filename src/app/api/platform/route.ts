@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth/session";
+import { invoicesFor } from "@/lib/billing/queries";
 import { packagesFor, supportTicketsFor, tenantsFor } from "@/lib/platform/queries";
 
 /**
@@ -12,14 +13,15 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [tenants, { packages, featureMatrix }, supportTickets] = await Promise.all([
+  const [tenants, { packages, featureMatrix }, supportTickets, invoices] = await Promise.all([
     tenantsFor(),
     packagesFor(),
     supportTicketsFor(),
+    invoicesFor(),
   ]);
 
   return Response.json(
-    { tenants, packages, featureMatrix, supportTickets },
+    { tenants, packages, featureMatrix, supportTickets, invoices },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

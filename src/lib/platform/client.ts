@@ -1,4 +1,4 @@
-import type { FeatureKey, Package, SupportTicket, Tenant } from "@/lib/types";
+import type { FeatureKey, Invoice, Package, SupportTicket, Tenant } from "@/lib/types";
 
 /**
  * The browser's side of the Super Admin console: one fetch for the whole
@@ -10,6 +10,7 @@ export type PlatformSnapshot = {
   packages: Package[];
   featureMatrix: Record<string, Record<FeatureKey, boolean>>;
   supportTickets: SupportTicket[];
+  invoices: Invoice[];
 };
 
 export async function fetchPlatformSnapshot(): Promise<PlatformSnapshot | null> {
@@ -40,6 +41,7 @@ export async function fetchPublicPackages(): Promise<Pick<
 export async function fetchMyTenant(): Promise<{
   tenant: Tenant;
   features: Record<FeatureKey, boolean>;
+  invoices: Invoice[];
 } | null> {
   try {
     const response = await fetch("/api/platform/my-tenant", { cache: "no-store" });

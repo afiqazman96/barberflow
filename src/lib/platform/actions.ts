@@ -335,13 +335,24 @@ export async function convertTrialToActive(
   return tenantResult(tenantId);
 }
 
-export async function suspendTenant(tenantId: string): Promise<ActionResult<{ tenant: Tenant }>> {
-  await requirePlatformSession();
+/**
+ * The pure mutation, no session check — exported for the billing cron
+ * (`src/lib/billing/actions.ts`), which has no platform session to check
+ * (its authorization is the route's own `CRON_SECRET`). `suspendTenant`
+ * below is the session-gated entry point everything else should use.
+ */
+export async function suspendTenantRow(tenantId: string): Promise<boolean> {
   const updated = await prisma.tenant.updateMany({
     where: { id: tenantId },
     data: { status: "SUSPENDED", mrr: 0 },
   });
-  if (updated.count === 0) return { ok: false, error: "Tenant not found" };
+  return updated.count > 0;
+}
+
+export async function suspendTenant(tenantId: string): Promise<ActionResult<{ tenant: Tenant }>> {
+  await requirePlatformSession();
+  const changed = await suspendTenantRow(tenantId);
+  if (!changed) return { ok: false, error: "Tenant not found" };
   return tenantResult(tenantId);
 }
 

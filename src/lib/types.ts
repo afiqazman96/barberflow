@@ -119,6 +119,18 @@ export interface SupportTicket {
   createdAt: string;
 }
 
+export interface Invoice {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  /** The month this covers, e.g. "2026-10-01". */
+  period: string;
+  amount: number;
+  status: "pending" | "paid" | "overdue";
+  dueAt: string;
+  paidAt?: string;
+}
+
 export interface Branch {
   id: string;
   tenantId: string;

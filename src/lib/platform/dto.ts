@@ -3,6 +3,7 @@ import "server-only";
 import type {
   BillingCycle,
   FeatureKey as PrismaFeatureKey,
+  InvoiceStatus,
   TenantStatus,
   TicketPriority,
   TicketStatus,
@@ -10,6 +11,7 @@ import type {
 import type { Package as PrismaPackage } from "@/generated/prisma/client";
 import type {
   FeatureKey,
+  Invoice,
   OwnerAccount,
   Package,
   SupportTicket,
@@ -193,5 +195,33 @@ export function ticketDto(t: {
     priority: PRIORITY_FROM_PRISMA[t.priority],
     status: TICKET_STATUS_FROM_PRISMA[t.status],
     createdAt: t.createdAt.toISOString().slice(0, 10),
+  };
+}
+
+export const INVOICE_STATUS_FROM_PRISMA: Record<InvoiceStatus, Invoice["status"]> = {
+  PENDING: "pending",
+  PAID: "paid",
+  OVERDUE: "overdue",
+};
+
+export function invoiceDto(i: {
+  id: string;
+  tenantId: string;
+  period: Date;
+  amount: unknown;
+  status: InvoiceStatus;
+  dueAt: Date;
+  paidAt: Date | null;
+  tenant: { name: string };
+}): Invoice {
+  return {
+    id: i.id,
+    tenantId: i.tenantId,
+    tenantName: i.tenant.name,
+    period: i.period.toISOString().slice(0, 10),
+    amount: Number(i.amount),
+    status: INVOICE_STATUS_FROM_PRISMA[i.status],
+    dueAt: i.dueAt.toISOString(),
+    ...(i.paidAt && { paidAt: i.paidAt.toISOString() }),
   };
 }

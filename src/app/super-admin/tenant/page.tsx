@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Archive, Building2, Eye, KeyRound, Plus, RotateCcw, Search } from "lucide-react";
+import { Archive, Building2, Eye, KeyRound, Plus, Receipt, RotateCcw, Search } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
@@ -74,6 +74,8 @@ export default function SuperAdminTenantPage() {
   const archiveTenant = usePlatformStore((s) => s.archiveTenant);
   const restoreTenant = usePlatformStore((s) => s.restoreTenant);
   const resetOwnerPassword = usePlatformStore((s) => s.resetOwnerPassword);
+  const invoices = usePlatformStore((s) => s.invoices);
+  const markInvoicePaid = usePlatformStore((s) => s.markInvoicePaid);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -228,6 +230,15 @@ export default function SuperAdminTenantPage() {
     if (result && !result.ok) {
       toast.error("Could not view as this tenant", { description: result.error });
     }
+  }
+
+  async function handleMarkPaid(invoiceId: string) {
+    const result = await markInvoicePaid(invoiceId);
+    if (!result.ok) {
+      toast.error("Could not mark this paid", { description: result.error });
+      return;
+    }
+    toast.success("Invoice marked as paid");
   }
 
   async function handleResetPassword(tenant: Tenant) {
@@ -840,6 +851,46 @@ export default function SuperAdminTenantPage() {
                       {formatDate(selected.archivedAt)}
                     </span>
                   </p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="flex items-center gap-2 text-sm font-medium">
+                <Receipt className="h-4 w-4 text-[var(--gold)]" />
+                Invoices
+              </p>
+              <div className="space-y-2">
+                {invoices
+                  .filter((i) => i.tenantId === selected.id)
+                  .map((invoice) => (
+                    <div
+                      key={invoice.id}
+                      className="flex items-center justify-between gap-3 rounded-xl bg-[var(--bg-muted)] px-3 py-2.5 text-sm"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {new Date(invoice.period).toLocaleDateString("en-MY", {
+                            month: "long",
+                            year: "numeric",
+                          })}
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)]">
+                          {formatCurrency(invoice.amount)} · due {formatDate(invoice.dueAt)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={invoice.status} />
+                        {invoice.status !== "paid" && (
+                          <Button size="sm" variant="secondary" onClick={() => handleMarkPaid(invoice.id)}>
+                            Mark as Paid
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                {invoices.filter((i) => i.tenantId === selected.id).length === 0 && (
+                  <p className="text-sm text-[var(--text-muted)]">No invoices yet.</p>
                 )}
               </div>
             </div>

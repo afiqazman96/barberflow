@@ -220,7 +220,32 @@ A `200` with a message `id` means the domain is verified and the key works.
 
 ---
 
-## 5. Verify the deployment
+## 5. Set up the billing cron
+
+Vercel Cron hits `/api/cron/billing` daily (`vercel.json`) to issue monthly
+invoices on the 1st and auto-suspend tenants whose invoice is still unpaid
+past the 7th. It's authorized by a shared secret, not a session — Vercel
+injects it as a header automatically on a real deployed cron invocation, but
+nothing does that for a local `npm run dev` request.
+
+1. **Generate a secret** (any random string — e.g. `openssl rand -hex 32`).
+2. **Set `CRON_SECRET`** locally (`.env`) and in Vercel (Project Settings →
+   Environment Variables).
+3. To exercise the route yourself — locally or against a deployed
+   environment — send the header by hand:
+
+   ```bash
+   curl -H "Authorization: Bearer $CRON_SECRET" \
+     "https://your-domain.vercel.app/api/cron/billing"
+   ```
+
+   A request without a matching header gets `401`. The route also accepts a
+   `?date=YYYY-MM-DD` override behind the same check, for proving the
+   "only runs on the 1st" gate without waiting for a real month boundary.
+
+---
+
+## 6. Verify the deployment
 
 **Row-level security.** This is the check worth doing carefully. The
 publishable key ships inside the browser bundle, so if Supabase's REST API can
@@ -248,7 +273,7 @@ barber) — you should be redirected to your own dashboard, not shown the page.
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Symptom | Cause |
 |---|---|
@@ -263,7 +288,7 @@ barber) — you should be redirected to your own dashboard, not shown the page.
 
 ---
 
-## 7. Before real customers
+## 8. Before real customers
 
 - Rotate every `demo1234` password, or don't seed the demo tenant at all.
 - Never commit `.env` — it is git-ignored, keep it that way. That includes

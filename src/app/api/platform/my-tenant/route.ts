@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth/session";
+import { invoicesForTenant } from "@/lib/billing/queries";
 import { myTenantFor } from "@/lib/platform/queries";
 
 /**
@@ -17,5 +18,10 @@ export async function GET() {
     return Response.json({ error: "Tenant not found" }, { status: 404 });
   }
 
-  return Response.json(result, { headers: { "Cache-Control": "no-store" } });
+  const invoices = await invoicesForTenant(session.staff.tenantId);
+
+  return Response.json(
+    { ...result, invoices },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

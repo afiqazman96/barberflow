@@ -8,6 +8,7 @@ import {
   CreditCard,
   ExternalLink,
   FlaskConical,
+  Receipt,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -16,7 +17,7 @@ import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Label, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useAppStore } from "@/lib/store/app-store";
@@ -49,6 +50,7 @@ export default function OwnerBillingPage() {
   const loadPackages = usePlatformStore((s) => s.loadPackages);
   const changeTenantPlan = usePlatformStore((s) => s.changeTenantPlan);
   const convertTrialToActive = usePlatformStore((s) => s.convertTrialToActive);
+  const myInvoices = usePlatformStore((s) => s.myInvoices);
 
   useEffect(() => {
     void loadPackages();
@@ -251,6 +253,42 @@ export default function OwnerBillingPage() {
                 </li>
               ))}
             </ul>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="h-4 w-4 text-[var(--gold)]" />
+                Invoice history
+              </CardTitle>
+            </CardHeader>
+            <div className="space-y-2">
+              {myInvoices.map((invoice) => (
+                <div
+                  key={invoice.id}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-[var(--bg-muted)] px-3 py-2.5 text-sm"
+                >
+                  <div>
+                    <p className="font-medium">
+                      {new Date(invoice.period).toLocaleDateString("en-MY", {
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      {formatCurrency(invoice.amount)}
+                      {invoice.paidAt
+                        ? ` · paid ${formatDate(invoice.paidAt)}`
+                        : ` · due ${formatDate(invoice.dueAt)}`}
+                    </p>
+                  </div>
+                  <StatusBadge status={invoice.status} />
+                </div>
+              ))}
+              {myInvoices.length === 0 && (
+                <p className="text-sm text-[var(--text-muted)]">No invoices yet.</p>
+              )}
+            </div>
           </Card>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">

@@ -1,7 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import type { FeatureKey, Package, SupportTicket, Tenant } from "@/lib/types";
+import type { FeatureKey, Invoice, Package, SupportTicket, Tenant } from "@/lib/types";
+import { markInvoicePaid as markInvoicePaidAction } from "@/lib/billing/actions";
 import {
   activateTenant as activateTenantAction,
   addPackage as addPackageAction,
@@ -41,6 +42,7 @@ interface PlatformState {
   tenants: Tenant[];
   packages: Package[];
   supportTickets: SupportTicket[];
+  invoices: Invoice[];
   featureMatrix: Record<string, Record<FeatureKey, boolean>>;
   /** True once the first real snapshot has landed. */
   hydrated: boolean;
@@ -48,6 +50,7 @@ interface PlatformState {
    * resolves, or for a visitor with no shop session at all. */
   myTenant: Tenant | null;
   myFeatures: Record<FeatureKey, boolean> | null;
+  myInvoices: Invoice[];
 
   /** Fetch everything from the server and replace local state with it.
    * Platform-session only — for the Super Admin console. */
@@ -95,6 +98,8 @@ interface PlatformState {
     patch: Partial<Pick<SupportTicket, "status" | "priority">>,
   ) => Promise<Result>;
 
+  markInvoicePaid: (invoiceId: string) => Promise<Result>;
+
   totalMrr: () => number;
   trialCount: () => number;
   expiredTrialCount: () => number;
@@ -112,10 +117,12 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   tenants: [],
   packages: [],
   supportTickets: [],
+  invoices: [],
   featureMatrix: {},
   hydrated: false,
   myTenant: null,
   myFeatures: null,
+  myInvoices: [],
 
   refresh: async () => {
     const snapshot = await fetchPlatformSnapshot();
@@ -132,7 +139,7 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   loadMyTenant: async () => {
     const result = await fetchMyTenant();
     if (!result) return;
-    set({ myTenant: result.tenant, myFeatures: result.features });
+    set({ myTenant: result.tenant, myFeatures: result.features, myInvoices: result.invoices });
   },
 
   addTenant: async (input) => {
@@ -286,6 +293,17 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
   updateTicket: async (id, patch) => {
     try {
       const result = await updateTicketAction(id, patch);
+      if (!result.ok) return result;
+      await get().refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  markInvoicePaid: async (invoiceId) => {
+    try {
+      const result = await markInvoicePaidAction(invoiceId);
       if (!result.ok) return result;
       await get().refresh();
       return { ok: true };

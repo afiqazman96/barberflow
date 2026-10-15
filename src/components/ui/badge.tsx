@@ -55,6 +55,9 @@ export function StatusBadge({ status }: { status: string }) {
     silver: { label: "Silver", variant: "default" },
     gold: { label: "Gold", variant: "gold" },
     platinum: { label: "Platinum", variant: "info" },
+    pending: { label: "Pending", variant: "warning" },
+    paid: { label: "Paid", variant: "success" },
+    overdue: { label: "Overdue", variant: "danger" },
   };
   const cfg = map[status] ?? { label: status, variant: "default" as const };
   return <Badge variant={cfg.variant}>{cfg.label}</Badge>;

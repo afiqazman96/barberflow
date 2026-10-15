@@ -76,6 +76,25 @@ export async function notifyNewBooking(
   }
 }
 
+export async function notifyInvoiceDue(
+  invoice: { tenantId: string; amount: number; dueAt: Date },
+  client: Client = prisma,
+): Promise<void> {
+  try {
+    await client.notification.create({
+      data: {
+        tenantId: invoice.tenantId,
+        type: "INVOICE_DUE",
+        title: "Invoice issued",
+        body: `RM${invoice.amount.toFixed(2)} due by ${invoice.dueAt.toLocaleDateString("en-MY", { day: "numeric", month: "short" })}`,
+        visibleToRoles: ["OWNER"],
+      },
+    });
+  } catch {
+    // Best-effort.
+  }
+}
+
 /** Opening the bell calls this — resets the unread cursor to now. */
 export async function markNotificationsSeen(): Promise<ActionResult> {
   const { staff } = await requireShopSession();

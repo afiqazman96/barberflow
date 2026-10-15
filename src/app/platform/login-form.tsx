@@ -11,8 +11,6 @@ import { Input, Label } from "@/components/ui/input";
 import { signIn, signOut } from "@/lib/auth/actions";
 import { useAppStore } from "@/lib/store/app-store";
 
-const DEMO_EMAIL = "admin@barberflow.io";
-
 /**
  * Hidden platform console — not linked from shop / customer UI.
  * Open directly: /platform
@@ -20,7 +18,7 @@ const DEMO_EMAIL = "admin@barberflow.io";
 export function PlatformLoginForm() {
   const router = useRouter();
   const setSession = useAppStore((s) => s.setSession);
-  const [email, setEmail] = useState(DEMO_EMAIL);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, startTransition] = useTransition();
 

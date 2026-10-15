@@ -21,4 +21,9 @@ export type SessionUser = {
   tenantId: string | null;
   branchId: string | null;
   mustChangePassword: boolean;
+  /** Set only when a platform admin is "viewing as" this tenant's owner. */
+  impersonation?: {
+    platformAdminName: string;
+    startedAt: string;
+  };
 };

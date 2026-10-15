@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Archive, Building2, KeyRound, Plus, RotateCcw, Search } from "lucide-react";
+import { Archive, Building2, Eye, KeyRound, Plus, RotateCcw, Search } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TenantCredentials } from "@/components/domain/tenant-credentials";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import { sendTenantWelcomeEmail } from "@/lib/email/tenant-client";
+import { startSupportSession } from "@/lib/support/actions";
 import { OWNER_LOGINS_ARE_LIVE, ownerEmailProblem } from "@/lib/tenant-onboarding";
 import type { Tenant } from "@/lib/types";
 import { formatCurrency, formatDate, todayIso } from "@/lib/utils";
@@ -218,6 +219,14 @@ export default function SuperAdminTenantPage() {
           ? { ...tenant.ownerAccount, tempPassword: result.tempPassword }
           : undefined,
       });
+    }
+  }
+
+  async function handleViewAsTenant(tenant: Tenant) {
+    const result = await startSupportSession(tenant.id);
+    // Only reached on failure — success redirects away before returning.
+    if (result && !result.ok) {
+      toast.error("Could not view as this tenant", { description: result.error });
     }
   }
 
@@ -870,6 +879,13 @@ export default function SuperAdminTenantPage() {
                 <>
                   <Button className="flex-1" onClick={saveTenant}>
                     Save Changes
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => handleViewAsTenant(selected)}
+                  >
+                    <Eye className="h-4 w-4" />
+                    View as Tenant
                   </Button>
                   <Button
                     variant="secondary"

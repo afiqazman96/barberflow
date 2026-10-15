@@ -6,6 +6,7 @@ import type { StaffRole } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { assertNotImpersonating } from "@/lib/support/actions";
 
 import type { SessionUser } from "./dto";
 import { appRoleFor } from "./roles";
@@ -117,6 +118,8 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<ActionResult> {
+  await assertNotImpersonating();
+
   const user = await getAuthUser();
   if (!user?.email) {
     return { ok: false, error: "You are not signed in" };
@@ -253,6 +256,7 @@ export async function resetStaffPassword(
   staffId: string,
   temporaryPassword: string,
 ): Promise<ActionResult> {
+  await assertNotImpersonating();
   const { staff: owner } = await requireRole("OWNER");
 
   const target = await prisma.staff.findFirst({
@@ -296,6 +300,7 @@ export async function setStaffActive(
   staffId: string,
   active: boolean,
 ): Promise<ActionResult> {
+  await assertNotImpersonating();
   const { staff: owner } = await requireRole("OWNER");
 
   const target = await prisma.staff.findFirst({

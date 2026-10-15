@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect } from "react";
 
 import type { SessionUser } from "@/lib/auth/dto";
 import { ForcePasswordChange } from "@/components/auth/force-password-change";
+import { ImpersonationBanner } from "@/components/auth/impersonation-banner";
 import { SuspendedScreen } from "@/components/auth/suspended-screen";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import { useAppStore } from "@/lib/store/app-store";
@@ -59,6 +60,12 @@ export function SessionProvider({
 
   return (
     <SessionContext.Provider value={session}>
+      {session.impersonation && (
+        <ImpersonationBanner
+          platformAdminName={session.impersonation.platformAdminName}
+          startedAt={session.impersonation.startedAt}
+        />
+      )}
       {session.mustChangePassword ? (
         <ForcePasswordChange />
       ) : shopSuspended ? (

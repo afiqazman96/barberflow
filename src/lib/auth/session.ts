@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import type { PlatformAdmin, Staff } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { readSupportSessionId } from "@/lib/support/cookie";
 import type { UserRole } from "@/lib/types";
 
 import type { SessionUser } from "./dto";
@@ -26,6 +27,14 @@ export type ShopSession = {
   kind: "shop";
   authUserId: string;
   staff: Staff;
+  /** Set only when this is actually a platform admin "viewing as" this
+   * tenant's owner — see `src/lib/support/actions.ts`. */
+  impersonation?: {
+    platformAdminId: string;
+    platformAdminName: string;
+    supportSessionId: string;
+    startedAt: Date;
+  };
 };
 
 export type PlatformSession = {
@@ -74,13 +83,51 @@ export const getSession = cache(async (): Promise<Session | null> => {
     where: { authUserId: user.id },
   });
   if (admin) {
-    return admin.active
-      ? { kind: "platform", authUserId: user.id, admin }
-      : null;
+    if (!admin.active) return null;
+    const impersonated = await resolveSupportSession(user.id, admin);
+    if (impersonated) return impersonated;
+    return { kind: "platform", authUserId: user.id, admin };
   }
 
   return null;
 });
+
+/**
+ * If this platform admin has a live "viewing as support" session, resolves
+ * as that tenant's owner instead — tagged so every consumer can tell. An
+ * absent, expired or ended session falls through silently (no error): the
+ * admin just sees their own platform console as normal.
+ */
+async function resolveSupportSession(
+  authUserId: string,
+  admin: PlatformAdmin,
+): Promise<ShopSession | null> {
+  const sessionId = await readSupportSessionId();
+  if (!sessionId) return null;
+
+  const row = await prisma.supportSession.findFirst({
+    where: {
+      id: sessionId,
+      platformAdminId: admin.id,
+      endedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    include: { staff: true },
+  });
+  if (!row || !row.staff.active) return null;
+
+  return {
+    kind: "shop",
+    authUserId,
+    staff: row.staff,
+    impersonation: {
+      platformAdminId: admin.id,
+      platformAdminName: admin.name,
+      supportSessionId: row.id,
+      startedAt: row.startedAt,
+    },
+  };
+}
 
 /**
  * Use in any shop-scoped Server Component, Server Action or Route Handler that
@@ -146,6 +193,12 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
     tenantId: staff.tenantId,
     branchId: staff.branchId,
     mustChangePassword: staff.mustChangePassword,
+    ...(session.impersonation && {
+      impersonation: {
+        platformAdminName: session.impersonation.platformAdminName,
+        startedAt: session.impersonation.startedAt.toISOString(),
+      },
+    }),
   };
 });
 

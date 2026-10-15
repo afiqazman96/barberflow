@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Archive, Building2, Eye, KeyRound, Plus, Receipt, RotateCcw, Search } from "lucide-react";
+import { Archive, Bell, Building2, Download, Eye, KeyRound, Plus, Receipt, RotateCcw, Search } from "lucide-react";
 import { Topbar } from "@/components/layout/app-shell";
 import { PageTransition } from "@/components/layout/page-transition";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { PillTabs } from "@/components/ui/pill-tabs";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TenantCredentials } from "@/components/domain/tenant-credentials";
+import { downloadInvoicePdf } from "@/lib/billing/invoice-pdf";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import { sendTenantWelcomeEmail } from "@/lib/email/tenant-client";
 import { startSupportSession } from "@/lib/support/actions";
@@ -76,6 +77,7 @@ export default function SuperAdminTenantPage() {
   const resetOwnerPassword = usePlatformStore((s) => s.resetOwnerPassword);
   const invoices = usePlatformStore((s) => s.invoices);
   const markInvoicePaid = usePlatformStore((s) => s.markInvoicePaid);
+  const remindInvoice = usePlatformStore((s) => s.remindInvoice);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -239,6 +241,15 @@ export default function SuperAdminTenantPage() {
       return;
     }
     toast.success("Invoice marked as paid");
+  }
+
+  async function handleRemind(invoiceId: string) {
+    const result = await remindInvoice(invoiceId);
+    if (!result.ok) {
+      toast.error("Could not send reminder", { description: result.error });
+      return;
+    }
+    toast.success("Reminder sent", { description: "The owner will see it on their notification bell" });
   }
 
   async function handleResetPassword(tenant: Tenant) {
@@ -881,10 +892,22 @@ export default function SuperAdminTenantPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <StatusBadge status={invoice.status} />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => downloadInvoicePdf(invoice)}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
                         {invoice.status !== "paid" && (
-                          <Button size="sm" variant="secondary" onClick={() => handleMarkPaid(invoice.id)}>
-                            Mark as Paid
-                          </Button>
+                          <>
+                            <Button size="sm" variant="ghost" onClick={() => handleRemind(invoice.id)}>
+                              <Bell className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="secondary" onClick={() => handleMarkPaid(invoice.id)}>
+                              Mark as Paid
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>

@@ -2,7 +2,10 @@
 
 import { create } from "zustand";
 import type { FeatureKey, Invoice, Package, SupportTicket, Tenant } from "@/lib/types";
-import { markInvoicePaid as markInvoicePaidAction } from "@/lib/billing/actions";
+import {
+  markInvoicePaid as markInvoicePaidAction,
+  remindInvoiceDue as remindInvoiceDueAction,
+} from "@/lib/billing/actions";
 import {
   activateTenant as activateTenantAction,
   addPackage as addPackageAction,
@@ -99,6 +102,7 @@ interface PlatformState {
   ) => Promise<Result>;
 
   markInvoicePaid: (invoiceId: string) => Promise<Result>;
+  remindInvoice: (invoiceId: string) => Promise<Result>;
 
   totalMrr: () => number;
   trialCount: () => number;
@@ -306,6 +310,16 @@ export const usePlatformStore = create<PlatformState>((set, get) => ({
       const result = await markInvoicePaidAction(invoiceId);
       if (!result.ok) return result;
       await get().refresh();
+      return { ok: true };
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+  },
+
+  remindInvoice: async (invoiceId) => {
+    try {
+      const result = await remindInvoiceDueAction(invoiceId);
+      if (!result.ok) return result;
       return { ok: true };
     } catch {
       return { ok: false, error: OFFLINE };

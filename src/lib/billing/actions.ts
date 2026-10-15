@@ -130,3 +130,29 @@ export async function markInvoicePaid(invoiceId: string): Promise<ActionResult<{
 
   return { ok: true, data: { invoice: invoiceDto(updated) } };
 }
+
+/**
+ * Admin-triggered re-send of the same in-app notification `generateMonthlyInvoices`
+ * fires automatically at issue time — for a tenant who may have missed the
+ * first one. Refuses on an already-paid invoice; there's nothing to remind.
+ */
+export async function remindInvoiceDue(invoiceId: string): Promise<ActionResult<{ invoice: Invoice }>> {
+  await requirePlatformSession();
+
+  const invoice = await prisma.invoice.findUnique({
+    where: { id: invoiceId },
+    include: { tenant: { select: { name: true } } },
+  });
+  if (!invoice) return { ok: false, error: "Invoice not found" };
+  if (invoice.status === "PAID") {
+    return { ok: false, error: "This invoice is already paid" };
+  }
+
+  await notifyInvoiceDue({
+    tenantId: invoice.tenantId,
+    amount: Number(invoice.amount),
+    dueAt: invoice.dueAt,
+  });
+
+  return { ok: true, data: { invoice: invoiceDto(invoice) } };
+}

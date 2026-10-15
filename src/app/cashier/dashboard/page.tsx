@@ -5,7 +5,6 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Bell,
   CalendarDays,
   Clock,
   ListOrdered,
@@ -18,6 +17,7 @@ import { HeroStatCard } from "@/components/domain/hero-stat-card";
 import { StatTile } from "@/components/domain/stat-tile";
 import { StaffCard } from "@/components/domain/staff-card";
 import { CashierShiftControls } from "@/components/domain/cashier-shift";
+import { NotificationBell } from "@/components/domain/notification-bell";
 import { MyShiftCard, WeekSchedule } from "@/components/domain/shift-cards";
 import { useSession } from "@/components/auth/session-provider";
 import { Badge } from "@/components/ui/badge";
@@ -94,16 +94,7 @@ export default function CashierDashboardPage() {
     <>
       <Topbar
         title=""
-        actions={
-          <button
-            type="button"
-            className="relative flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-muted)] text-[var(--text-muted)] transition hover:text-[var(--text)]"
-            aria-label="Notifications"
-          >
-            <Bell className="h-4.5 w-4.5" />
-            <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-[var(--danger)]" />
-          </button>
-        }
+        actions={<NotificationBell variant="icon" />}
       />
       <PageTransition>
         <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">

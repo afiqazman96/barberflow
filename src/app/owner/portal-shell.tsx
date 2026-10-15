@@ -20,6 +20,7 @@ import {
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { QueueSync } from "@/components/domain/queue-sync";
+import { NotificationBell } from "@/components/domain/notification-bell";
 import { useAppStore } from "@/lib/store/app-store";
 import { usePlatformStore } from "@/lib/store/platform-store";
 import type { FeatureKey } from "@/lib/types";
@@ -128,6 +129,7 @@ export function PortalShell({
           logoUrl={business.logoUrl}
           items={gatedNavItems}
           beforeNav={<BranchSwitcher />}
+          bell={<NotificationBell panelPosition="up" />}
         />
       }
       bottomNav={<BottomNav items={bottomNavItems} />}

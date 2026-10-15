@@ -13,7 +13,6 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   LucideIcon,
-  Bell,
   Menu,
   X,
 } from "lucide-react";
@@ -109,20 +108,16 @@ function SidebarBrand({
 
 function SidebarFooter({
   footerLabel,
+  bell,
   onNavigate,
 }: {
   footerLabel: string;
+  bell?: React.ReactNode;
   onNavigate?: () => void;
 }) {
   return (
     <div className="border-t border-[var(--border)] p-3">
-      <div className="mb-2 flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--text-muted)]">
-        <Bell className="h-4 w-4" />
-        Notifications
-        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-md bg-[var(--gold)]/20 px-1.5 text-xs text-[var(--gold-soft)]">
-          3
-        </span>
-      </div>
+      {bell && <div className="mb-2">{bell}</div>}
       <SignOutButton label={footerLabel} onNavigate={onNavigate} />
     </div>
   );
@@ -135,6 +130,7 @@ export function Sidebar({
   items,
   footerLabel = "Sign out",
   beforeNav,
+  bell,
 }: {
   title: string;
   subtitle?: string;
@@ -143,6 +139,8 @@ export function Sidebar({
   footerLabel?: string;
   /** Rendered between the brand header and the nav links — e.g. a branch switcher. */
   beforeNav?: React.ReactNode;
+  /** Rendered above sign-out in the footer — e.g. `<NotificationBell />`. */
+  bell?: React.ReactNode;
 }) {
   const mobileNav = useMobileNav();
   const setOpen = mobileNav?.setOpen;
@@ -169,7 +167,7 @@ export function Sidebar({
         <SidebarBrand title={title} subtitle={subtitle} logoUrl={logoUrl} />
         {beforeNav}
         <NavLinks items={items} />
-        <SidebarFooter footerLabel={footerLabel} />
+        <SidebarFooter footerLabel={footerLabel} bell={bell} />
       </aside>
 
       <AnimatePresence>
@@ -204,7 +202,7 @@ export function Sidebar({
               </div>
               {beforeNav}
               <NavLinks items={items} onNavigate={close} />
-              <SidebarFooter footerLabel={footerLabel} onNavigate={close} />
+              <SidebarFooter footerLabel={footerLabel} bell={bell} onNavigate={close} />
             </motion.aside>
           </div>
         )}

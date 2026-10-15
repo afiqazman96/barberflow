@@ -36,6 +36,19 @@ export function formatDateTime(date: string | Date) {
   return `${formatDate(date)} · ${formatTime(date)}`;
 }
 
+/** "5m ago", "3h ago", "2d ago" — falls back to a plain date past a week. */
+export function formatRelative(date: string | Date): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  const mins = Math.round((Date.now() - d.getTime()) / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return formatDate(d);
+}
+
 /** Today's local date as `YYYY-MM-DD` — matches the shape booking/queue dates use. */
 export function todayIso(): string {
   const d = new Date();

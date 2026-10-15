@@ -13,6 +13,7 @@ import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { QueueSync } from "@/components/domain/queue-sync";
 import { CashierShiftBanner } from "@/components/domain/cashier-shift";
+import { NotificationBell } from "@/components/domain/notification-bell";
 import { useAppStore } from "@/lib/store/app-store";
 
 const navItems = [
@@ -49,6 +50,7 @@ export function PortalShell({
           subtitle="Cashier Portal"
           logoUrl={business.logoUrl}
           items={navItems}
+          bell={<NotificationBell panelPosition="up" />}
         />
       }
       bottomNav={<BottomNav items={bottomNavItems} />}

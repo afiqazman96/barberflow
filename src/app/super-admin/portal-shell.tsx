@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import {
+  Bell,
   LayoutDashboard,
   Building2,
   CreditCard,
@@ -13,6 +15,30 @@ import {
 import { AppShell, Sidebar } from "@/components/layout/app-shell";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { usePlatformStore } from "@/lib/store/platform-store";
+
+/**
+ * A lightweight stand-in for the tenant-side `<NotificationBell>` — super
+ * admins don't get generated Notification rows (those are tenant concerns),
+ * so this just surfaces the open-ticket count the platform store already
+ * computes, and links straight to the real Support inbox.
+ */
+function OpenTicketsBell() {
+  const openCount = usePlatformStore((s) => s.openTicketCount());
+  return (
+    <Link
+      href="/super-admin/support"
+      className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-[var(--text-muted)] transition hover:bg-[var(--bg-muted)] hover:text-[var(--text)]"
+    >
+      <Bell className="h-4 w-4" />
+      Open tickets
+      {openCount > 0 && (
+        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-md bg-[var(--gold)]/20 px-1.5 text-xs text-[var(--gold-soft)]">
+          {openCount}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 const navItems = [
   { href: "/super-admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -49,6 +75,7 @@ export function PortalShell({
           subtitle="Platform"
           items={navItems}
           footerLabel="Sign out"
+          bell={<OpenTicketsBell />}
         />
       }
       bottomNav={<BottomNav items={bottomNavItems} />}
